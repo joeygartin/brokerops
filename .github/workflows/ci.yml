@@ -46,9 +46,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Full-history scan with a pinned binary (gitleaks-action@v2 computes a
+      # parent-relative range that breaks on a repo's initial push).
+      - name: gitleaks (full history)
+        run: |
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.30.0/gitleaks_8.30.0_linux_x64.tar.gz | tar -xz gitleaks
+          ./gitleaks git --no-banner --redact --verbose .
 
   e2e-demo:
     # The full demo path against the real compose stack — main only.
