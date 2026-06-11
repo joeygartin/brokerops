@@ -1,0 +1,38 @@
+# ── Secrets & credentials — never committed ─────────────────────────
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+credentials*
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfvars.json
+
+# ── Local-only / agent-tooling files ─────────────────────────────────
+CLAUDE.local.md
+.claude/
+.internal/
+.internal-denylist
+*.session.md
+
+# ── Python ───────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+
+# ── Node / frontend ──────────────────────────────────────────────────
+node_modules/
+frontend/dist/
+
+# ── OS / editor ──────────────────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/
