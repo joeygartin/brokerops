@@ -8,9 +8,12 @@ human approval gate in front of every consequential action.
 
 <!-- TODO(joey): 60–90s screen recording of docs/DEMO.md goes here -->
 
-Three LangGraph workflows over an MCP tool boundary, a framework-free domain core,
-durable human-in-the-loop (Postgres-checkpointed — approvals survive restarts and
-deploys), and per-client GCP deploys via Terraform.
+Three workflows over an MCP tool boundary, a framework-free domain core, durable
+human-in-the-loop (Postgres-backed — approvals survive restarts and deploys), and
+per-client GCP deploys via Terraform. The orchestration layer is **dual-engine**:
+the same workflows run on LangGraph or Google ADK, selected by
+`ORCHESTRATOR=langgraph|adk` (default `langgraph`), and CI proves both against the
+same end-to-end demo script on every push.
 
 | Workflow | Trigger | Human gate |
 |---|---|---|
@@ -39,7 +42,8 @@ its Postgres checkpoint in the new process.
 See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the full picture and
 **[docs/ADRs/](docs/ADRs/)** for the decisions. The short version:
 
-- **`core/`** is plain Python + Pydantic — no LangGraph, no FastAPI, no SDKs.
+- **`core/`** is plain Python + Pydantic — no LangGraph, no ADK, no FastAPI, no
+  SDKs.
   Workflow nodes are thin; business rules (marketing drafts, milestone date math,
   transcript extraction — including a spoken price-range parser) live in core
   services and are unit-tested in isolation.
@@ -47,15 +51,19 @@ See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the full picture and
   port, a recorded-shape stub, and an MCP server (`uv run mcp-server-mls-reso`,
   `…-followupboss`, `…-vapi`). Swapping the mock MLS for a live RESO feed is a
   base-URL + auth change, pinned by contract tests.
-- **Every human gate is the same spine:** `interrupt()` → an `ApprovalRequest` row →
-  the Approval Inbox → one resume endpoint. That uniformity is also what keeps the
-  orchestrator swappable.
+- **Every human gate is the same spine:** a workflow interrupt → an
+  `ApprovalRequest` row → the Approval Inbox → one resume endpoint. That uniformity
+  is what made the orchestrator swappable — and V2 swapped it: the ADK engine
+  (`orchestration/adk/`) passes the identical scenario suites, restart-survival
+  proof, and e2e gate as the LangGraph engine (ADR-0004).
 
 ## Development
 
 ```bash
 uv sync --all-packages   # install workspace deps
-make test                # ~95 tests (contract, graph, API flow, restart-survival)
+make test                # ~110 tests (contract, workflow x2 engines, API flow,
+                         # restart-survival per engine)
+ORCHESTRATOR=adk make demo   # the same demo on the ADK engine
 make lint                # ruff + mypy strict
 ```
 
@@ -83,7 +91,7 @@ in the cloud.
 ```
 core/                    # framework-free domain: models, services, ports
 integrations/            # mls_reso · followupboss · vapi — adapter + stub + MCP server each
-orchestration/langgraph/ # the three graphs + Postgres checkpointer
+orchestration/           # the three workflows, twice: langgraph/ (V1) + adk/ (V2)
 api/                     # FastAPI: routes, webhooks, cron, workflow engine, Alembic
 frontend/                # React + Vite: Listings, Transactions, Approval Inbox
 infra/                   # Terraform per-client module + bootstrap

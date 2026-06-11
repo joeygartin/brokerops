@@ -32,8 +32,10 @@ demo transactions. When it finishes:
 curl -s http://localhost:8002/tasks | python3 -m json.tool
 ```
 
-**What just happened:** a LangGraph workflow ran intake → draft → `interrupt()` →
+**What just happened:** a workflow ran intake → draft → a HITL interrupt →
 your approval resumed it → it fanned out real CRM tasks through the CRM port.
+(The engine behind it is LangGraph by default; rerun the stack with
+`ORCHESTRATOR=adk make demo` and the identical path runs on Google ADK.)
 
 ### Optional: prove the pause is durable
 
