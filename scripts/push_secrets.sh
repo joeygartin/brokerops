@@ -11,7 +11,8 @@ set -euo pipefail
 CLIENT="${1:?usage: push_secrets.sh <client>}"
 TFVARS="infra/clients/${CLIENT}.tfvars"
 [ -f "${TFVARS}" ] || { echo "missing ${TFVARS}"; exit 1; }
-PROJECT_ID="$(grep -E '^project_id\s*=' "${TFVARS}" | head -1 | sed -E 's/^[^=]+=\s*"([^"]*)".*/\1/')"
+PROJECT_ID="$(grep -E '^project_id[[:space:]]*=' "${TFVARS}" | head -1 \
+  | sed -E 's/^[^=]+=[[:space:]]*"([^"]*)".*/\1/')"
 
 push() {
   local name="$1" prompt="$2" value

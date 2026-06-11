@@ -1,20 +1,16 @@
 # The per-client deployable unit: two Cloud Run services, a Cloud SQL
 # database, Secret Manager shells, a milestone-cron Scheduler job, and
 # least-privilege service accounts.
-
-data "google_project" "this" {
-  project_id = var.project_id
-}
+#
+# URL wiring: the frontend nginx proxies /api/* to the api service
+# (API_UPSTREAM env, injected from the api's real .uri after creation), so
+# the browser only ever talks same-origin — no URL baked into the bundle,
+# no CORS coupling, no predicted-URL fragility.
 
 locals {
   prefix           = "brokerops-${var.client_name}"
   api_service      = "${local.prefix}-api"
   frontend_service = "${local.prefix}-frontend"
-
-  # Cloud Run deterministic URLs — computable before the services exist,
-  # which breaks the frontend-needs-api-URL / CORS-needs-frontend-URL cycle.
-  api_url      = "https://${local.api_service}-${data.google_project.this.number}.${var.region}.run.app"
-  frontend_url = "https://${local.frontend_service}-${data.google_project.this.number}.${var.region}.run.app"
 }
 
 resource "google_service_account" "api" {

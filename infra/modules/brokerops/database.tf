@@ -10,7 +10,10 @@ resource "google_sql_database_instance" "this" {
   region           = var.region
 
   settings {
-    tier = var.db_tier
+    # Standard edition: required for shared-core pilot tiers like db-f1-micro
+    # (the Enterprise Plus default only allows perf-optimized machine types).
+    edition = "ENTERPRISE"
+    tier    = var.db_tier
     ip_configuration {
       ipv4_enabled = true # connections only via the Cloud SQL connector socket
     }

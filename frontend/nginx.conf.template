@@ -1,0 +1,18 @@
+# Rendered by the nginx image's envsubst at container start.
+# API_UPSTREAM is injected by the deploy (the api service's real URL), so the
+# browser talks same-origin and no URL is baked into the bundle.
+server {
+    listen 8080;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    location /api/ {
+        proxy_pass ${API_UPSTREAM}/;
+        proxy_set_header Host $proxy_host;
+        proxy_ssl_server_name on;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

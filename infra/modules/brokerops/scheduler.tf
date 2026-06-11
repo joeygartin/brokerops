@@ -11,7 +11,7 @@ resource "google_cloud_scheduler_job" "milestones" {
 
   http_target {
     http_method = "POST"
-    uri         = "${local.api_url}/internal/cron/milestones"
+    uri         = "${google_cloud_run_v2_service.api.uri}/internal/cron/milestones"
     headers = {
       "X-Cron-Key" = random_password.cron.result
     }

@@ -47,15 +47,15 @@ resource "google_cloud_run_v2_service" "api" {
         name  = "VAPI_ASSISTANT_ID"
         value = var.vapi_assistant_id
       }
-      env {
-        name  = "CORS_ORIGINS"
-        value = local.frontend_url
-      }
-      env {
-        name = "WEBHOOK_URL"
-        # In-process vapi stub fires its end-of-call webhook at this same
-        # container; real Vapi posts to the public /webhooks/vapi instead.
-        value = var.vapi_base_url == "internal" ? "http://localhost:8000/webhooks/vapi" : "${local.api_url}/webhooks/vapi"
+      dynamic "env" {
+        # Only the in-process vapi stub consumes this: it fires its
+        # end-of-call webhook back at this same container. Real Vapi is
+        # configured with the public /webhooks/vapi URL in its dashboard.
+        for_each = var.vapi_base_url == "internal" ? [1] : []
+        content {
+          name  = "WEBHOOK_URL"
+          value = "http://localhost:8000/webhooks/vapi"
+        }
       }
       env {
         name  = "LANGCHAIN_TRACING_V2"
@@ -148,6 +148,11 @@ resource "google_cloud_run_v2_service" "frontend" {
 
       ports {
         container_port = 8080
+      }
+
+      env {
+        name  = "API_UPSTREAM"
+        value = google_cloud_run_v2_service.api.uri
       }
     }
   }

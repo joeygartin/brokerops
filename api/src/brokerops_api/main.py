@@ -102,6 +102,13 @@ app.include_router(demo_router)
 
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
+    # Container-internal liveness only: Google's frontend reserves /healthz
+    # on *.run.app URLs and intercepts it — use /readyz for external checks.
+    return {"status": "ok"}
+
+
+@app.get("/readyz")
+async def readyz() -> dict[str, str]:
     return {"status": "ok"}
 
 

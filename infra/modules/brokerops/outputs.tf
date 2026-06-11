@@ -1,9 +1,9 @@
 output "api_url" {
-  value = local.api_url
+  value = google_cloud_run_v2_service.api.uri
 }
 
 output "frontend_url" {
-  value = local.frontend_url
+  value = google_cloud_run_v2_service.frontend.uri
 }
 
 output "sql_connection_name" {

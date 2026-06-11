@@ -11,22 +11,22 @@ CLIENT="${1:?usage: build_push_images.sh <client>}"
 TFVARS="infra/clients/${CLIENT}.tfvars"
 [ -f "${TFVARS}" ] || { echo "missing ${TFVARS}"; exit 1; }
 
-tfvar() { grep -E "^${1}\s*=" "${TFVARS}" | head -1 | sed -E 's/^[^=]+=\s*"([^"]*)".*/\1/'; }
+tfvar() {
+  grep -E "^${1}[[:space:]]*=" "${TFVARS}" | head -1 \
+    | sed -E 's/^[^=]+=[[:space:]]*"([^"]*)".*/\1/'
+}
 
 PROJECT_ID="$(tfvar project_id)"
 REGION="$(tfvar region)"
 [ "${PROJECT_ID}" != "CHANGE-ME" ] || { echo "set project_id in ${TFVARS} first"; exit 1; }
 
-PROJECT_NUMBER="$(gcloud projects describe "${PROJECT_ID}" --format='value(projectNumber)')"
-API_URL="https://brokerops-${CLIENT}-api-${PROJECT_NUMBER}.${REGION}.run.app"
 AR="${REGION}-docker.pkg.dev/${PROJECT_ID}/brokerops"
 
 echo "==> building api image"
 docker build --platform linux/amd64 -f api/Dockerfile -t "${AR}/api:latest" .
 
-echo "==> building frontend image (VITE_API_BASE=${API_URL})"
+echo "==> building frontend image (bundle calls /api; nginx proxies via API_UPSTREAM env)"
 docker build --platform linux/amd64 -f frontend/Dockerfile.prod \
-  --build-arg "VITE_API_BASE=${API_URL}" \
   -t "${AR}/frontend:latest" frontend/
 
 echo "==> pushing"
