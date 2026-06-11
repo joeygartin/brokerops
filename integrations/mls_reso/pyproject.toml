@@ -1,27 +1,21 @@
 [project]
-name = "brokerops-api"
+name = "brokerops-mls-reso"
 version = "0.1.0"
-description = "brokerops API service"
+description = "Mock RESO Web API (OData subset) + MLSPort adapter + MCP server"
 requires-python = ">=3.12"
 dependencies = [
     "brokerops-core",
-    "brokerops-mls-reso",
     "fastapi>=0.115",
+    "httpx>=0.28",
+    "mcp>=1.2",
     "uvicorn[standard]>=0.32",
 ]
 
-[dependency-groups]
-dev = [
-    "pytest>=8.3",
-    "pytest-asyncio>=0.25",
-    "httpx>=0.28",
-    "mypy>=1.13",
-    "ruff>=0.8",
-]
+[project.scripts]
+mcp-server-mls-reso = "brokerops_mls_reso.mcp_server:main"
 
 [tool.uv.sources]
 brokerops-core = { workspace = true }
-brokerops-mls-reso = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

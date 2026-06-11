@@ -9,6 +9,6 @@ test:
 lint:
 	uv run ruff check .
 	uv run ruff format --check .
-	uv run mypy api/src api/tests
+	uv run mypy api/src api/tests core/src core/tests integrations/mls_reso/src integrations/mls_reso/tests
 
 demo: dev

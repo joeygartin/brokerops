@@ -1,0 +1,12 @@
+[project]
+name = "brokerops-core"
+version = "0.1.0"
+description = "brokerops domain core — framework-free models, services, and ports"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.10",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

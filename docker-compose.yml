@@ -14,15 +14,26 @@ services:
       timeout: 3s
       retries: 10
 
+  mls:
+    build:
+      context: .
+      dockerfile: integrations/mls_reso/Dockerfile
+    ports:
+      - "8001:8001"
+
   api:
     build:
       context: .
       dockerfile: api/Dockerfile
+    environment:
+      RESO_BASE_URL: http://mls:8001
     ports:
       - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
+      mls:
+        condition: service_started
 
   frontend:
     build: ./frontend

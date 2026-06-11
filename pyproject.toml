@@ -1,5 +1,5 @@
 [tool.uv.workspace]
-members = ["api"]
+members = ["api", "core", "integrations/mls_reso"]
 
 [tool.ruff]
 line-length = 100
@@ -9,4 +9,5 @@ target-version = "py312"
 strict = true
 
 [tool.pytest.ini_options]
-testpaths = ["api/tests"]
+testpaths = ["api/tests", "core/tests", "integrations/mls_reso/tests"]
+asyncio_mode = "auto"
