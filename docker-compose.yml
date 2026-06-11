@@ -44,6 +44,9 @@ services:
       context: .
       dockerfile: api/Dockerfile
     environment:
+      # Orchestration engine: langgraph (V1 default) or adk (V2) — same
+      # workflows, approvals, and API surface either way.
+      ORCHESTRATOR: ${ORCHESTRATOR:-langgraph}
       RESO_BASE_URL: http://mls:8001
       DATABASE_URL: postgresql://brokerops:brokerops@db:5432/brokerops_demo
       # Demo mode: the FUB stub. A real sandbox is FUB_BASE_URL +

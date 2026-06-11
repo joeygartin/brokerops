@@ -160,6 +160,7 @@ version = "0.1.0"
 source = { editable = "api" }
 dependencies = [
     { name = "alembic" },
+    { name = "brokerops-adk" },
     { name = "brokerops-core" },
     { name = "brokerops-followupboss" },
     { name = "brokerops-langgraph" },
@@ -184,6 +185,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = ">=1.14" },
+    { name = "brokerops-adk", editable = "orchestration/adk" },
     { name = "brokerops-core", editable = "core" },
     { name = "brokerops-followupboss", editable = "integrations/followupboss" },
     { name = "brokerops-langgraph", editable = "orchestration/langgraph" },

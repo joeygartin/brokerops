@@ -5,6 +5,7 @@ description = "brokerops API service"
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.14",
+    "brokerops-adk",
     "brokerops-core",
     "brokerops-followupboss",
     "brokerops-langgraph",
@@ -27,6 +28,7 @@ dev = [
 ]
 
 [tool.uv.sources]
+brokerops-adk = { workspace = true }
 brokerops-core = { workspace = true }
 brokerops-followupboss = { workspace = true }
 brokerops-langgraph = { workspace = true }

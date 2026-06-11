@@ -38,6 +38,7 @@ jobs:
           integrations/followupboss/src integrations/followupboss/tests
           integrations/vapi/src integrations/vapi/tests
           orchestration/langgraph/src orchestration/langgraph/tests
+          orchestration/adk/src orchestration/adk/tests
       - run: uv run pytest
 
   gitleaks:
@@ -55,8 +56,16 @@ jobs:
 
   e2e-demo:
     # The full demo path against the real compose stack — main only.
+    # The check itself is framework-blind; the matrix proves both
+    # orchestration engines behind the same script, unchanged.
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        orchestrator: [langgraph, adk]
+    env:
+      ORCHESTRATOR: ${{ matrix.orchestrator }}
     steps:
       - uses: actions/checkout@v4
       - run: docker compose up -d --build

@@ -24,11 +24,25 @@ from brokerops_api.routes.listings import router as listings_router
 from brokerops_api.routes.transactions import router as transactions_router
 from brokerops_api.routes.webhooks import router as webhooks_router
 from brokerops_api.routes.workflows import router as workflows_router
-from brokerops_langgraph.engine import build_engine
+from brokerops_adk.engine import build_engine as build_adk_engine
+from brokerops_langgraph.engine import build_engine as build_langgraph_engine
+
+# Both engines honor the same WorkflowEngine protocol over the same MCP
+# adapters, stores, and ApprovalRequest spine — the switch is wiring only.
+ENGINE_FACTORIES = {
+    "langgraph": build_langgraph_engine,
+    "adk": build_adk_engine,
+}
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    orchestrator = os.environ.get("ORCHESTRATOR", "langgraph")
+    if orchestrator not in ENGINE_FACTORIES:
+        raise ValueError(
+            f"unknown ORCHESTRATOR {orchestrator!r}; expected one of {sorted(ENGINE_FACTORIES)}"
+        )
+    build_engine = ENGINE_FACTORIES[orchestrator]
     database_url = os.environ.get("DATABASE_URL")
     mls = build_mls_adapter()
     crm = build_crm_adapter()
