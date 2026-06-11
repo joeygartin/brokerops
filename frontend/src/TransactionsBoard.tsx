@@ -1,0 +1,192 @@
+import { useCallback, useEffect, useState } from "react";
+import { API_BASE, MilestoneView, TransactionDetail } from "./types";
+
+const CLASS_STYLES: Record<string, { color: string; background: string; label: string }> = {
+  overdue: { color: "#fff", background: "#cf222e", label: "OVERDUE" },
+  due_soon: { color: "#fff", background: "#9a6700", label: "DUE SOON" },
+  blocked_external: { color: "#fff", background: "#8250df", label: "BLOCKED" },
+  on_track: { color: "#fff", background: "#1a7f37", label: "ON TRACK" },
+  complete: { color: "#57606a", background: "#eaeef2", label: "COMPLETE" },
+  waived: { color: "#57606a", background: "#eaeef2", label: "WAIVED" },
+};
+
+function MilestoneRow({ milestone }: { milestone: MilestoneView }) {
+  const style = CLASS_STYLES[milestone.classification] ?? CLASS_STYLES.on_track;
+  return (
+    <li
+      style={{
+        display: "flex",
+        gap: "0.75rem",
+        alignItems: "baseline",
+        padding: "0.45rem 0",
+        borderBottom: "1px solid #eaeef2",
+      }}
+    >
+      <span
+        style={{
+          ...style,
+          borderRadius: 999,
+          padding: "0.1rem 0.55rem",
+          fontSize: "0.7rem",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {style.label}
+      </span>
+      <span style={{ flex: 1 }}>
+        {milestone.title}
+        {milestone.blocked_reason && (
+          <em style={{ color: "#8250df", fontSize: "0.8rem" }}> — {milestone.blocked_reason}</em>
+        )}
+        {milestone.escalation_level > 0 && (
+          <strong style={{ color: "#cf222e", fontSize: "0.8rem" }}>
+            {" "}
+            (escalation L{milestone.escalation_level})
+          </strong>
+        )}
+      </span>
+      <span style={{ color: "#57606a", fontSize: "0.8rem", whiteSpace: "nowrap" }}>
+        {milestone.due_date} · {milestone.owner || "unassigned"}
+      </span>
+    </li>
+  );
+}
+
+export default function TransactionsBoard() {
+  const [details, setDetails] = useState<TransactionDetail[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
+
+  const refresh = useCallback(() => {
+    fetch(`${API_BASE}/transactions`)
+      .then((response) => {
+        if (!response.ok) throw new Error(`api returned ${response.status}`);
+        return response.json() as Promise<TransactionDetail[]>;
+      })
+      .then(setDetails)
+      .catch((cause) => setError(String(cause)));
+  }, []);
+
+  useEffect(refresh, [refresh]);
+
+  const seed = async () => {
+    await fetch(`${API_BASE}/demo/seed`, { method: "POST" });
+    refresh();
+  };
+
+  const runCron = async () => {
+    setRunning(true);
+    try {
+      const response = await fetch(`${API_BASE}/internal/cron/milestones`, { method: "POST" });
+      if (!response.ok) throw new Error(`api returned ${response.status}`);
+      const summary = (await response.json()) as {
+        checked: number;
+        skipped_pending_escalation: number;
+        results: { transaction_id: string; status: string; outcome: string | null }[];
+      };
+      const escalations = summary.results.filter((r) => r.status === "awaiting_approval").length;
+      setNotice(
+        `Milestone check: ${summary.checked} transaction(s) checked, ` +
+          `${escalations} escalation(s) waiting in Approvals, ` +
+          `${summary.skipped_pending_escalation} skipped (already pending).`,
+      );
+      refresh();
+    } catch (cause) {
+      setNotice(`Cron run failed: ${String(cause)}`);
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <>
+      <div style={{ display: "flex", gap: "0.6rem", justifyContent: "center", marginBottom: "1rem" }}>
+        <button
+          onClick={runCron}
+          disabled={running}
+          style={{
+            padding: "0.4rem 1.1rem",
+            borderRadius: 6,
+            border: "1px solid #0969da",
+            background: "#0969da",
+            color: "#fff",
+            cursor: running ? "wait" : "pointer",
+          }}
+        >
+          {running ? "Checking…" : "Run milestone check (cron)"}
+        </button>
+        {details.length === 0 && (
+          <button
+            onClick={seed}
+            style={{
+              padding: "0.4rem 1.1rem",
+              borderRadius: 6,
+              border: "1px solid #d0d7de",
+              background: "#fff",
+              cursor: "pointer",
+            }}
+          >
+            Seed demo transactions
+          </button>
+        )}
+      </div>
+      {error && <p style={{ textAlign: "center", color: "#cf222e" }}>{error}</p>}
+      {notice && (
+        <p
+          style={{
+            textAlign: "center",
+            color: "#0969da",
+            background: "#ddf4ff",
+            borderRadius: 6,
+            padding: "0.5rem",
+            maxWidth: 700,
+            margin: "0 auto 1rem",
+          }}
+        >
+          {notice}
+        </p>
+      )}
+      {details.map(({ transaction, milestones }) => (
+        <article
+          key={transaction.id}
+          style={{
+            border: "1px solid #d0d7de",
+            borderRadius: 8,
+            padding: "1rem",
+            textAlign: "left",
+            background: "#fff",
+            maxWidth: 760,
+            margin: "0 auto 1rem",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+            <strong>
+              {transaction.id} — {transaction.listing_key}
+            </strong>
+            <span
+              style={{
+                background: "#eaeef2",
+                borderRadius: 999,
+                padding: "0.1rem 0.6rem",
+                fontSize: "0.75rem",
+                textTransform: "uppercase",
+              }}
+            >
+              {transaction.stage.replace(/_/g, " ")}
+            </span>
+          </div>
+          <div style={{ color: "#57606a", fontSize: "0.85rem", margin: "0.3rem 0 0.6rem" }}>
+            {transaction.parties.map((p) => `${p.name} (${p.role.replace(/_/g, " ")})`).join(" · ")}
+            {transaction.close_date ? ` — closes ${transaction.close_date}` : ""}
+          </div>
+          <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+            {milestones.map((m) => (
+              <MilestoneRow key={m.id} milestone={m} />
+            ))}
+          </ul>
+        </article>
+      ))}
+    </>
+  );
+}

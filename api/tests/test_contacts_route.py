@@ -1,4 +1,7 @@
+from collections.abc import Iterator
+
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 
 from brokerops_api.deps import get_crm_port
@@ -16,8 +19,14 @@ def _stub_crm() -> FUBCRMAdapter:
 
 
 crm = _stub_crm()
-app.dependency_overrides[get_crm_port] = lambda: crm
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _wire_overrides() -> Iterator[None]:
+    app.dependency_overrides[get_crm_port] = lambda: crm
+    yield
+    app.dependency_overrides.clear()
 
 
 def test_search_contacts_via_port() -> None:

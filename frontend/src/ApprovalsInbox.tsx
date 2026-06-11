@@ -3,6 +3,51 @@ import { API_BASE, ApprovalRequest } from "./types";
 
 const DECIDED_BY = "demo-operator";
 
+function MarketingPreview({ approval }: { approval: ApprovalRequest }) {
+  const draft = approval.payload.draft;
+  if (!draft) return null;
+  return (
+    <>
+      <h3 style={{ margin: "0.6rem 0 0.3rem" }}>{draft.headline}</h3>
+      <p style={{ whiteSpace: "pre-wrap", color: "#24292f", fontSize: "0.9rem" }}>{draft.body}</p>
+      <div style={{ margin: "0.5rem 0" }}>
+        {draft.channels.map((channel) => (
+          <span
+            key={channel}
+            style={{
+              display: "inline-block",
+              background: "#ddf4ff",
+              color: "#0969da",
+              borderRadius: 999,
+              padding: "0.1rem 0.6rem",
+              fontSize: "0.75rem",
+              marginRight: "0.4rem",
+            }}
+          >
+            {channel}
+          </span>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function EscalationPreview({ approval }: { approval: ApprovalRequest }) {
+  const milestones = approval.payload.milestones ?? [];
+  return (
+    <ul style={{ margin: "0.6rem 0", paddingLeft: "1.2rem" }}>
+      {milestones.map((m) => (
+        <li key={m.id} style={{ marginBottom: "0.35rem", fontSize: "0.9rem" }}>
+          <strong style={{ color: "#cf222e" }}>
+            {m.title} — {m.days_overdue} day(s) overdue
+          </strong>{" "}
+          (was due {m.due_date}, escalation level {m.escalation_level})
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function ApprovalCard({
   approval,
   onDecided,
@@ -11,7 +56,10 @@ function ApprovalCard({
   onDecided: (message: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
-  const draft = approval.payload.draft;
+  const isEscalation = approval.kind === "approve_escalation";
+  const subject = isEscalation
+    ? `Escalate overdue milestones — ${approval.payload.transaction_id} (${approval.payload.listing_key})`
+    : `Approve marketing — ${approval.payload.listing_key}`;
 
   const decide = async (decision: "approved" | "rejected") => {
     setBusy(true);
@@ -23,12 +71,18 @@ function ApprovalCard({
       });
       if (!response.ok) throw new Error(`api returned ${response.status}`);
       const outcome = (await response.json()) as {
-        workflow: { status: string; output: { fub_task_ids?: string[] } | null };
+        workflow: {
+          status: string;
+          output: { fub_task_ids?: string[]; escalated_task_ids?: string[] } | null;
+        };
       };
-      const taskCount = outcome.workflow.output?.fub_task_ids?.length;
+      const taskCount =
+        outcome.workflow.output?.fub_task_ids?.length ??
+        outcome.workflow.output?.escalated_task_ids?.length;
+      const target = approval.payload.transaction_id ?? approval.payload.listing_key;
       onDecided(
-        `${approval.payload.listing_key} ${decision} — workflow status: ${outcome.workflow.status}` +
-          (taskCount ? `, ${taskCount} CRM tasks created.` : "."),
+        `${target} ${decision} — workflow status: ${outcome.workflow.status}` +
+          (taskCount ? `, ${taskCount} CRM task(s) created.` : "."),
       );
     } catch (cause) {
       onDecided(`Failed to decide ${approval.id}: ${String(cause)}`);
@@ -50,31 +104,16 @@ function ApprovalCard({
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-        <strong>Approve marketing — {approval.payload.listing_key}</strong>
+        <strong>{subject}</strong>
         <span style={{ color: "#57606a", fontSize: "0.75rem" }}>
           thread {approval.graph_thread_id.slice(0, 8)}
         </span>
       </div>
-      <h3 style={{ margin: "0.6rem 0 0.3rem" }}>{draft.headline}</h3>
-      <p style={{ whiteSpace: "pre-wrap", color: "#24292f", fontSize: "0.9rem" }}>{draft.body}</p>
-      <div style={{ margin: "0.5rem 0" }}>
-        {draft.channels.map((channel) => (
-          <span
-            key={channel}
-            style={{
-              display: "inline-block",
-              background: "#ddf4ff",
-              color: "#0969da",
-              borderRadius: 999,
-              padding: "0.1rem 0.6rem",
-              fontSize: "0.75rem",
-              marginRight: "0.4rem",
-            }}
-          >
-            {channel}
-          </span>
-        ))}
-      </div>
+      {isEscalation ? (
+        <EscalationPreview approval={approval} />
+      ) : (
+        <MarketingPreview approval={approval} />
+      )}
       <div style={{ display: "flex", gap: "0.6rem", marginTop: "0.6rem" }}>
         <button
           onClick={() => decide("approved")}

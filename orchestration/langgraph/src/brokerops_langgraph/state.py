@@ -5,6 +5,7 @@ through core services so checkpoints stay small and never go stale.
 """
 
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -33,3 +34,15 @@ class ListingToContractState(BaseModel):
     approval: ApprovalOutcome | None = None
     planned_tasks: list[str] = Field(default_factory=list)
     fub_task_ids: list[str] = Field(default_factory=list)
+
+
+class TransactionCoordinationState(BaseModel):
+    transaction_id: str
+    outcome: str = ""
+    worst: str = ""
+    assessments: list[dict[str, Any]] = Field(default_factory=list)
+    reminders: list[str] = Field(default_factory=list)
+    reminder_task_ids: list[str] = Field(default_factory=list)
+    escalation_approval: ApprovalOutcome | None = None
+    escalated_task_ids: list[str] = Field(default_factory=list)
+    planned_calls: list[str] = Field(default_factory=list)

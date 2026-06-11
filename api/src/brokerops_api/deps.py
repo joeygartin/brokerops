@@ -4,9 +4,10 @@ from typing import cast
 
 from fastapi import Request
 
-from brokerops_api.db import ApprovalRepo
+from brokerops_api.db import ApprovalRepo, TransactionStoreAdmin
 from brokerops_api.workflows import WorkflowEngine
 from brokerops_core.ports.crm import CRMPort
+from brokerops_core.ports.transactions import TransactionStore
 from brokerops_core.services.listing_service import ListingService
 from brokerops_followupboss.adapter import FUB_API_BASE, FUBCRMAdapter
 from brokerops_mls_reso.adapter import ResoMLSAdapter
@@ -38,3 +39,11 @@ def get_approval_repo(request: Request) -> ApprovalRepo:
 
 def get_crm_port(request: Request) -> CRMPort:
     return cast(CRMPort, request.app.state.crm)
+
+
+def get_transaction_store(request: Request) -> TransactionStore:
+    return cast(TransactionStore, request.app.state.transaction_store)
+
+
+def get_transaction_store_admin(request: Request) -> TransactionStoreAdmin:
+    return cast(TransactionStoreAdmin, request.app.state.transaction_store)

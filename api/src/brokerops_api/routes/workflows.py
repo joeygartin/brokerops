@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from brokerops_api.deps import get_workflow_engine
-from brokerops_api.workflows import WorkflowEngine, WorkflowRunResult
+from brokerops_api.workflows import LISTING_TO_CONTRACT, WorkflowEngine, WorkflowRunResult
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
 
@@ -19,4 +19,4 @@ class StartListingToContract(BaseModel):
 async def start_listing_to_contract(
     body: StartListingToContract, engine: EngineDep
 ) -> WorkflowRunResult:
-    return await engine.start_listing_to_contract(body.listing_key)
+    return await engine.start(LISTING_TO_CONTRACT, {"listing_key": body.listing_key})

@@ -1,8 +1,9 @@
 import { useState } from "react";
 import ApprovalsInbox from "./ApprovalsInbox";
 import ListingsBoard from "./ListingsBoard";
+import TransactionsBoard from "./TransactionsBoard";
 
-type Tab = "listings" | "approvals";
+type Tab = "listings" | "transactions" | "approvals";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("listings");
@@ -32,11 +33,16 @@ export default function App() {
         <button style={tabStyle(tab === "listings")} onClick={() => setTab("listings")}>
           Listings
         </button>
+        <button style={tabStyle(tab === "transactions")} onClick={() => setTab("transactions")}>
+          Transactions
+        </button>
         <button style={tabStyle(tab === "approvals")} onClick={() => setTab("approvals")}>
           Approvals
         </button>
       </nav>
-      {tab === "listings" ? <ListingsBoard /> : <ApprovalsInbox />}
+      {tab === "listings" && <ListingsBoard />}
+      {tab === "transactions" && <TransactionsBoard />}
+      {tab === "approvals" && <ApprovalsInbox />}
     </main>
   );
 }

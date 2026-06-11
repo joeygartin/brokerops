@@ -3,6 +3,8 @@ from itertools import count
 
 from brokerops_core.models.contact import Contact, ContactCreate, CrmTask
 from brokerops_core.models.listing import Listing, ListingMedia, ListingQuery, ListingStatus
+from brokerops_core.models.milestone import Milestone
+from brokerops_core.models.transaction import Transaction
 
 LISTINGS = {
     "RM1001": Listing(
@@ -78,3 +80,22 @@ class GraphFakeCRM:
         self, contact_id: str, outcome: str, note: str = "", duration_seconds: int = 0
     ) -> str:
         return str(next(self._ids))
+
+
+class FakeTransactionStore:
+    def __init__(self, transactions: list[Transaction], milestones: list[Milestone]) -> None:
+        self._transactions = {t.id: t for t in transactions}
+        self.milestones = {m.id: m for m in milestones}
+
+    async def get_transaction(self, transaction_id: str) -> Transaction | None:
+        return self._transactions.get(transaction_id)
+
+    async def list_active_transactions(self) -> list[Transaction]:
+        return [t for t in self._transactions.values() if t.is_active]
+
+    async def list_milestones(self, transaction_id: str) -> list[Milestone]:
+        return [m for m in self.milestones.values() if m.transaction_id == transaction_id]
+
+    async def set_escalation_level(self, milestone_id: str, level: int) -> None:
+        existing = self.milestones[milestone_id]
+        self.milestones[milestone_id] = existing.model_copy(update={"escalation_level": level})

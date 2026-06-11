@@ -32,12 +32,29 @@ export type MarketingDraft = {
   channels: string[];
 };
 
+export type EscalationMilestone = {
+  id: string;
+  title: string;
+  due_date: string;
+  days_overdue: number;
+  escalation_level: number;
+  note: string;
+};
+
+export type ApprovalPayload = {
+  kind: string;
+  listing_key?: string;
+  draft?: MarketingDraft;
+  transaction_id?: string;
+  milestones?: EscalationMilestone[];
+};
+
 export type ApprovalRequest = {
   id: string;
   workflow: string;
   graph_thread_id: string;
   kind: string;
-  payload: { kind: string; listing_key: string; draft: MarketingDraft };
+  payload: ApprovalPayload;
   status: "pending" | "approved" | "rejected";
   decided_by: string | null;
   created_at: string;
@@ -48,6 +65,37 @@ export type WorkflowRunResult = {
   thread_id: string;
   status: string;
   approval: ApprovalRequest | null;
+  output: Record<string, unknown> | null;
+};
+
+export type TransactionParty = { role: string; name: string; contact_id: string | null };
+
+export type Transaction = {
+  id: string;
+  listing_key: string;
+  stage: string;
+  parties: TransactionParty[];
+  contract_date: string;
+  close_date: string | null;
+};
+
+export type MilestoneView = {
+  id: string;
+  transaction_id: string;
+  type: string;
+  title: string;
+  due_date: string;
+  status: string;
+  owner: string;
+  escalation_level: number;
+  blocked_reason: string | null;
+  classification: string;
+  days_until_due: number;
+};
+
+export type TransactionDetail = {
+  transaction: Transaction;
+  milestones: MilestoneView[];
 };
 
 export const API_BASE = "http://localhost:8000";

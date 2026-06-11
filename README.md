@@ -4,12 +4,13 @@ AI-powered backoffice for real estate brokerages — listing-to-contract, transa
 coordination, and voice follow-up workflows, with human-in-the-loop approval at every
 consequential step.
 
-> **Status: Phase 3** — FollowUpBoss CRM integration: an approved marketing draft
-> fans out into real CRM tasks through `CRMPort` (rate-limited FUB adapter, six MCP
-> tools, contact search/sync). Demo mode runs against a bundled FUB stub with zero
-> credentials; a real FUB account is a base-URL + API-key change. Plus Phase 2's
-> durable HITL workflow (Postgres-checkpointed approval gate that survives restarts)
-> and Phase 1's mock RESO Web API.
+> **Status: Phase 4** — scheduled transaction coordination: a cron-triggered graph
+> assesses every active transaction's milestones (`milestone_engine` owns the date
+> math), sends reminder tasks for near deadlines, queues call intents for external
+> blockers, and pauses overdue milestones at a human escalation gate — approved
+> escalations create URGENT CRM tasks and ratchet the escalation level. Transaction
+> Timeline in the frontend, `make demo` seeds it all. Plus Phases 1–3: mock RESO Web
+> API, durable HITL (Postgres-checkpointed), FollowUpBoss integration.
 
 ## Quick start (demo mode — zero credentials required)
 

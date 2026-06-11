@@ -17,4 +17,8 @@ lint:
 migrate:
 	uv run alembic -c api/alembic.ini upgrade head
 
-demo: dev
+demo:
+	docker compose up --build -d
+	@echo "waiting for api…" && sleep 8
+	curl -sf -X POST http://localhost:8000/demo/seed | python3 -m json.tool
+	@echo "demo ready → frontend http://localhost:5173 | api http://localhost:8000"

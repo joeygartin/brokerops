@@ -1,5 +1,7 @@
+from collections.abc import Iterator
 from datetime import UTC, datetime
 
+import pytest
 from fastapi.testclient import TestClient
 
 from brokerops_api.deps import get_listing_service
@@ -42,8 +44,14 @@ class FakeMLS:
         return [MEDIA] if listing_key == "RM1001" else []
 
 
-app.dependency_overrides[get_listing_service] = lambda: ListingService(FakeMLS())
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _wire_overrides() -> Iterator[None]:
+    app.dependency_overrides[get_listing_service] = lambda: ListingService(FakeMLS())
+    yield
+    app.dependency_overrides.clear()
 
 
 def test_search_listings_route() -> None:

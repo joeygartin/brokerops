@@ -4,9 +4,11 @@ The CRM side runs the real FUB adapter against the in-process stub, so an
 approval here exercises the same code path that creates tasks in FollowUpBoss.
 """
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 from langgraph.checkpoint.memory import InMemorySaver
 
@@ -56,11 +58,18 @@ def _stub_crm() -> FUBCRMAdapter:
 
 repo = InMemoryApprovalRepo()
 engine = WorkflowEngine(
-    build_listing_to_contract(FlowFakeMLS(), _stub_crm(), InMemorySaver()), repo
+    {"listing_to_contract": build_listing_to_contract(FlowFakeMLS(), _stub_crm(), InMemorySaver())},
+    repo,
 )
-app.dependency_overrides[get_workflow_engine] = lambda: engine
-app.dependency_overrides[get_approval_repo] = lambda: repo
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _wire_overrides() -> Iterator[None]:
+    app.dependency_overrides[get_workflow_engine] = lambda: engine
+    app.dependency_overrides[get_approval_repo] = lambda: repo
+    yield
+    app.dependency_overrides.clear()
 
 
 def test_full_hitl_round_trip_through_the_api() -> None:
