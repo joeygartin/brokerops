@@ -49,3 +49,23 @@ jobs:
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  e2e-demo:
+    # The full demo path against the real compose stack — main only.
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose up -d --build
+      - name: wait for api
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8000/healthz && exit 0 || sleep 2
+          done
+          docker compose logs api | tail -50
+          exit 1
+      - run: scripts/e2e_demo_check.sh
+      - if: failure()
+        run: docker compose logs --tail 100
+      - if: always()
+        run: docker compose down -v
