@@ -13,9 +13,10 @@ from langgraph.checkpoint.memory import InMemorySaver
 from brokerops_api.db import InMemoryApprovalRepo, InMemoryFeedbackStore
 from brokerops_api.deps import get_approval_repo, get_feedback_store, get_workflow_engine
 from brokerops_api.main import app
-from brokerops_api.workflows import VAPI_FOLLOWUP, WorkflowEngine
+from brokerops_api.workflows import VAPI_FOLLOWUP
 from brokerops_followupboss.adapter import FUBCRMAdapter
 from brokerops_followupboss.stub import create_stub_app
+from brokerops_langgraph.engine import LangGraphWorkflowEngine
 from brokerops_langgraph.graphs.vapi_followup import build_vapi_followup
 from brokerops_vapi.adapter import VapiVoiceAdapter
 from brokerops_vapi.stub import RECORDED_TRANSCRIPTS, create_stub_app as create_vapi_stub
@@ -39,7 +40,7 @@ def _stub_voice() -> VapiVoiceAdapter:
 
 feedback_store = InMemoryFeedbackStore()
 repo = InMemoryApprovalRepo()
-engine = WorkflowEngine(
+engine = LangGraphWorkflowEngine(
     {
         VAPI_FOLLOWUP: build_vapi_followup(
             _stub_voice(), _stub_crm(), feedback_store, InMemorySaver()

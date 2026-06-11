@@ -4,7 +4,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from langgraph.checkpoint.memory import InMemorySaver
 
 from brokerops_api.db import (
     InMemoryApprovalRepo,
@@ -25,16 +24,7 @@ from brokerops_api.routes.listings import router as listings_router
 from brokerops_api.routes.transactions import router as transactions_router
 from brokerops_api.routes.webhooks import router as webhooks_router
 from brokerops_api.routes.workflows import router as workflows_router
-from brokerops_api.workflows import (
-    LISTING_TO_CONTRACT,
-    TRANSACTION_COORDINATION,
-    VAPI_FOLLOWUP,
-    WorkflowEngine,
-)
-from brokerops_langgraph.checkpointer import postgres_checkpointer
-from brokerops_langgraph.graphs.listing_to_contract import build_listing_to_contract
-from brokerops_langgraph.graphs.transaction_coordination import build_transaction_coordination
-from brokerops_langgraph.graphs.vapi_followup import build_vapi_followup
+from brokerops_langgraph.engine import build_engine
 
 
 @asynccontextmanager
@@ -45,39 +35,31 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     voice = build_voice_adapter()
     app.state.crm = crm
     app.state.voice = voice
-    if database_url:
-        # Durable path: graph state checkpoints and approvals share Postgres,
-        # so HITL pauses survive restarts and deploys.
-        engine = create_engine(database_url)
-        async with postgres_checkpointer(database_url) as saver:
-            app.state.approval_repo = SqlApprovalRepo(engine)
-            app.state.transaction_store = SqlTransactionStore(engine)
-            app.state.feedback_store = SqlFeedbackStore(engine)
-            graphs = {
-                LISTING_TO_CONTRACT: build_listing_to_contract(mls, crm, saver),
-                TRANSACTION_COORDINATION: build_transaction_coordination(
-                    app.state.transaction_store, crm, saver
-                ),
-                VAPI_FOLLOWUP: build_vapi_followup(voice, crm, app.state.feedback_store, saver),
-            }
-            app.state.workflow_engine = WorkflowEngine(graphs, app.state.approval_repo)
-            yield
-        await engine.dispose()
+    engine = create_engine(database_url) if database_url else None
+    if engine is not None:
+        # Durable path: workflow state and approvals share Postgres, so HITL
+        # pauses survive restarts and deploys.
+        app.state.approval_repo = SqlApprovalRepo(engine)
+        app.state.transaction_store = SqlTransactionStore(engine)
+        app.state.feedback_store = SqlFeedbackStore(engine)
     else:
         # Database-less local dev: everything in memory, nothing survives.
         app.state.approval_repo = InMemoryApprovalRepo()
         app.state.transaction_store = InMemoryTransactionStore()
         app.state.feedback_store = InMemoryFeedbackStore()
-        memory_saver = InMemorySaver()
-        graphs = {
-            LISTING_TO_CONTRACT: build_listing_to_contract(mls, crm, memory_saver),
-            TRANSACTION_COORDINATION: build_transaction_coordination(
-                app.state.transaction_store, crm, memory_saver
-            ),
-            VAPI_FOLLOWUP: build_vapi_followup(voice, crm, app.state.feedback_store, memory_saver),
-        }
-        app.state.workflow_engine = WorkflowEngine(graphs, app.state.approval_repo)
+    async with build_engine(
+        mls=mls,
+        crm=crm,
+        voice=voice,
+        transaction_store=app.state.transaction_store,
+        feedback_store=app.state.feedback_store,
+        approval_repo=app.state.approval_repo,
+        database_url=database_url,
+    ) as workflow_engine:
+        app.state.workflow_engine = workflow_engine
         yield
+    if engine is not None:
+        await engine.dispose()
 
 
 app = FastAPI(title="brokerops api", lifespan=lifespan)

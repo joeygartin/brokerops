@@ -17,9 +17,10 @@ from brokerops_api.deps import (
     get_workflow_engine,
 )
 from brokerops_api.main import app
-from brokerops_api.workflows import TRANSACTION_COORDINATION, WorkflowEngine
+from brokerops_api.workflows import TRANSACTION_COORDINATION
 from brokerops_followupboss.adapter import FUBCRMAdapter
 from brokerops_followupboss.stub import create_stub_app
+from brokerops_langgraph.engine import LangGraphWorkflowEngine
 from brokerops_langgraph.graphs.transaction_coordination import build_transaction_coordination
 
 fub_stub = create_stub_app()
@@ -35,7 +36,7 @@ def _stub_crm() -> FUBCRMAdapter:
 
 store = InMemoryTransactionStore()
 repo = InMemoryApprovalRepo()
-engine = WorkflowEngine(
+engine = LangGraphWorkflowEngine(
     {TRANSACTION_COORDINATION: build_transaction_coordination(store, _stub_crm(), InMemorySaver())},
     repo,
 )

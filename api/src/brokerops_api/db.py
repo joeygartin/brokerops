@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from brokerops_core.models.approval import ApprovalRequest, ApprovalStatus
 from brokerops_core.models.call import CallRecord
+from brokerops_core.ports.approvals import ApprovalRepo as ApprovalRepo
 from brokerops_core.models.feedback import ShowingFeedback
 from brokerops_core.models.milestone import Milestone
 from brokerops_core.models.transaction import ACTIVE_STAGES, Transaction
@@ -95,18 +96,6 @@ def sqlalchemy_url(database_url: str) -> str:
 
 def create_engine(database_url: str) -> AsyncEngine:
     return create_async_engine(sqlalchemy_url(database_url))
-
-
-class ApprovalRepo(Protocol):
-    async def create(self, approval: ApprovalRequest) -> None: ...
-
-    async def get(self, approval_id: str) -> ApprovalRequest | None: ...
-
-    async def list(self, status: ApprovalStatus | None = None) -> list[ApprovalRequest]: ...
-
-    async def mark_decided(
-        self, approval_id: str, status: ApprovalStatus, decided_by: str, decided_at: datetime
-    ) -> None: ...
 
 
 def _row_to_model(row: Row[tuple[object, ...]]) -> ApprovalRequest:

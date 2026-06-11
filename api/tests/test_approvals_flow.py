@@ -15,10 +15,10 @@ from langgraph.checkpoint.memory import InMemorySaver
 from brokerops_api.db import InMemoryApprovalRepo
 from brokerops_api.deps import get_approval_repo, get_workflow_engine
 from brokerops_api.main import app
-from brokerops_api.workflows import WorkflowEngine
 from brokerops_core.models.listing import Listing, ListingMedia, ListingQuery, ListingStatus
 from brokerops_followupboss.adapter import FUBCRMAdapter
 from brokerops_followupboss.stub import create_stub_app
+from brokerops_langgraph.engine import LangGraphWorkflowEngine
 from brokerops_langgraph.graphs.listing_to_contract import build_listing_to_contract
 
 LISTING = Listing(
@@ -57,7 +57,7 @@ def _stub_crm() -> FUBCRMAdapter:
 
 
 repo = InMemoryApprovalRepo()
-engine = WorkflowEngine(
+engine = LangGraphWorkflowEngine(
     {"listing_to_contract": build_listing_to_contract(FlowFakeMLS(), _stub_crm(), InMemorySaver())},
     repo,
 )
