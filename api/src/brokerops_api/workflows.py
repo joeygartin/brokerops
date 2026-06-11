@@ -22,6 +22,7 @@ class WorkflowRunResult(BaseModel):
     thread_id: str
     status: str
     approval: ApprovalRequest | None = None
+    output: dict[str, Any] | None = None
 
 
 class WorkflowEngine:
@@ -69,4 +70,7 @@ class WorkflowEngine:
         stage = result.get("stage")
         stage_value = getattr(stage, "value", stage)
         status = "completed" if stage_value == "published" else str(stage_value)
-        return WorkflowRunResult(thread_id=thread_id, status=status)
+        output = {
+            key: result[key] for key in ("planned_tasks", "fub_task_ids") if key in result
+        } or None
+        return WorkflowRunResult(thread_id=thread_id, status=status, output=output)

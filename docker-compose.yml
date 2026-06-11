@@ -21,6 +21,13 @@ services:
     ports:
       - "8001:8001"
 
+  fub:
+    build:
+      context: .
+      dockerfile: integrations/followupboss/Dockerfile
+    ports:
+      - "8002:8002"
+
   api:
     build:
       context: .
@@ -28,12 +35,18 @@ services:
     environment:
       RESO_BASE_URL: http://mls:8001
       DATABASE_URL: postgresql://brokerops:brokerops@db:5432/brokerops_demo
+      # Demo mode: the FUB stub. A real sandbox is FUB_BASE_URL +
+      # FUB_API_KEY (from .env / Secret Manager) — same adapter, no code change.
+      FUB_BASE_URL: http://fub:8002
+      FUB_API_KEY: demo-stub-key
     ports:
       - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
       mls:
+        condition: service_started
+      fub:
         condition: service_started
 
   frontend:

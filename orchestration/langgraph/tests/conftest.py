@@ -1,5 +1,7 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from itertools import count
 
+from brokerops_core.models.contact import Contact, ContactCreate, CrmTask
 from brokerops_core.models.listing import Listing, ListingMedia, ListingQuery, ListingStatus
 
 LISTINGS = {
@@ -46,3 +48,33 @@ class GraphFakeMLS:
 
     async def get_listing_media(self, listing_key: str) -> list[ListingMedia]:
         return []
+
+
+class GraphFakeCRM:
+    def __init__(self) -> None:
+        self.created_tasks: list[CrmTask] = []
+        self._ids = count(9000)
+
+    async def get_contact(self, contact_id: str) -> Contact | None:
+        return None
+
+    async def search_contacts(self, query: str, limit: int = 20) -> list[Contact]:
+        return []
+
+    async def create_contact(self, draft: ContactCreate) -> Contact:
+        return Contact(fub_id=str(next(self._ids)), name=f"{draft.first_name} {draft.last_name}")
+
+    async def add_note(self, contact_id: str, subject: str, body: str) -> str:
+        return str(next(self._ids))
+
+    async def create_task(
+        self, name: str, due_date: date | None = None, contact_id: str | None = None
+    ) -> CrmTask:
+        task = CrmTask(id=str(next(self._ids)), name=name, due_date=due_date)
+        self.created_tasks.append(task)
+        return task
+
+    async def log_call(
+        self, contact_id: str, outcome: str, note: str = "", duration_seconds: int = 0
+    ) -> str:
+        return str(next(self._ids))

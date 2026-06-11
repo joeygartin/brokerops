@@ -9,7 +9,7 @@ import os
 from uuid import uuid4
 
 import pytest
-from conftest import GraphFakeMLS
+from conftest import GraphFakeCRM, GraphFakeMLS
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
 
@@ -29,15 +29,16 @@ async def test_hitl_round_trip_survives_process_restart() -> None:
 
     # "Process 1": start the run, hit the approval gate, then tear everything down.
     async with postgres_checkpointer(database_url) as saver:
-        graph = build_listing_to_contract(GraphFakeMLS(), saver)
+        graph = build_listing_to_contract(GraphFakeMLS(), GraphFakeCRM(), saver)
         result = await graph.ainvoke({"listing_key": "RM1001"}, config)
         assert result["__interrupt__"][0].value["kind"] == "approve_marketing"
 
     # "Process 2": brand-new saver and graph instances — only the DB is shared.
     async with postgres_checkpointer(database_url) as saver:
-        graph = build_listing_to_contract(GraphFakeMLS(), saver)
+        crm = GraphFakeCRM()
+        graph = build_listing_to_contract(GraphFakeMLS(), crm, saver)
         result = await graph.ainvoke(
             Command(resume={"decision": "approved", "decided_by": "restart-test"}), config
         )
         assert result["stage"] == "published"
-        assert result["planned_tasks"]
+        assert result["fub_task_ids"] == [task.id for task in crm.created_tasks]

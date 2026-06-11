@@ -4,11 +4,12 @@ AI-powered backoffice for real estate brokerages — listing-to-contract, transa
 coordination, and voice follow-up workflows, with human-in-the-loop approval at every
 consequential step.
 
-> **Status: Phase 2** — the `listing_to_contract` LangGraph workflow with durable
-> human-in-the-loop approval: intake → marketing draft → approval gate (pauses on a
-> Postgres checkpoint, survives restarts) → task fan-out. Approval Inbox in the
-> frontend; every gate is an `ApprovalRequest` row decided through one resume
-> endpoint. Plus Phase 1's mock RESO Web API, framework-free core, and MCP tools.
+> **Status: Phase 3** — FollowUpBoss CRM integration: an approved marketing draft
+> fans out into real CRM tasks through `CRMPort` (rate-limited FUB adapter, six MCP
+> tools, contact search/sync). Demo mode runs against a bundled FUB stub with zero
+> credentials; a real FUB account is a base-URL + API-key change. Plus Phase 2's
+> durable HITL workflow (Postgres-checkpointed approval gate that survives restarts)
+> and Phase 1's mock RESO Web API.
 
 ## Quick start (demo mode — zero credentials required)
 

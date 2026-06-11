@@ -22,9 +22,13 @@ function ApprovalCard({
         body: JSON.stringify({ decision, decided_by: DECIDED_BY }),
       });
       if (!response.ok) throw new Error(`api returned ${response.status}`);
-      const outcome = (await response.json()) as { workflow: { status: string } };
+      const outcome = (await response.json()) as {
+        workflow: { status: string; output: { fub_task_ids?: string[] } | null };
+      };
+      const taskCount = outcome.workflow.output?.fub_task_ids?.length;
       onDecided(
-        `${approval.payload.listing_key} ${decision} — workflow status: ${outcome.workflow.status}.`,
+        `${approval.payload.listing_key} ${decision} — workflow status: ${outcome.workflow.status}` +
+          (taskCount ? `, ${taskCount} CRM tasks created.` : "."),
       );
     } catch (cause) {
       onDecided(`Failed to decide ${approval.id}: ${String(cause)}`);

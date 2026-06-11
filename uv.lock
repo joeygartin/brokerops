@@ -10,6 +10,7 @@ resolution-markers = [
 members = [
     "brokerops-api",
     "brokerops-core",
+    "brokerops-followupboss",
     "brokerops-langgraph",
     "brokerops-mls-reso",
 ]
@@ -124,6 +125,7 @@ source = { editable = "api" }
 dependencies = [
     { name = "alembic" },
     { name = "brokerops-core" },
+    { name = "brokerops-followupboss" },
     { name = "brokerops-langgraph" },
     { name = "brokerops-mls-reso" },
     { name = "fastapi" },
@@ -146,6 +148,7 @@ dev = [
 requires-dist = [
     { name = "alembic", specifier = ">=1.14" },
     { name = "brokerops-core", editable = "core" },
+    { name = "brokerops-followupboss", editable = "integrations/followupboss" },
     { name = "brokerops-langgraph", editable = "orchestration/langgraph" },
     { name = "brokerops-mls-reso", editable = "integrations/mls_reso" },
     { name = "fastapi", specifier = ">=0.115" },
@@ -174,6 +177,27 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "pydantic", specifier = ">=2.10" }]
+
+[[package]]
+name = "brokerops-followupboss"
+version = "0.1.0"
+source = { editable = "integrations/followupboss" }
+dependencies = [
+    { name = "brokerops-core" },
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "mcp" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "brokerops-core", editable = "core" },
+    { name = "fastapi", specifier = ">=0.115" },
+    { name = "httpx", specifier = ">=0.28" },
+    { name = "mcp", specifier = ">=1.2" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
+]
 
 [[package]]
 name = "brokerops-langgraph"

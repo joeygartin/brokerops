@@ -7,8 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from langgraph.checkpoint.memory import InMemorySaver
 
 from brokerops_api.db import InMemoryApprovalRepo, SqlApprovalRepo, create_engine
-from brokerops_api.deps import reso_base_url
+from brokerops_api.deps import build_crm_adapter, reso_base_url
 from brokerops_api.routes.approvals import router as approvals_router
+from brokerops_api.routes.contacts import router as contacts_router
 from brokerops_api.routes.listings import router as listings_router
 from brokerops_api.routes.workflows import router as workflows_router
 from brokerops_api.workflows import WorkflowEngine
@@ -21,20 +22,22 @@ from brokerops_mls_reso.adapter import ResoMLSAdapter
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     database_url = os.environ.get("DATABASE_URL")
     mls = ResoMLSAdapter(base_url=reso_base_url())
+    crm = build_crm_adapter()
+    app.state.crm = crm
     if database_url:
         # Durable path: graph state checkpoints and approvals share Postgres,
         # so HITL pauses survive restarts and deploys.
         engine = create_engine(database_url)
         async with postgres_checkpointer(database_url) as saver:
             app.state.approval_repo = SqlApprovalRepo(engine)
-            graph = build_listing_to_contract(mls, saver)
+            graph = build_listing_to_contract(mls, crm, saver)
             app.state.workflow_engine = WorkflowEngine(graph, app.state.approval_repo)
             yield
         await engine.dispose()
     else:
         # Database-less local dev: everything in memory, nothing survives.
         app.state.approval_repo = InMemoryApprovalRepo()
-        graph = build_listing_to_contract(mls, InMemorySaver())
+        graph = build_listing_to_contract(mls, crm, InMemorySaver())
         app.state.workflow_engine = WorkflowEngine(graph, app.state.approval_repo)
         yield
 
@@ -50,6 +53,7 @@ app.add_middleware(
 
 app.include_router(listings_router)
 app.include_router(approvals_router)
+app.include_router(contacts_router)
 app.include_router(workflows_router)
 
 
@@ -60,4 +64,4 @@ async def healthz() -> dict[str, str]:
 
 @app.get("/")
 async def root() -> dict[str, str]:
-    return {"service": "brokerops api", "phase": "2"}
+    return {"service": "brokerops api", "phase": "3"}

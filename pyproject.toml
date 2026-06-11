@@ -1,5 +1,11 @@
 [tool.uv.workspace]
-members = ["api", "core", "integrations/mls_reso", "orchestration/langgraph"]
+members = [
+    "api",
+    "core",
+    "integrations/followupboss",
+    "integrations/mls_reso",
+    "orchestration/langgraph",
+]
 
 [tool.ruff]
 line-length = 100
@@ -13,6 +19,7 @@ strict = true
 testpaths = [
     "api/tests",
     "core/tests",
+    "integrations/followupboss/tests",
     "integrations/mls_reso/tests",
     "orchestration/langgraph/tests",
 ]

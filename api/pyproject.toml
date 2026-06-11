@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.14",
     "brokerops-core",
+    "brokerops-followupboss",
     "brokerops-langgraph",
     "brokerops-mls-reso",
     "fastapi>=0.115",
@@ -26,6 +27,7 @@ dev = [
 
 [tool.uv.sources]
 brokerops-core = { workspace = true }
+brokerops-followupboss = { workspace = true }
 brokerops-langgraph = { workspace = true }
 brokerops-mls-reso = { workspace = true }
 

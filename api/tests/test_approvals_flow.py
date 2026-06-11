@@ -1,7 +1,12 @@
-"""Route-level HITL flow: start → pending approval → decide → workflow completes."""
+"""Route-level HITL flow: start → pending approval → decide → workflow completes.
+
+The CRM side runs the real FUB adapter against the in-process stub, so an
+approval here exercises the same code path that creates tasks in FollowUpBoss.
+"""
 
 from datetime import UTC, datetime
 
+import httpx
 from fastapi.testclient import TestClient
 from langgraph.checkpoint.memory import InMemorySaver
 
@@ -10,6 +15,8 @@ from brokerops_api.deps import get_approval_repo, get_workflow_engine
 from brokerops_api.main import app
 from brokerops_api.workflows import WorkflowEngine
 from brokerops_core.models.listing import Listing, ListingMedia, ListingQuery, ListingStatus
+from brokerops_followupboss.adapter import FUBCRMAdapter
+from brokerops_followupboss.stub import create_stub_app
 from brokerops_langgraph.graphs.listing_to_contract import build_listing_to_contract
 
 LISTING = Listing(
@@ -39,8 +46,18 @@ class FlowFakeMLS:
         return []
 
 
+def _stub_crm() -> FUBCRMAdapter:
+    transport = httpx.ASGITransport(app=create_stub_app())
+    fub_client = httpx.AsyncClient(
+        transport=transport, base_url="http://fub.test", auth=("stub-key", "")
+    )
+    return FUBCRMAdapter(api_key="stub-key", base_url="http://fub.test", client=fub_client)
+
+
 repo = InMemoryApprovalRepo()
-engine = WorkflowEngine(build_listing_to_contract(FlowFakeMLS(), InMemorySaver()), repo)
+engine = WorkflowEngine(
+    build_listing_to_contract(FlowFakeMLS(), _stub_crm(), InMemorySaver()), repo
+)
 app.dependency_overrides[get_workflow_engine] = lambda: engine
 app.dependency_overrides[get_approval_repo] = lambda: repo
 client = TestClient(app)
@@ -66,6 +83,9 @@ def test_full_hitl_round_trip_through_the_api() -> None:
     assert outcome["approval"]["status"] == "approved"
     assert outcome["approval"]["decided_by"] == "demo-operator"
     assert outcome["workflow"]["status"] == "completed"
+    # the approval fanned out into CRM tasks via the FUB adapter
+    output = outcome["workflow"]["output"]
+    assert len(output["fub_task_ids"]) == len(output["planned_tasks"]) > 0
 
     assert client.get("/approvals").json() == []
 

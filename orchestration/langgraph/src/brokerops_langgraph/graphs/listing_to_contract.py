@@ -2,10 +2,10 @@
 
 Nodes are thin by rule: read state, call a core service or port, write state.
 Business rules (eligibility, drafting, task fan-out) live in core services.
-The FUB leg is planned-tasks only until the FollowUpBoss integration lands;
-`publish_tasks` then routes the same plan through CRMPort.
+An approved draft fans out into real CRM tasks through CRMPort.
 """
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
@@ -14,16 +14,18 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import interrupt
 
 from brokerops_core.models.marketing import MarketingDraft
+from brokerops_core.ports.crm import CRMPort
 from brokerops_core.ports.mls import MLSPort
 from brokerops_core.services.followup_rules import is_marketable, plan_marketing_tasks
 from brokerops_core.services.marketing import draft_marketing
 from brokerops_langgraph.state import ApprovalOutcome, ListingToContractState, WorkflowStage
 
 APPROVE_MARKETING = "approve_marketing"
+TASK_DUE_DAYS = 2
 
 
 def build_listing_to_contract(
-    mls: MLSPort, checkpointer: BaseCheckpointSaver[Any]
+    mls: MLSPort, crm: CRMPort, checkpointer: BaseCheckpointSaver[Any]
 ) -> CompiledStateGraph[Any, Any, Any, Any]:
     async def intake(state: ListingToContractState) -> dict[str, Any]:
         listing = await mls.get_listing(state.listing_key)
@@ -60,7 +62,13 @@ def build_listing_to_contract(
         if listing is None:
             return {"stage": WorkflowStage.NOT_FOUND}
         tasks = plan_marketing_tasks(listing, state.draft)
-        return {"planned_tasks": tasks, "stage": WorkflowStage.PUBLISHED}
+        due = (datetime.now(UTC) + timedelta(days=TASK_DUE_DAYS)).date()
+        task_ids = [(await crm.create_task(name, due_date=due)).id for name in tasks]
+        return {
+            "planned_tasks": tasks,
+            "fub_task_ids": task_ids,
+            "stage": WorkflowStage.PUBLISHED,
+        }
 
     async def handle_rejection(state: ListingToContractState) -> dict[str, Any]:
         return {"stage": WorkflowStage.REJECTED}
