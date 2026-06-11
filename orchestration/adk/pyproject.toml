@@ -1,0 +1,23 @@
+[project]
+name = "brokerops-adk"
+version = "0.1.0"
+description = "brokerops V2 orchestration — ADK workflows over the core domain"
+requires-python = ">=3.12"
+# ~=2.2.0: ADK's invocation resumability is marked experimental upstream, so we
+# pin to the minor version the HITL contract was proven against (see ADR-0004).
+dependencies = [
+    "brokerops-core",
+    "google-adk[db]~=2.2.0",
+    "greenlet>=3",
+    "psycopg[binary]>=3.2",
+]
+
+[tool.uv.sources]
+brokerops-core = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/brokerops_adk"]
