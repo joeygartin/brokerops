@@ -1,4 +1,6 @@
-.PHONY: dev test lint demo migrate
+.PHONY: dev test lint demo migrate gcp-bootstrap gcp-images deploy secrets
+
+TF := terraform -chdir=infra
 
 dev:
 	docker compose up --build
@@ -23,3 +25,25 @@ demo:
 	@echo "waiting for api…" && sleep 8
 	curl -sf -X POST http://localhost:8000/demo/seed | python3 -m json.tool
 	@echo "demo ready → frontend http://localhost:5173 | api http://localhost:8000"
+
+# ── GCP deploy (per client) ──────────────────────────────────────────────
+# One-time per project: make gcp-bootstrap GCP_PROJECT=… GCP_REGION=… TF_STATE_BUCKET=…
+gcp-bootstrap:
+	infra/bootstrap/bootstrap.sh $(GCP_PROJECT) $(GCP_REGION) $(TF_STATE_BUCKET)
+
+# Build + push images for a client: make gcp-images CLIENT=demo
+gcp-images:
+	scripts/build_push_images.sh $(CLIENT)
+
+# Deploy a client: TF_STATE_BUCKET=… make deploy CLIENT=demo
+deploy:
+	@test -n "$(CLIENT)" || (echo "usage: make deploy CLIENT=<name>"; exit 1)
+	@test -n "$(TF_STATE_BUCKET)" || (echo "set TF_STATE_BUCKET (see .env.example)"; exit 1)
+	$(TF) init -reconfigure -input=false \
+		-backend-config="bucket=$(TF_STATE_BUCKET)" \
+		-backend-config="prefix=brokerops/$(CLIENT)"
+	$(TF) apply -var-file="clients/$(CLIENT).tfvars"
+
+# Push real integration keys to Secret Manager: make secrets CLIENT=acme
+secrets:
+	scripts/push_secrets.sh $(CLIENT)

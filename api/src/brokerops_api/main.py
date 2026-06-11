@@ -15,7 +15,7 @@ from brokerops_api.db import (
     SqlTransactionStore,
     create_engine,
 )
-from brokerops_api.deps import build_crm_adapter, build_voice_adapter, reso_base_url
+from brokerops_api.deps import build_crm_adapter, build_mls_adapter, build_voice_adapter
 from brokerops_api.routes.approvals import router as approvals_router
 from brokerops_api.routes.calls import router as calls_router
 from brokerops_api.routes.contacts import router as contacts_router
@@ -35,13 +35,12 @@ from brokerops_langgraph.checkpointer import postgres_checkpointer
 from brokerops_langgraph.graphs.listing_to_contract import build_listing_to_contract
 from brokerops_langgraph.graphs.transaction_coordination import build_transaction_coordination
 from brokerops_langgraph.graphs.vapi_followup import build_vapi_followup
-from brokerops_mls_reso.adapter import ResoMLSAdapter
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     database_url = os.environ.get("DATABASE_URL")
-    mls = ResoMLSAdapter(base_url=reso_base_url())
+    mls = build_mls_adapter()
     crm = build_crm_adapter()
     voice = build_voice_adapter()
     app.state.crm = crm
@@ -85,7 +84,7 @@ app = FastAPI(title="brokerops api", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=os.environ.get("CORS_ORIGINS", "http://localhost:5173").split(","),
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
