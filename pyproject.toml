@@ -1,13 +1,19 @@
 [tool.uv.workspace]
-members = ["api", "core", "integrations/mls_reso"]
+members = ["api", "core", "integrations/mls_reso", "orchestration/langgraph"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+extend-exclude = ["api/alembic"]
 
 [tool.mypy]
 strict = true
 
 [tool.pytest.ini_options]
-testpaths = ["api/tests", "core/tests", "integrations/mls_reso/tests"]
+testpaths = [
+    "api/tests",
+    "core/tests",
+    "integrations/mls_reso/tests",
+    "orchestration/langgraph/tests",
+]
 asyncio_mode = "auto"

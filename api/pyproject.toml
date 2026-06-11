@@ -4,14 +4,19 @@ version = "0.1.0"
 description = "brokerops API service"
 requires-python = ">=3.12"
 dependencies = [
+    "alembic>=1.14",
     "brokerops-core",
+    "brokerops-langgraph",
     "brokerops-mls-reso",
     "fastapi>=0.115",
+    "psycopg[binary]>=3.2",
+    "sqlalchemy[asyncio]>=2.0",
     "uvicorn[standard]>=0.32",
 ]
 
 [dependency-groups]
 dev = [
+    "aiosqlite>=0.20",
     "pytest>=8.3",
     "pytest-asyncio>=0.25",
     "httpx>=0.28",
@@ -21,6 +26,7 @@ dev = [
 
 [tool.uv.sources]
 brokerops-core = { workspace = true }
+brokerops-langgraph = { workspace = true }
 brokerops-mls-reso = { workspace = true }
 
 [build-system]

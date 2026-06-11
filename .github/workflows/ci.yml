@@ -8,6 +8,22 @@ on:
 jobs:
   lint-test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: brokerops
+          POSTGRES_PASSWORD: brokerops
+          POSTGRES_DB: brokerops_test
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U brokerops"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://brokerops:brokerops@localhost:5432/brokerops_test
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -19,6 +35,7 @@ jobs:
       - run: >
           uv run mypy api/src api/tests core/src core/tests
           integrations/mls_reso/src integrations/mls_reso/tests
+          orchestration/langgraph/src orchestration/langgraph/tests
       - run: uv run pytest
 
   gitleaks:

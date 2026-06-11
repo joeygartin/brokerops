@@ -4,12 +4,11 @@ AI-powered backoffice for real estate brokerages — listing-to-contract, transa
 coordination, and voice follow-up workflows, with human-in-the-loop approval at every
 consequential step.
 
-> **Status: Phase 1** — mock RESO Web API (OData subset over synthetic seed data),
-> framework-free `core/` with the first domain model and MLS port, MCP tools
-> (`search_listings`, `get_listing`, `get_listing_media`), and listings rendering in
-> the frontend. The architecture: LangGraph orchestration over an MCP integration
-> boundary (mock RESO Web API MLS, FollowUpBoss, Vapi), a hexagonal core, durable HITL
-> via Postgres checkpointing, and per-client GCP deploys via Terraform.
+> **Status: Phase 2** — the `listing_to_contract` LangGraph workflow with durable
+> human-in-the-loop approval: intake → marketing draft → approval gate (pauses on a
+> Postgres checkpoint, survives restarts) → task fan-out. Approval Inbox in the
+> frontend; every gate is an `ApprovalRequest` row decided through one resume
+> endpoint. Plus Phase 1's mock RESO Web API, framework-free core, and MCP tools.
 
 ## Quick start (demo mode — zero credentials required)
 

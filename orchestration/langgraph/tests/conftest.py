@@ -1,0 +1,48 @@
+from datetime import UTC, datetime
+
+from brokerops_core.models.listing import Listing, ListingMedia, ListingQuery, ListingStatus
+
+LISTINGS = {
+    "RM1001": Listing(
+        mls_id="RM1001",
+        status=ListingStatus.ACTIVE,
+        address="412 Alder Court, Rivermouth, CA 95890",
+        city="Rivermouth",
+        state="CA",
+        postal_code="95890",
+        list_price=489000,
+        bedrooms=3,
+        bathrooms=2,
+        living_area_sqft=1750,
+        year_built=1999,
+        agent_id="AGT-001",
+        agent_name="Dana Whitfield",
+        remarks="Updated single-story.",
+        modified_at=datetime(2026, 6, 8, tzinfo=UTC),
+    ),
+    "RM1007": Listing(
+        mls_id="RM1007",
+        status=ListingStatus.CLOSED,
+        address="1310 Orchard Lane, Rivermouth, CA 95890",
+        city="Rivermouth",
+        state="CA",
+        postal_code="95890",
+        list_price=432500,
+        bedrooms=3,
+        bathrooms=2,
+        agent_id="AGT-001",
+        agent_name="Dana Whitfield",
+        modified_at=datetime(2026, 5, 28, tzinfo=UTC),
+    ),
+}
+
+
+class GraphFakeMLS:
+    async def search_listings(self, query: ListingQuery) -> list[Listing]:
+        return list(LISTINGS.values())[: query.limit]
+
+    async def get_listing(self, listing_key: str) -> Listing | None:
+        return LISTINGS.get(listing_key)
+
+    async def get_listing_media(self, listing_key: str) -> list[ListingMedia]:
+        return []
