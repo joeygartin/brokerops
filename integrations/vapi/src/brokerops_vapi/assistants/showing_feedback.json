@@ -1,0 +1,18 @@
+{
+  "_comment": "Assistant config template for the showing-feedback outbound call. Patterns hardened in production voice-agent work: explicit budget-range question, TTS pronunciation overrides, and a duplicate-goodbye guard in the system prompt.",
+  "name": "showing-feedback",
+  "firstMessage": "Hi, this is the assistant for the listing team — do you have two quick minutes to share feedback on the home you toured?",
+  "model": {
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "systemPrompt": "You collect showing feedback for a real estate office. Ask, in order: overall impression; what they liked most; any concerns; whether the price feels right; their budget range if they are still looking; and whether they want a second showing or to write an offer. Be brief and warm. Say goodbye exactly once, then end the call — never repeat the goodbye."
+  },
+  "voice": {
+    "provider": "11labs",
+    "_pronunciation_note": "Add pronunciationDictionary entries for local street and neighborhood names that TTS mangles (e.g. spell out unusual proper nouns phonetically)."
+  },
+  "endCallPhrases": ["goodbye", "thanks again, bye"],
+  "analysisPlan": {
+    "_comment": "Server-side extraction happens in our workflow from the transcript; keep Vapi analysis minimal."
+  }
+}

@@ -1,7 +1,9 @@
 from datetime import UTC, date, datetime
 from itertools import count
 
+from brokerops_core.models.call import CallRecord
 from brokerops_core.models.contact import Contact, ContactCreate, CrmTask
+from brokerops_core.models.feedback import ShowingFeedback
 from brokerops_core.models.listing import Listing, ListingMedia, ListingQuery, ListingStatus
 from brokerops_core.models.milestone import Milestone
 from brokerops_core.models.transaction import Transaction
@@ -55,6 +57,8 @@ class GraphFakeMLS:
 class GraphFakeCRM:
     def __init__(self) -> None:
         self.created_tasks: list[CrmTask] = []
+        self.notes: list[tuple[str, str, str]] = []
+        self.logged_calls: list[tuple[str, str, str]] = []
         self._ids = count(9000)
 
     async def get_contact(self, contact_id: str) -> Contact | None:
@@ -67,6 +71,7 @@ class GraphFakeCRM:
         return Contact(fub_id=str(next(self._ids)), name=f"{draft.first_name} {draft.last_name}")
 
     async def add_note(self, contact_id: str, subject: str, body: str) -> str:
+        self.notes.append((contact_id, subject, body))
         return str(next(self._ids))
 
     async def create_task(
@@ -79,7 +84,44 @@ class GraphFakeCRM:
     async def log_call(
         self, contact_id: str, outcome: str, note: str = "", duration_seconds: int = 0
     ) -> str:
+        self.logged_calls.append((contact_id, outcome, note))
         return str(next(self._ids))
+
+
+class FakeVoice:
+    def __init__(self, calls: dict[str, CallRecord] | None = None) -> None:
+        self.calls = calls or {}
+        self.placed: list[tuple[str, str, dict[str, object]]] = []
+        self._ids = count(7000)
+
+    async def start_outbound_call(
+        self, contact_id: str, assistant_id: str, context: dict[str, object]
+    ) -> str:
+        call_id = f"call-{next(self._ids)}"
+        self.placed.append((contact_id, assistant_id, context))
+        return call_id
+
+    async def get_call(self, call_id: str) -> CallRecord | None:
+        return self.calls.get(call_id)
+
+
+class FakeFeedbackStore:
+    def __init__(self) -> None:
+        self.call_records: dict[str, CallRecord] = {}
+        self.feedback: dict[str, ShowingFeedback] = {}
+
+    async def save_call_record(self, record: CallRecord) -> None:
+        self.call_records[record.vapi_call_id] = record
+
+    async def get_call_record(self, vapi_call_id: str) -> CallRecord | None:
+        return self.call_records.get(vapi_call_id)
+
+    async def upsert_feedback(self, feedback: ShowingFeedback) -> str:
+        self.feedback[feedback.id] = feedback
+        return feedback.id
+
+    async def list_feedback(self, listing_key: str) -> list[ShowingFeedback]:
+        return [f for f in self.feedback.values() if f.listing_key == listing_key]
 
 
 class FakeTransactionStore:

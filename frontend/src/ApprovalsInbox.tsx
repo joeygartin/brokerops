@@ -48,6 +48,20 @@ function EscalationPreview({ approval }: { approval: ApprovalRequest }) {
   );
 }
 
+function HotLeadPreview({ approval }: { approval: ApprovalRequest }) {
+  return (
+    <div style={{ margin: "0.6rem 0", fontSize: "0.9rem" }}>
+      <p style={{ color: "#cf222e", fontWeight: 600, margin: "0 0 0.3rem" }}>
+        🔥 {approval.payload.reason}
+      </p>
+      <p style={{ color: "#24292f", margin: 0 }}>{approval.payload.summary}</p>
+      <p style={{ color: "#57606a", fontSize: "0.8rem", margin: "0.3rem 0 0" }}>
+        Contact {approval.payload.contact_id} · call {approval.payload.call_id}
+      </p>
+    </div>
+  );
+}
+
 function ApprovalCard({
   approval,
   onDecided,
@@ -57,9 +71,12 @@ function ApprovalCard({
 }) {
   const [busy, setBusy] = useState(false);
   const isEscalation = approval.kind === "approve_escalation";
+  const isHotLead = approval.kind === "notify_agent";
   const subject = isEscalation
     ? `Escalate overdue milestones — ${approval.payload.transaction_id} (${approval.payload.listing_key})`
-    : `Approve marketing — ${approval.payload.listing_key}`;
+    : isHotLead
+      ? `Hot lead — notify listing agent (${approval.payload.listing_key})`
+      : `Approve marketing — ${approval.payload.listing_key}`;
 
   const decide = async (decision: "approved" | "rejected") => {
     setBusy(true);
@@ -76,9 +93,15 @@ function ApprovalCard({
           output: { fub_task_ids?: string[]; escalated_task_ids?: string[] } | null;
         };
       };
+      const output = outcome.workflow.output as {
+        fub_task_ids?: string[];
+        escalated_task_ids?: string[];
+        hot_task_id?: string;
+      } | null;
       const taskCount =
-        outcome.workflow.output?.fub_task_ids?.length ??
-        outcome.workflow.output?.escalated_task_ids?.length;
+        output?.fub_task_ids?.length ??
+        output?.escalated_task_ids?.length ??
+        (output?.hot_task_id ? 1 : undefined);
       const target = approval.payload.transaction_id ?? approval.payload.listing_key;
       onDecided(
         `${target} ${decision} — workflow status: ${outcome.workflow.status}` +
@@ -111,6 +134,8 @@ function ApprovalCard({
       </div>
       {isEscalation ? (
         <EscalationPreview approval={approval} />
+      ) : isHotLead ? (
+        <HotLeadPreview approval={approval} />
       ) : (
         <MarketingPreview approval={approval} />
       )}

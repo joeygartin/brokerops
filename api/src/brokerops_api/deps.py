@@ -7,10 +7,13 @@ from fastapi import Request
 from brokerops_api.db import ApprovalRepo, TransactionStoreAdmin
 from brokerops_api.workflows import WorkflowEngine
 from brokerops_core.ports.crm import CRMPort
+from brokerops_core.ports.feedback import FeedbackStore
 from brokerops_core.ports.transactions import TransactionStore
+from brokerops_core.ports.voice import VoicePort
 from brokerops_core.services.listing_service import ListingService
 from brokerops_followupboss.adapter import FUB_API_BASE, FUBCRMAdapter
 from brokerops_mls_reso.adapter import ResoMLSAdapter
+from brokerops_vapi.adapter import VAPI_API_BASE, VapiVoiceAdapter
 
 
 def reso_base_url() -> str:
@@ -21,6 +24,13 @@ def build_crm_adapter() -> FUBCRMAdapter:
     return FUBCRMAdapter(
         api_key=os.environ.get("FUB_API_KEY", ""),
         base_url=os.environ.get("FUB_BASE_URL", FUB_API_BASE),
+    )
+
+
+def build_voice_adapter() -> VapiVoiceAdapter:
+    return VapiVoiceAdapter(
+        api_key=os.environ.get("VAPI_API_KEY", ""),
+        base_url=os.environ.get("VAPI_BASE_URL", VAPI_API_BASE),
     )
 
 
@@ -47,3 +57,11 @@ def get_transaction_store(request: Request) -> TransactionStore:
 
 def get_transaction_store_admin(request: Request) -> TransactionStoreAdmin:
     return cast(TransactionStoreAdmin, request.app.state.transaction_store)
+
+
+def get_voice_port(request: Request) -> VoicePort:
+    return cast(VoicePort, request.app.state.voice)
+
+
+def get_feedback_store(request: Request) -> FeedbackStore:
+    return cast(FeedbackStore, request.app.state.feedback_store)

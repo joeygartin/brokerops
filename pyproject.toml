@@ -4,6 +4,7 @@ members = [
     "core",
     "integrations/followupboss",
     "integrations/mls_reso",
+    "integrations/vapi",
     "orchestration/langgraph",
 ]
 
@@ -21,6 +22,7 @@ testpaths = [
     "core/tests",
     "integrations/followupboss/tests",
     "integrations/mls_reso/tests",
+    "integrations/vapi/tests",
     "orchestration/langgraph/tests",
 ]
 asyncio_mode = "auto"

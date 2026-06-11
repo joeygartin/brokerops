@@ -47,6 +47,10 @@ export type ApprovalPayload = {
   draft?: MarketingDraft;
   transaction_id?: string;
   milestones?: EscalationMilestone[];
+  contact_id?: string;
+  call_id?: string;
+  reason?: string;
+  summary?: string;
 };
 
 export type ApprovalRequest = {

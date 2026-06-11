@@ -12,6 +12,7 @@ lint:
 	uv run mypy api/src api/tests core/src core/tests \
 		integrations/mls_reso/src integrations/mls_reso/tests \
 		integrations/followupboss/src integrations/followupboss/tests \
+		integrations/vapi/src integrations/vapi/tests \
 		orchestration/langgraph/src orchestration/langgraph/tests
 
 migrate:

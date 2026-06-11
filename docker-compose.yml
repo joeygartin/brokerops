@@ -28,6 +28,17 @@ services:
     ports:
       - "8002:8002"
 
+  vapi:
+    build:
+      context: .
+      dockerfile: integrations/vapi/Dockerfile
+    environment:
+      # The stub fires end-of-call webhooks at the api, like real Vapi does.
+      WEBHOOK_URL: http://api:8000/webhooks/vapi
+      VAPI_WEBHOOK_SECRET: demo-webhook-secret
+    ports:
+      - "8003:8003"
+
   api:
     build:
       context: .
@@ -39,6 +50,11 @@ services:
       # FUB_API_KEY (from .env / Secret Manager) — same adapter, no code change.
       FUB_BASE_URL: http://fub:8002
       FUB_API_KEY: demo-stub-key
+      # Demo mode: the Vapi stub. A real Vapi account is VAPI_BASE_URL removal
+      # + real VAPI_API_KEY + VAPI_ASSISTANT_ID — same adapter, no code change.
+      VAPI_BASE_URL: http://vapi:8003
+      VAPI_API_KEY: demo-stub-key
+      VAPI_WEBHOOK_SECRET: demo-webhook-secret
     ports:
       - "8000:8000"
     depends_on:
@@ -47,6 +63,8 @@ services:
       mls:
         condition: service_started
       fub:
+        condition: service_started
+      vapi:
         condition: service_started
 
   frontend:

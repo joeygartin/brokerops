@@ -36,6 +36,21 @@ class ListingToContractState(BaseModel):
     fub_task_ids: list[str] = Field(default_factory=list)
 
 
+class VapiFollowupState(BaseModel):
+    call_id: str
+    listing_key: str = ""
+    contact_id: str = ""
+    transcript: str = ""
+    call_outcome: str = ""
+    extracted: dict[str, Any] = Field(default_factory=dict)
+    feedback_id: str = ""
+    note_id: str = ""
+    call_log_id: str = ""
+    hot_approval: ApprovalOutcome | None = None
+    hot_task_id: str = ""
+    outcome: str = ""
+
+
 class TransactionCoordinationState(BaseModel):
     transaction_id: str
     outcome: str = ""

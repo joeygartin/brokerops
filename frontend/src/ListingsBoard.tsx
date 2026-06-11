@@ -13,6 +13,8 @@ const STATUS_COLORS: Record<Listing["status"], string> = {
   closed: "#57606a",
 };
 
+const DEMO_FEEDBACK_CONTACT = "101"; // Jordan Pike in the FUB stub
+
 function ListingCard({
   listing,
   onStarted,
@@ -21,6 +23,7 @@ function ListingCard({
   onStarted: (message: string) => void;
 }) {
   const [starting, setStarting] = useState(false);
+  const [calling, setCalling] = useState(false);
 
   const startWorkflow = async () => {
     setStarting(true);
@@ -41,6 +44,27 @@ function ListingCard({
       onStarted(`${listing.mls_id}: failed to start workflow — ${String(cause)}`);
     } finally {
       setStarting(false);
+    }
+  };
+
+  const startFeedbackCall = async () => {
+    setCalling(true);
+    try {
+      const response = await fetch(`${API_BASE}/calls/outbound`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listing_key: listing.mls_id, contact_id: DEMO_FEEDBACK_CONTACT }),
+      });
+      if (!response.ok) throw new Error(`api returned ${response.status}`);
+      const result = (await response.json()) as { call_id: string };
+      onStarted(
+        `${listing.mls_id}: feedback call ${result.call_id} placed — the transcript lands as a ` +
+          `CRM note (check Approvals if the buyer is hot).`,
+      );
+    } catch (cause) {
+      onStarted(`${listing.mls_id}: failed to place call — ${String(cause)}`);
+    } finally {
+      setCalling(false);
     }
   };
 
@@ -79,21 +103,36 @@ function ListingCard({
         {listing.mls_id} — {listing.agent_name}
       </div>
       {listing.status === "active" && (
-        <button
-          onClick={startWorkflow}
-          disabled={starting}
-          style={{
-            marginTop: "0.75rem",
-            padding: "0.4rem 0.9rem",
-            borderRadius: 6,
-            border: "1px solid #1a7f37",
-            background: starting ? "#f6f8fa" : "#2da44e",
-            color: starting ? "#57606a" : "#fff",
-            cursor: starting ? "wait" : "pointer",
-          }}
-        >
-          {starting ? "Starting…" : "Start marketing workflow"}
-        </button>
+        <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem", flexWrap: "wrap" }}>
+          <button
+            onClick={startWorkflow}
+            disabled={starting}
+            style={{
+              padding: "0.4rem 0.9rem",
+              borderRadius: 6,
+              border: "1px solid #1a7f37",
+              background: starting ? "#f6f8fa" : "#2da44e",
+              color: starting ? "#57606a" : "#fff",
+              cursor: starting ? "wait" : "pointer",
+            }}
+          >
+            {starting ? "Starting…" : "Start marketing workflow"}
+          </button>
+          <button
+            onClick={startFeedbackCall}
+            disabled={calling}
+            style={{
+              padding: "0.4rem 0.9rem",
+              borderRadius: 6,
+              border: "1px solid #0969da",
+              background: "#fff",
+              color: "#0969da",
+              cursor: calling ? "wait" : "pointer",
+            }}
+          >
+            {calling ? "Calling…" : "Feedback call"}
+          </button>
+        </div>
       )}
     </article>
   );

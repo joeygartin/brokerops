@@ -18,6 +18,7 @@ from brokerops_core.models.approval import ApprovalDecision, ApprovalRequest
 
 LISTING_TO_CONTRACT = "listing_to_contract"
 TRANSACTION_COORDINATION = "transaction_coordination"
+VAPI_FOLLOWUP = "vapi_followup"
 
 # State channels surfaced to API callers when a run finishes.
 OUTPUT_KEYS = (
@@ -27,9 +28,21 @@ OUTPUT_KEYS = (
     "reminder_task_ids",
     "escalated_task_ids",
     "planned_calls",
+    "feedback_id",
+    "note_id",
+    "call_log_id",
+    "hot_task_id",
 )
 # Stage/outcome values that mean "the run did what it set out to do".
-COMPLETED_VALUES = {"published", "on_track", "reminders_sent", "escalated", "call_queued"}
+COMPLETED_VALUES = {
+    "published",
+    "on_track",
+    "reminders_sent",
+    "escalated",
+    "call_queued",
+    "synced",
+    "agent_notified",
+}
 
 
 class WorkflowRunResult(BaseModel):

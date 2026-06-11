@@ -12,6 +12,8 @@ from sqlalchemy.engine import Row
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from brokerops_core.models.approval import ApprovalRequest, ApprovalStatus
+from brokerops_core.models.call import CallRecord
+from brokerops_core.models.feedback import ShowingFeedback
 from brokerops_core.models.milestone import Milestone
 from brokerops_core.models.transaction import ACTIVE_STAGES, Transaction
 
@@ -55,6 +57,32 @@ milestones = sa.Table(
     sa.Column("owner", sa.String(120), nullable=False, server_default=""),
     sa.Column("escalation_level", sa.Integer(), nullable=False, server_default="0"),
     sa.Column("blocked_reason", sa.String(300)),
+)
+
+
+call_records = sa.Table(
+    "call_records",
+    metadata,
+    sa.Column("vapi_call_id", sa.String(64), primary_key=True),
+    sa.Column("contact_id", sa.String(36), nullable=False, server_default=""),
+    sa.Column("listing_key", sa.String(36), nullable=False, server_default="", index=True),
+    sa.Column("transcript", sa.Text(), nullable=False, server_default=""),
+    sa.Column("outcome", sa.String(64), nullable=False, server_default=""),
+    sa.Column("extracted", sa.JSON(), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True)),
+)
+
+showing_feedback = sa.Table(
+    "showing_feedback",
+    metadata,
+    sa.Column("id", sa.String(80), primary_key=True),
+    sa.Column("listing_key", sa.String(36), nullable=False, index=True),
+    sa.Column("contact_id", sa.String(36), nullable=False),
+    sa.Column("call_id", sa.String(64)),
+    sa.Column("source", sa.String(16), nullable=False, server_default="call"),
+    sa.Column("sentiment", sa.String(16), nullable=False, server_default="neutral"),
+    sa.Column("structured_answers", sa.JSON(), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True)),
 )
 
 
@@ -230,6 +258,79 @@ class InMemoryTransactionStore:
     async def clear(self) -> None:
         self._transactions.clear()
         self._milestones.clear()
+
+
+class SqlFeedbackStore:
+    def __init__(self, engine: AsyncEngine) -> None:
+        self._engine = engine
+
+    async def save_call_record(self, record: CallRecord) -> None:
+        values = record.model_dump(mode="json")
+        values["created_at"] = record.created_at
+        async with self._engine.begin() as conn:
+            existing = await conn.execute(
+                call_records.select().where(call_records.c.vapi_call_id == record.vapi_call_id)
+            )
+            if existing.first() is None:
+                await conn.execute(call_records.insert().values(**values))
+            else:
+                await conn.execute(
+                    call_records.update()
+                    .where(call_records.c.vapi_call_id == record.vapi_call_id)
+                    .values(**values)
+                )
+
+    async def get_call_record(self, vapi_call_id: str) -> CallRecord | None:
+        async with self._engine.connect() as conn:
+            result = await conn.execute(
+                call_records.select().where(call_records.c.vapi_call_id == vapi_call_id)
+            )
+            row = result.first()
+        return CallRecord.model_validate(dict(row._mapping)) if row is not None else None
+
+    async def upsert_feedback(self, feedback: ShowingFeedback) -> str:
+        values = feedback.model_dump(mode="json")
+        values["created_at"] = feedback.created_at
+        async with self._engine.begin() as conn:
+            existing = await conn.execute(
+                showing_feedback.select().where(showing_feedback.c.id == feedback.id)
+            )
+            if existing.first() is None:
+                await conn.execute(showing_feedback.insert().values(**values))
+            else:
+                await conn.execute(
+                    showing_feedback.update()
+                    .where(showing_feedback.c.id == feedback.id)
+                    .values(**values)
+                )
+        return feedback.id
+
+    async def list_feedback(self, listing_key: str) -> list[ShowingFeedback]:
+        async with self._engine.connect() as conn:
+            result = await conn.execute(
+                showing_feedback.select().where(showing_feedback.c.listing_key == listing_key)
+            )
+            rows = result.all()
+        return [ShowingFeedback.model_validate(dict(row._mapping)) for row in rows]
+
+
+class InMemoryFeedbackStore:
+    def __init__(self) -> None:
+        self._call_records: dict[str, CallRecord] = {}
+        self._feedback: dict[str, ShowingFeedback] = {}
+
+    async def save_call_record(self, record: CallRecord) -> None:
+        self._call_records[record.vapi_call_id] = record
+
+    async def get_call_record(self, vapi_call_id: str) -> CallRecord | None:
+        return self._call_records.get(vapi_call_id)
+
+    async def upsert_feedback(self, feedback: ShowingFeedback) -> str:
+        self._feedback[feedback.id] = feedback
+        return feedback.id
+
+    async def list_feedback(self, listing_key: str) -> list[ShowingFeedback]:
+        return [f for f in self._feedback.values() if f.listing_key == listing_key]
 
 
 class InMemoryApprovalRepo:

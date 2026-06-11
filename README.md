@@ -4,13 +4,14 @@ AI-powered backoffice for real estate brokerages — listing-to-contract, transa
 coordination, and voice follow-up workflows, with human-in-the-loop approval at every
 consequential step.
 
-> **Status: Phase 4** — scheduled transaction coordination: a cron-triggered graph
-> assesses every active transaction's milestones (`milestone_engine` owns the date
-> math), sends reminder tasks for near deadlines, queues call intents for external
-> blockers, and pauses overdue milestones at a human escalation gate — approved
-> escalations create URGENT CRM tasks and ratchet the escalation level. Transaction
-> Timeline in the frontend, `make demo` seeds it all. Plus Phases 1–3: mock RESO Web
-> API, durable HITL (Postgres-checkpointed), FollowUpBoss integration.
+> **Status: Phase 5** — voice follow-up end-to-end: an outbound showing-feedback
+> call's end-of-call webhook drives the `vapi_followup` graph — transcript →
+> structured extraction (Pydantic-validated: sentiment, highlights/concerns, spoken
+> budget-range parsing, offer-intent detection) → persisted feedback → CRM note +
+> call log; hot signals pause at a notify-agent gate that creates a hot-lead task on
+> approval. Demo mode's Vapi stub fires real-shaped webhooks, so the whole chain runs
+> with zero credentials. Plus Phases 1–4: mock RESO Web API, durable HITL,
+> FollowUpBoss integration, scheduled transaction coordination.
 
 ## Quick start (demo mode — zero credentials required)
 

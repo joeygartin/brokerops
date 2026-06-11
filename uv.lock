@@ -13,6 +13,7 @@ members = [
     "brokerops-followupboss",
     "brokerops-langgraph",
     "brokerops-mls-reso",
+    "brokerops-vapi",
 ]
 
 [[package]]
@@ -128,6 +129,7 @@ dependencies = [
     { name = "brokerops-followupboss" },
     { name = "brokerops-langgraph" },
     { name = "brokerops-mls-reso" },
+    { name = "brokerops-vapi" },
     { name = "fastapi" },
     { name = "psycopg", extra = ["binary"] },
     { name = "sqlalchemy", extra = ["asyncio"] },
@@ -151,6 +153,7 @@ requires-dist = [
     { name = "brokerops-followupboss", editable = "integrations/followupboss" },
     { name = "brokerops-langgraph", editable = "orchestration/langgraph" },
     { name = "brokerops-mls-reso", editable = "integrations/mls_reso" },
+    { name = "brokerops-vapi", editable = "integrations/vapi" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0" },
@@ -222,6 +225,27 @@ requires-dist = [
 name = "brokerops-mls-reso"
 version = "0.1.0"
 source = { editable = "integrations/mls_reso" }
+dependencies = [
+    { name = "brokerops-core" },
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "mcp" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "brokerops-core", editable = "core" },
+    { name = "fastapi", specifier = ">=0.115" },
+    { name = "httpx", specifier = ">=0.28" },
+    { name = "mcp", specifier = ">=1.2" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
+]
+
+[[package]]
+name = "brokerops-vapi"
+version = "0.1.0"
+source = { editable = "integrations/vapi" }
 dependencies = [
     { name = "brokerops-core" },
     { name = "fastapi" },

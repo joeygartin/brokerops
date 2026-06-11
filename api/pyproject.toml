@@ -9,6 +9,7 @@ dependencies = [
     "brokerops-followupboss",
     "brokerops-langgraph",
     "brokerops-mls-reso",
+    "brokerops-vapi",
     "fastapi>=0.115",
     "psycopg[binary]>=3.2",
     "sqlalchemy[asyncio]>=2.0",
@@ -30,6 +31,7 @@ brokerops-core = { workspace = true }
 brokerops-followupboss = { workspace = true }
 brokerops-langgraph = { workspace = true }
 brokerops-mls-reso = { workspace = true }
+brokerops-vapi = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
