@@ -43,9 +43,8 @@ See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the full picture and
 **[docs/ADRs/](docs/ADRs/)** for the decisions. The short version:
 
 - **`core/`** is plain Python + Pydantic — no LangGraph, no ADK, no FastAPI, no
-  SDKs.
-  Workflow nodes are thin; business rules (marketing drafts, milestone date math,
-  transcript extraction — including a spoken price-range parser) live in core
+  SDKs. Workflow nodes are thin; business rules (marketing drafts, milestone date
+  math, transcript extraction — including a spoken price-range parser) live in core
   services and are unit-tested in isolation.
 - **Every integration is three things:** an adapter implementing a core `Protocol`
   port, a recorded-shape stub, and an MCP server (`uv run mcp-server-mls-reso`,
@@ -53,9 +52,12 @@ See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the full picture and
   base-URL + auth change, pinned by contract tests.
 - **Every human gate is the same spine:** a workflow interrupt → an
   `ApprovalRequest` row → the Approval Inbox → one resume endpoint. That uniformity
-  is what made the orchestrator swappable — and V2 swapped it: the ADK engine
-  (`orchestration/adk/`) passes the identical scenario suites, restart-survival
-  proof, and e2e gate as the LangGraph engine (ADR-0004).
+  is what made the orchestrator swappable — and V2 swapped it (ADR-0004).
+- **The dual-engine setup is CI-proven, not claimed:** every push runs mirrored
+  scenario suites and a Postgres restart-survival proof for each engine
+  (`orchestration/langgraph/`, `orchestration/adk/`), then the same e2e demo
+  script as a `{langgraph, adk}` matrix against the full compose stack. Both
+  engines must stay green for `main` to be green.
 
 ## Development
 
