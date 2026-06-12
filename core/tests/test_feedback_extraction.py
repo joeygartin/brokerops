@@ -1,5 +1,23 @@
+import json
+from pathlib import Path
+from typing import Any
+
+import pytest
+
 from brokerops_core.models.feedback import Sentiment
-from brokerops_core.services.feedback_extraction import extract_feedback, parse_budget_range
+from brokerops_core.services.feedback_extraction import (
+    ExtractedFeedback,
+    extract_feedback,
+    parse_budget_range,
+)
+
+GOLDEN_CALLS_PATH = Path(__file__).parent / "fixtures" / "showing_feedback_golden_calls.json"
+
+
+def golden_calls() -> list[dict[str, Any]]:
+    calls: list[dict[str, Any]] = json.loads(GOLDEN_CALLS_PATH.read_text())["calls"]
+    return calls
+
 
 HOT_TRANSCRIPT = (
     "We loved the kitchen and the backyard was perfect for the kids. "
@@ -44,3 +62,27 @@ def test_budget_parsing_variants() -> None:
     assert parse_budget_range("between 450k and 500k") == (450_000, 500_000)
     assert parse_budget_range("somewhere between five hundred and… actually no idea") is None
     assert parse_budget_range("no budget mentioned") is None
+
+
+# Golden fixtures: five real outbound calls captured from the live voice stack
+# (see the fixture's _comment). They serve two purposes: 'expected' is the
+# target the LLM-backed extractor (ADR-0002) will be evaluated against, and
+# 'deterministic_v1' is a characterization baseline for the current extractor.
+
+
+@pytest.mark.parametrize("call", golden_calls(), ids=lambda call: str(call["id"]))
+def test_golden_call_fixture_matches_contract_schema(call: dict[str, Any]) -> None:
+    # 'expected' and 'deterministic_v1' must stay loadable into the Pydantic
+    # contract — if ExtractedFeedback's shape changes, the fixtures must too.
+    assert call["transcript"].strip()
+    ExtractedFeedback.model_validate(call["expected"])
+    ExtractedFeedback.model_validate(call["deterministic_v1"])
+
+
+@pytest.mark.parametrize("call", golden_calls(), ids=lambda call: str(call["id"]))
+def test_golden_call_deterministic_baseline_pinned(call: dict[str, Any]) -> None:
+    # Characterization: the deterministic extractor's output on real
+    # transcripts is pinned. An intentional extractor change updates the
+    # fixture's deterministic_v1 block (and its known_gaps_v1 notes) with it.
+    extracted = extract_feedback(call["transcript"])
+    assert extracted.model_dump(mode="json") == call["deterministic_v1"]

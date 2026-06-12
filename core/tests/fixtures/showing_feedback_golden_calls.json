@@ -1,0 +1,193 @@
+{
+  "_comment": "Golden fixtures for the LLM extraction upgrade (ADR-0002). Five real outbound showing-feedback calls made 2026-06-12 over the live voice stack (real telephony, real transcription) — transcribed speech with all its disfluencies and transcription artifacts. 'expected' is the human-authored target an upgraded extractor is judged against; 'deterministic_v1' pins what core.services.feedback_extraction.extract_feedback produced at capture time (characterization baseline); 'known_gaps_v1' documents where v1 falls short of expected. Identifiers are scrubbed; transcripts are verbatim.",
+  "calls": [
+    {
+      "id": "golden-001",
+      "outcome": "customer-ended-call",
+      "transcript": "AI: Hi. This is the assistant for the listing team. Do you have 2 quick minutes to share feedback on the home you toured?\nUser: Yes. I do.\nAI: Great. 1st, what was your overall impression of the property?\nUser: I thought the home was very, very nice. It showed very well. I just I I wanted more space and I I really didn't like the backyard.\nAI: Thanks for sharing that. What did you like most about the home?\nUser: The kitchen. It had a incredible beautiful kitchen.\nAI: That's wonderful to hear. Did you have any concerns or anything that didn't feel quite right?\nUser: Like I said, I I just wanted more space, and I just thought the the backyard was too small. But, I mean, the home is beautiful.\nAI: I appreciate your honesty. Does the price feel right to you? For this property?\nUser: I think the price is absolutely right. I just it's not I don't think it's the right property for me.\nAI: Thanks for clarifying. If you're still looking, you share what your budget range is?\nUser: We wanna stay probably below 600 so, like, between 5 50 and 6.\nAI: Got it. Would you like to schedule a 2nd showing, for this property, or are you interested in writing an offer on another home?\nUser: Well, I don't wanna show so a 2nd showing. I told you I don't really like the property. It wasn't really I mean, nice, but it's not for us. And, um, I mean, I would love to see other homes. If you guys can find homes like that that is home is a little bit bigger and it has a a much bigger backyard, maybe on a couple acres, then I I would love to see another house.\nAI: Thank you for that feedback. We'll definitely look for homes that fit your needs. And let you know as soon as we find some options.\nUser: You very much. Have a great day.\nAI: Thanks. Thank you. Take care.\nUser: Bye.\n",
+      "expected": {
+        "sentiment": "positive",
+        "hot_signal": false,
+        "highlights": [
+          "kitchen"
+        ],
+        "concerns": [
+          "backyard",
+          "size"
+        ],
+        "price_opinion": "fair",
+        "budget_min": 550000,
+        "budget_max": 600000
+      },
+      "deterministic_v1": {
+        "sentiment": "positive",
+        "hot_signal": false,
+        "highlights": [
+          "kitchen",
+          "backyard",
+          "yard"
+        ],
+        "concerns": [
+          "backyard",
+          "yard"
+        ],
+        "price_opinion": null,
+        "budget_min": null,
+        "budget_max": null,
+        "summary": "Sentiment: positive. Liked: kitchen, backyard, yard. Concerns: backyard, yard."
+      },
+      "known_gaps_v1": [
+        "budget missed: '5 50 and 6' transcribed-numeral form not parsed",
+        "price_opinion missed: 'price is absolutely right' not in cue list",
+        "backyard/yard wrongly listed in highlights (mixed-cue sentences)"
+      ],
+      "notes": "Buyer praised the home and kitchen, said the price is 'absolutely right', but wants more space and a bigger backyard (ideally acreage). Budget spoken as transcribed numerals: 'between 5 50 and 6' = $550k-$600k."
+    },
+    {
+      "id": "golden-002",
+      "outcome": "customer-ended-call",
+      "transcript": "AI: Hi. This is the assistant for the listing team. Do you have 2 quick minutes to share feedback on the home you toured?\nUser: Sure.\nAI: Great. 1st, what was your overall impression of the home?\nUser: I thought it was a beautiful home.\nAI: That's wonderful to hear.\nUser: I really liked it.\nAI: What did you like most about the home?\nUser: The kitchen. And the master bedroom\nAI: Thanks for sharing. Do you have any concerns or things you didn't like?\nUser: The yard wasn't big enough. I I need more space.\nAI: Thanks for your honesty. Does the price feel right for the home? Or is it a bit higher low?\nUser: I I thought it was a bit high. I mean, I get it. You know, you that's the asking price but I I honestly think it's about 30000 dollars overpriced.\nAI: I appreciate your feedback on that. What's your budget range if you're still looking?\nUser: Between 5 50 and 6.\nAI: Got it. Would you like to schedule a 2nd showing for this home, or are you considering writing an offer?\nUser: Well, I told you the home's too small for me. I don't like the yard, so I don't need a 2nd showing. And I'm I'm definitely not gonna write an offer.\nAI: Thank you for your insights. Anything changes or you need more assistance, feel free to reach out. Have a great day.\nUser: You too.\nAI: End call.\nUser: Bye.\n",
+      "expected": {
+        "sentiment": "neutral",
+        "hot_signal": false,
+        "highlights": [
+          "kitchen",
+          "bedroom"
+        ],
+        "concerns": [
+          "yard",
+          "size"
+        ],
+        "price_opinion": "overpriced",
+        "budget_min": 550000,
+        "budget_max": 600000
+      },
+      "deterministic_v1": {
+        "sentiment": "positive",
+        "hot_signal": true,
+        "highlights": [],
+        "concerns": [],
+        "price_opinion": "overpriced",
+        "budget_min": null,
+        "budget_max": null,
+        "summary": "Sentiment: positive. HOT: buyer signaled offer intent. Price opinion: overpriced."
+      },
+      "known_gaps_v1": [
+        "hot_signal FALSE POSITIVE: 'definitely not gonna write an offer' matched the 'write an offer' phrase list — negation invisible to substring match",
+        "budget missed: 'between 5 50 and 6' transcribed numerals",
+        "highlights missed: 'The kitchen. And the master bedroom' carries no positive cue word in-sentence"
+      ],
+      "notes": "Buyer called the home beautiful but thinks it is about $30k overpriced, the yard too small, and explicitly declined a second showing or offer."
+    },
+    {
+      "id": "golden-003",
+      "outcome": "assistant-said-end-call-phrase",
+      "transcript": "AI: Hi. This is the assistant for the listing team. Do you have 2 quick minutes to share feedback on the home you toured?\nUser: Yes. I do.\nAI: Great. What was your overall impression of the home?\nUser: It's a beautiful home. It's very nice. I liked it, but it's not the right home for us.\nAI: Thanks for sharing. What did you like most about the home?\nUser: Well, I mean, the kitchen and the master bedroom are beautiful, but the backyard is way too small. And the house is just overall too small for me and my family.\nAI: I appreciate your insights. Did you have any concerns about the property?\nUser: Well, other than the ones I just told you, yeah.\nAI: Thanks for letting me know. Does the price feel right given the home's features and size?\nUser: I think the house is a little lower priced. Probably by about 20000 dollars.\nAI: Understood. If you are still looking, could you share your budget range?\nUser: Between 5 and 600.\nAI: Thank you for that information. Would you like to schedule a 2nd showing? For this home, or are you interested in renting\nUser: No. I I just told you I just told you that the home's not right for us. I don't see it again or write an offer.\nAI: you for your time and feedback today. Goodbye. Functions and call.\n",
+      "expected": {
+        "sentiment": "positive",
+        "hot_signal": false,
+        "highlights": [
+          "kitchen",
+          "bedroom"
+        ],
+        "concerns": [
+          "backyard",
+          "size"
+        ],
+        "price_opinion": "underpriced",
+        "budget_min": 500000,
+        "budget_max": 600000
+      },
+      "deterministic_v1": {
+        "sentiment": "positive",
+        "hot_signal": true,
+        "highlights": [],
+        "concerns": [
+          "kitchen",
+          "backyard",
+          "yard",
+          "bedroom"
+        ],
+        "price_opinion": null,
+        "budget_min": null,
+        "budget_max": null,
+        "summary": "Sentiment: positive. HOT: buyer signaled offer intent. Concerns: kitchen, backyard, yard, bedroom."
+      },
+      "known_gaps_v1": [
+        "hot_signal FALSE POSITIVE: 'don't ... see it again or write an offer'",
+        "price_opinion missed: 'lower priced ... by about 20000 dollars' (underpriced) has no cue",
+        "budget missed: 'between 5 and 600' mixed shorthand",
+        "kitchen/bedroom wrongly in concerns: praised in a sentence that also contains 'too small'"
+      ],
+      "notes": "Buyer liked the home ('beautiful', 'very nice') but it is too small for the family; thinks it is priced about $20k LOW (underpriced — a value outside v1's overpriced/fair vocabulary). Budget 'between 5 and 600' = $500k-$600k."
+    },
+    {
+      "id": "golden-004",
+      "outcome": "assistant-said-end-call-phrase",
+      "transcript": "User: Hello?\nAI: Hi. This is the assistant for the listing team. Do you have 2 quick minutes? To share feedback on the home you toured?\nUser: Yeah.\nAI: Great. What was your overall impression of the home?\nUser: I thought the home was beautiful, but thought it was a little bit too small for my family. And I I need way more I need a bigger yard, way bigger yard than that.\nAI: Got it. Thank you for sharing that. It sounds like space both inside and outside, is really important to you. Could you tell me a bit more about you're looking for so we can help find better matches?\nUser: Yeah. I like the house. I just would like it to have 1 more bedroom and just a little bit bigger living space And then I wanna be on at least, like, a half acre, if not up to 2 acres.\nAI: That makes sense. Thank you for letting me know what you're looking for. I'll share that with the team so they can help find homes that that fit those needs. Thank you for your time and feedback. Have a great day.\nUser: Thank you.\nAI: Thank you for your time and feedback. Have a great day. Goodbye.\n",
+      "expected": {
+        "sentiment": "positive",
+        "hot_signal": false,
+        "highlights": [
+          "layout"
+        ],
+        "concerns": [
+          "size",
+          "yard"
+        ],
+        "price_opinion": null,
+        "budget_min": null,
+        "budget_max": null
+      },
+      "deterministic_v1": {
+        "sentiment": "positive",
+        "hot_signal": false,
+        "highlights": [],
+        "concerns": [],
+        "price_opinion": null,
+        "budget_min": null,
+        "budget_max": null,
+        "summary": "Sentiment: positive."
+      },
+      "known_gaps_v1": [
+        "concerns empty: 'too small' sits in a mixed-cue sentence and the acreage/space requests carry no negative cue word",
+        "buyer search criteria (extra bedroom, half-acre to 2 acres) not captured anywhere in the schema"
+      ],
+      "notes": "Buyer likes the house but needs one more bedroom, more living space, and 0.5-2 acres. No price or budget discussed. Adaptive-prompt call: assistant pivoted to capturing search criteria instead of pushing a second showing."
+    },
+    {
+      "id": "golden-005",
+      "outcome": "assistant-said-end-call-phrase",
+      "transcript": "User: Hello?\nAI: Hi. This is the assistant for the listing team. Do you have 2 quick minutes? To share feedback on the home you toured?\nUser: Yes.\nAI: Great. What was your overall impression of the home?\nUser: I thought it was a beautiful home. I thought it was a little overpriced. It was a little too small for me and my family, and I would I would want more land. It was on.\nAI: Got it. It sounds like you're looking for something with more space. Both inside and out.\nUser: Oh, yeah. Yes.\nAI: Could you share a bit about what you're looking for so we can send you better matches?\nUser: Absolutely. I'd like I'd like that home layout, but I wanted to be bigger with an extra bedroom, and I want it to be on at least half an acre. Preferably 2 acres.\nAI: Thanks for sharing those details. Keep an eye out for homes that that fit that description. Thank you for your time and feedback. Have a great day.\nUser: You too. Thank you.\nAI: Goodbye.\n",
+      "expected": {
+        "sentiment": "neutral",
+        "hot_signal": false,
+        "highlights": [
+          "layout"
+        ],
+        "concerns": [
+          "size",
+          "land"
+        ],
+        "price_opinion": "overpriced",
+        "budget_min": null,
+        "budget_max": null
+      },
+      "deterministic_v1": {
+        "sentiment": "positive",
+        "hot_signal": false,
+        "highlights": [],
+        "concerns": [],
+        "price_opinion": "overpriced",
+        "budget_min": null,
+        "budget_max": null,
+        "summary": "Sentiment: positive. Price opinion: overpriced."
+      },
+      "known_gaps_v1": [
+        "concerns empty: size and land complaints carry no in-sentence cue",
+        "buyer search criteria not captured"
+      ],
+      "notes": "Buyer: beautiful home but a little overpriced, too small, wants more land (same layout, extra bedroom, 0.5-2 acres). No budget given."
+    }
+  ]
+}
