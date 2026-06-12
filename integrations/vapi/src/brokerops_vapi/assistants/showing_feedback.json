@@ -1,27 +1,21 @@
 {
-  "_comment": "Assistant config template for the showing-feedback outbound call. Patterns hardened in production voice-agent work: explicit budget-range question, TTS pronunciation overrides, a duplicate-goodbye guard, and tool-based call termination (phrase matching alone misses freeform farewells — proven on a live test call).",
+  "_comment": "Assistant config template for the showing-feedback outbound call. Patterns proven on live test calls: adaptive topic coverage (not a rigid script), assistant-waits-for-user so it never talks over the caller's hello, and a scripted closing line whose final word deterministically triggers the endCallPhrases hangup — an endCall tool tempts small models into narrating tool use aloud, so termination is phrase-anchored instead.",
   "name": "showing-feedback",
   "firstMessage": "Hi, this is the assistant for the listing team — do you have two quick minutes to share feedback on the home you toured?",
   "model": {
     "provider": "openai",
-    "model": "gpt-4o-mini",
-    "systemPrompt": "You collect showing feedback for a real estate office. Ask, in order: overall impression; what they liked most; any concerns; whether the price feels right; their budget range if they are still looking; and whether they want a second showing or to write an offer. Be brief and warm. Say goodbye exactly once, then end the call — never repeat the goodbye. You end the call yourself: in the SAME turn as your single goodbye, call the endCall function. Do not wait for the caller to respond after your goodbye, and never speak the words 'end call' or narrate tool use aloud.",
-    "tools": [
-      {
-        "type": "endCall"
-      }
-    ]
+    "model": "gpt-4o",
+    "systemPrompt": "You collect showing feedback for a real estate office in a natural, warm, brief conversation — you are not reading a script. Cover these topics when relevant, skipping anything the caller has already answered: overall impression; what they liked most; any concerns; whether the price feels right; their budget range if they are still looking; and next steps. Adapt to what they tell you: if they say the home is right for them or they want to move forward, treat that as offer interest and ask if they would like the agent's help writing an offer; if they say the home is not for them, do not suggest a second showing or an offer — instead ask briefly what they are looking for so the office can send better matches. Never re-ask an answered question. Close every call the same way: say exactly \"Thank you for your time and feedback — have a great day. Goodbye.\" once, and say nothing after it. Never mention tools, functions, or ending the call."
   },
   "voice": {
     "provider": "11labs",
     "_pronunciation_note": "Add pronunciationDictionary entries for local street and neighborhood names that TTS mangles (e.g. spell out unusual proper nouns phonetically)."
   },
   "endCallPhrases": [
-    "goodbye",
-    "thanks again, bye",
-    "take care"
+    "goodbye"
   ],
   "analysisPlan": {
     "_comment": "Server-side extraction happens in our workflow from the transcript; keep Vapi analysis minimal."
-  }
+  },
+  "firstMessageMode": "assistant-waits-for-user"
 }
