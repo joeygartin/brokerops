@@ -11,7 +11,7 @@ from brokerops_mls_reso.server import create_app
 @pytest.fixture
 def adapter() -> ResoMLSAdapter:
     transport = httpx.ASGITransport(app=create_app())
-    client = httpx.AsyncClient(transport=transport, base_url="http://mls.test")
+    client = httpx.AsyncClient(transport=transport, base_url="http://mls.test/odata")
     return ResoMLSAdapter(base_url="http://mls.test", client=client)
 
 

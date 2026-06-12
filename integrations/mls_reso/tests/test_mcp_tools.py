@@ -11,7 +11,7 @@ from brokerops_mls_reso.server import create_app
 @pytest.fixture(autouse=True)
 def in_process_adapter(monkeypatch: pytest.MonkeyPatch) -> None:
     transport = httpx.ASGITransport(app=create_app())
-    client = httpx.AsyncClient(transport=transport, base_url="http://mls.test")
+    client = httpx.AsyncClient(transport=transport, base_url="http://mls.test/odata")
     adapter = ResoMLSAdapter(base_url="http://mls.test", client=client)
     monkeypatch.setattr(mcp_server, "_adapter", lambda: adapter)
 

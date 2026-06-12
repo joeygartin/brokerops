@@ -21,13 +21,15 @@ class ListingMedia(BaseModel):
 class Listing(BaseModel):
     mls_id: str
     status: ListingStatus
-    address: str
+    # Live feeds omit these for non-residential inventory (land, commercial)
+    # and the address for unaddressed parcels — absence is real data, not error.
+    address: str = ""
     city: str
     state: str
     postal_code: str
     list_price: int = Field(description="List price in whole dollars")
-    bedrooms: int
-    bathrooms: int
+    bedrooms: int | None = None
+    bathrooms: int | None = None
     living_area_sqft: int | None = None
     year_built: int | None = None
     agent_id: str

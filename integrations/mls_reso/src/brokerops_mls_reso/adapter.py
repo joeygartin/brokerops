@@ -1,7 +1,10 @@
 """MLSPort adapter speaking the RESO Web API (OData).
 
-Runs identically against the bundled mock and a live RESO endpoint — swapping
-MLS providers is a base-URL + auth change, with no signature changes upstream.
+The base URL is the OData service root (the segment that contains /Property
+and /Media — e.g. the mock's http://mls:8001/odata, or an MLS vendor's
+https://…/Reso/OData). Runs identically against the bundled mock and a live
+RESO endpoint — swapping MLS providers is a base-URL + auth change, with no
+signature changes upstream.
 """
 
 from collections.abc import Mapping
@@ -31,13 +34,13 @@ def listing_from_reso(record: Mapping[str, Any]) -> Listing:
     return Listing(
         mls_id=record["ListingKey"],
         status=status,
-        address=record["UnparsedAddress"],
+        address=record.get("UnparsedAddress") or "",
         city=record["City"],
         state=record["StateOrProvince"],
         postal_code=record["PostalCode"],
         list_price=record["ListPrice"],
-        bedrooms=record["BedroomsTotal"],
-        bathrooms=record["BathroomsTotalInteger"],
+        bedrooms=record.get("BedroomsTotal"),
+        bathrooms=record.get("BathroomsTotalInteger"),
         living_area_sqft=record.get("LivingArea"),
         year_built=record.get("YearBuilt"),
         agent_id=record["ListAgentKey"],
@@ -90,13 +93,13 @@ class ResoMLSAdapter:
             clauses.append(f"BedroomsTotal gt {query.min_bedrooms - 1}")
         if clauses:
             params["$filter"] = " and ".join(clauses)
-        response = await self._client.get("/odata/Property", params=params)
+        response = await self._client.get("Property", params=params)
         response.raise_for_status()
         return [listing_from_reso(record) for record in response.json()["value"]]
 
     async def get_listing(self, listing_key: str) -> Listing | None:
         safe_key = listing_key.replace("'", "''")
-        response = await self._client.get(f"/odata/Property('{safe_key}')")
+        response = await self._client.get(f"Property('{safe_key}')")
         if response.status_code == 404:
             return None
         response.raise_for_status()
@@ -107,6 +110,6 @@ class ResoMLSAdapter:
             "$filter": f"ResourceRecordKey eq {_odata_string(listing_key)}",
             "$orderby": "Order",
         }
-        response = await self._client.get("/odata/Media", params=params)
+        response = await self._client.get("Media", params=params)
         response.raise_for_status()
         return [media_from_reso(record) for record in response.json()["value"]]

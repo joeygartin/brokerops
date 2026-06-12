@@ -14,8 +14,8 @@ export type Listing = {
   state: string;
   postal_code: string;
   list_price: number;
-  bedrooms: number;
-  bathrooms: number;
+  bedrooms: number | null;
+  bathrooms: number | null;
   living_area_sqft: number | null;
   year_built: number | null;
   agent_id: string;

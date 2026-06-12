@@ -22,16 +22,18 @@ from brokerops_vapi.adapter import VAPI_API_BASE, VapiVoiceAdapter
 INTERNAL = "internal"
 
 
-def _internal_client(app: FastAPI, **client_kwargs: object) -> httpx.AsyncClient:
+def _internal_client(
+    app: FastAPI, base_url: str = "http://stub.internal", **client_kwargs: object
+) -> httpx.AsyncClient:
     return httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app),
-        base_url="http://stub.internal",
+        base_url=base_url,
         **client_kwargs,  # type: ignore[arg-type]
     )
 
 
 def reso_base_url() -> str:
-    return os.environ.get("RESO_BASE_URL", "http://localhost:8001")
+    return os.environ.get("RESO_BASE_URL", "http://localhost:8001/odata")
 
 
 def build_mls_adapter() -> ResoMLSAdapter:
@@ -40,7 +42,8 @@ def build_mls_adapter() -> ResoMLSAdapter:
         from brokerops_mls_reso.server import create_app
 
         return ResoMLSAdapter(
-            base_url="http://stub.internal", client=_internal_client(create_app())
+            base_url="http://stub.internal/odata",
+            client=_internal_client(create_app(), base_url="http://stub.internal/odata"),
         )
     return ResoMLSAdapter(base_url=base_url, auth_token=os.environ.get("RESO_AUTH_TOKEN") or None)
 

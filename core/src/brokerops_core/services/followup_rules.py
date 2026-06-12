@@ -5,7 +5,8 @@ from brokerops_core.models.marketing import MarketingDraft
 
 
 def is_marketable(listing: Listing) -> bool:
-    return listing.status is ListingStatus.ACTIVE
+    # Address is load-bearing: the flyer task and the draft body both need it.
+    return listing.status is ListingStatus.ACTIVE and bool(listing.address)
 
 
 def plan_marketing_tasks(listing: Listing, draft: MarketingDraft) -> list[str]:

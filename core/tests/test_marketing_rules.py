@@ -45,3 +45,23 @@ def test_luxury_listings_get_extra_task() -> None:
     luxury = plan_marketing_tasks(luxury_listing, draft_marketing(luxury_listing))
     assert len(luxury) == len(base) + 1
     assert any("luxury" in task.lower() for task in luxury)
+
+
+def _land_listing() -> Listing:
+    # Live MLS feeds carry land/commercial inventory with no room counts.
+    return _listing().model_copy(
+        update={"bedrooms": None, "bathrooms": None, "living_area_sqft": None}
+    )
+
+
+def test_land_listing_drafts_without_room_counts() -> None:
+    draft = draft_marketing(_land_listing())
+    assert draft.headline == "Just Listed in Rivermouth — $489,000"
+    assert "None" not in draft.headline
+    assert "None" not in draft.body
+
+
+def test_addressless_listing_is_not_marketable() -> None:
+    # The flyer task and draft body are address-grounded; an unaddressed
+    # parcel can be active in the feed but is not marketable here.
+    assert not is_marketable(_listing().model_copy(update={"address": ""}))

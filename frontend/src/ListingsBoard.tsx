@@ -95,7 +95,9 @@ function ListingCard({
       </div>
       <div style={{ margin: "0.4rem 0" }}>{listing.address}</div>
       <div style={{ color: "#57606a", fontSize: "0.9rem" }}>
-        {listing.bedrooms} bd · {listing.bathrooms} ba
+        {listing.bedrooms != null && listing.bathrooms != null
+          ? `${listing.bedrooms} bd · ${listing.bathrooms} ba`
+          : "—"}
         {listing.living_area_sqft ? ` · ${listing.living_area_sqft.toLocaleString()} sqft` : ""}
         {listing.year_built ? ` · built ${listing.year_built}` : ""}
       </div>

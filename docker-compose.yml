@@ -51,7 +51,7 @@ services:
       # .env) with the bundled stub as the default — `docker compose up` stays
       # zero-credential, and a .env flips any integration to its real
       # counterpart with no file edits (see .env.example).
-      RESO_BASE_URL: ${RESO_BASE_URL:-http://mls:8001}
+      RESO_BASE_URL: ${RESO_BASE_URL:-http://mls:8001/odata}
       RESO_AUTH_TOKEN: ${RESO_AUTH_TOKEN:-}
       DATABASE_URL: postgresql://brokerops:brokerops@db:5432/brokerops_demo
       FUB_BASE_URL: ${FUB_BASE_URL:-http://fub:8002}

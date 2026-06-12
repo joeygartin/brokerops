@@ -12,14 +12,19 @@ DEFAULT_CHANNELS = ["mls_portals", "facebook", "email_list"]
 
 
 def draft_marketing(listing: Listing) -> MarketingDraft:
+    has_rooms = listing.bedrooms is not None and listing.bathrooms is not None
     sqft = f" | {listing.living_area_sqft:,} sqft" if listing.living_area_sqft else ""
-    headline = (
-        f"Just Listed: {listing.bedrooms} bed / {listing.bathrooms} bath in {listing.city} — "
-        f"${listing.list_price:,}"
-    )
+    price = f"{listing.city} — ${listing.list_price:,}"
+    if has_rooms:
+        headline = f"Just Listed: {listing.bedrooms} bed / {listing.bathrooms} bath in {price}"
+        facts = f"{listing.bedrooms} bd / {listing.bathrooms} ba"
+    else:
+        # Land and commercial inventory has no room counts to lead with.
+        headline = f"Just Listed in {price}"
+        facts = listing.city
     body = (
         f"{listing.address}\n"
-        f"{listing.bedrooms} bd / {listing.bathrooms} ba{sqft}"
+        f"{facts}{sqft}"
         f"{f' | built {listing.year_built}' if listing.year_built else ''}\n\n"
         f"{listing.remarks}\n\n"
         f"Contact {listing.agent_name} to schedule a showing. MLS# {listing.mls_id}."
