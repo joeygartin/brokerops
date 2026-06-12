@@ -61,6 +61,9 @@ services:
       VAPI_ASSISTANT_ID: ${VAPI_ASSISTANT_ID:-demo-assistant}
       VAPI_PHONE_NUMBER_ID: ${VAPI_PHONE_NUMBER_ID:-}
       VAPI_WEBHOOK_SECRET: ${VAPI_WEBHOOK_SECRET:-demo-webhook-secret}
+      LANGCHAIN_TRACING_V2: ${LANGCHAIN_TRACING_V2:-false}
+      LANGCHAIN_API_KEY: ${LANGCHAIN_API_KEY:-}
+      LANGCHAIN_PROJECT: ${LANGCHAIN_PROJECT:-brokerops-local}
     ports:
       - "8000:8000"
     depends_on:
