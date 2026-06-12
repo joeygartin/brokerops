@@ -23,7 +23,9 @@ domain isolation, and per-client GCP deploys via Terraform.
 4. **RESO-real mock.** The bundled MLS implements a genuine subset of the RESO Web
    API (OData `$filter` with eq/gt/lt/and/or, `$select`, `$top`, `$skip`,
    `$orderby`; RESO Data Dictionary field names). Swapping to a live MLS feed is a
-   base-URL + auth change, pinned by contract tests — not a rewrite.
+   base-URL + bearer-token change, pinned by contract tests — proven against a
+   real vendor's RESO Web API, which also taught the domain model that sparse
+   fields (no rooms, no price, no address) are data, not errors.
 5. **State is durable.** Workflow state lives in Postgres under either engine
    (LangGraph's checkpointer; ADK's database session service). A workflow paused on
    a human approval survives restarts, deploys, and Cloud Run cold starts — proven
@@ -154,7 +156,7 @@ external health checks on `/readyz` because Google's frontend reserves `/healthz
 
 ## Verification
 
-~110 tests: OData contract tests pinning the RESO subset, adapter tests against the
+~120 tests: OData contract tests pinning the RESO subset, adapter tests against the
 stubs (the same shapes the real APIs return), workflow tests for every branch of all
 three workflows on **both engines**, API-level flow tests, a Postgres
 restart-survival proof per engine (runs in CI against a service container), and a

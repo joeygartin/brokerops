@@ -63,7 +63,7 @@ See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the full picture and
 
 ```bash
 uv sync --all-packages   # install workspace deps
-make test                # ~110 tests (contract, workflow x2 engines, API flow,
+make test                # ~120 tests (contract, workflow x2 engines, API flow,
                          # restart-survival per engine)
 ORCHESTRATOR=adk make demo   # the same demo on the ADK engine
 make lint                # ruff + mypy strict
@@ -104,21 +104,24 @@ docs/                    # ARCHITECTURE.md · DEMO.md · ADRs/
 
 **Done:** V1 — all three workflows end-to-end with durable HITL, demo mode, and
 per-client GCP deploys. V2 — the Google ADK engine, side-by-side with LangGraph
-and CI-proven equivalent (ADR-0004).
+and CI-proven equivalent (ADR-0004). Live-integration proofs for two of the
+three external systems: the MLS adapter runs against a live RESO Web API feed
+(real-feed gaps — sparse fields, fractional prices, vendor path casing — found
+and fixed), and the voice path is proven end-to-end with real phone calls
+(webhook → extraction → feedback → CRM sync; assistant behavior hardened over
+five live calls, captured in the shipped spec and ADR-0005).
 
 **Next, in rough order — each lands when a demo- or client-path justifies it,
 never speculatively:**
 
-- **Live-credential proofs:** point the CRM adapter at a real FollowUpBoss
-  sandbox and the voice adapter at a real Vapi number. The stubs already speak
-  the real APIs' shapes, so each flip is an env-var change plus a verification
-  pass — no code.
-- **Demo recording:** a 60–90s screen capture of the docs/DEMO.md path.
+- **Live CRM proof:** point the CRM adapter at a clean FollowUpBoss account —
+  an env-var flip like the other two. One known open question: whether the
+  real API accepts tasks without a person attached (the stub allows it).
 - **LLM-backed transcript extraction:** swap the deterministic extractor's
-  function body behind the same Pydantic schema (the upgrade path pinned by
-  ADR-0002).
-- **Live RESO MLS feed:** base URL + OAuth against a real MLS; the OData
-  contract tests pin the surface.
+  function body behind the same Pydantic schema (ADR-0002). Live calls made
+  the case: natural speech ("between five fifty and six") routinely defeats
+  the deterministic budget/price parsing.
+- **Demo recording:** a 60–90s screen capture of the docs/DEMO.md path.
 - **Loosen the `google-adk` pin** once its invocation-resumability API leaves
   experimental status (tracked in ADR-0004).
 - **Documented-but-dormant:** real auth (Identity Platform), MCP servers as
