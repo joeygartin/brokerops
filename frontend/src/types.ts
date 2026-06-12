@@ -13,7 +13,7 @@ export type Listing = {
   city: string;
   state: string;
   postal_code: string;
-  list_price: number;
+  list_price: number | null;
   bedrooms: number | null;
   bathrooms: number | null;
   living_area_sqft: number | null;

@@ -33,7 +33,10 @@ class VapiVoiceAdapter:
         api_key: str,
         base_url: str = VAPI_API_BASE,
         client: httpx.AsyncClient | None = None,
+        phone_number_id: str | None = None,
     ) -> None:
+        # Real outbound calls must name the from-number; the stub doesn't care.
+        self._phone_number_id = phone_number_id
         self._client = client or httpx.AsyncClient(
             base_url=base_url,
             headers={"Authorization": f"Bearer {api_key}"},
@@ -47,6 +50,8 @@ class VapiVoiceAdapter:
             "assistantId": assistant_id,
             "metadata": {**context, "contact_id": contact_id},
         }
+        if self._phone_number_id:
+            body["phoneNumberId"] = self._phone_number_id
         phone = context.get("phone")
         if phone:
             body["customer"] = {"number": phone}

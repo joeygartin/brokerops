@@ -65,3 +65,7 @@ def test_addressless_listing_is_not_marketable() -> None:
     # The flyer task and draft body are address-grounded; an unaddressed
     # parcel can be active in the feed but is not marketable here.
     assert not is_marketable(_listing().model_copy(update={"address": ""}))
+
+
+def test_unpriced_listing_is_not_marketable() -> None:
+    assert not is_marketable(_listing().model_copy(update={"list_price": None}))

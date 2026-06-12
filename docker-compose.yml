@@ -59,6 +59,7 @@ services:
       VAPI_BASE_URL: ${VAPI_BASE_URL:-http://vapi:8003}
       VAPI_API_KEY: ${VAPI_API_KEY:-demo-stub-key}
       VAPI_ASSISTANT_ID: ${VAPI_ASSISTANT_ID:-demo-assistant}
+      VAPI_PHONE_NUMBER_ID: ${VAPI_PHONE_NUMBER_ID:-}
       VAPI_WEBHOOK_SECRET: ${VAPI_WEBHOOK_SECRET:-demo-webhook-secret}
     ports:
       - "8000:8000"

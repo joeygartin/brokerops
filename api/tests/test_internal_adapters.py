@@ -20,7 +20,8 @@ def internal_env(monkeypatch: pytest.MonkeyPatch) -> None:
 async def test_mls_internal_serves_seed() -> None:
     listings = await build_mls_adapter().search_listings(ListingQuery(limit=5))
     assert len(listings) == 5
-    assert listings[0].list_price >= listings[-1].list_price
+    first, last = listings[0].list_price, listings[-1].list_price
+    assert first is not None and last is not None and first >= last
 
 
 async def test_crm_internal_serves_stub_contacts() -> None:

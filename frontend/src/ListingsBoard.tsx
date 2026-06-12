@@ -79,7 +79,7 @@ function ListingCard({
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-        <strong style={{ fontSize: "1.15rem" }}>{price.format(listing.list_price)}</strong>
+        <strong style={{ fontSize: "1.15rem" }}>{listing.list_price != null ? price.format(listing.list_price) : "Price on request"}</strong>
         <span
           style={{
             color: "#fff",

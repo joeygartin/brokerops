@@ -5,8 +5,14 @@ from brokerops_core.models.marketing import MarketingDraft
 
 
 def is_marketable(listing: Listing) -> bool:
-    # Address is load-bearing: the flyer task and the draft body both need it.
-    return listing.status is ListingStatus.ACTIVE and bool(listing.address)
+    # Address and price are load-bearing: the flyer task, the draft, and the
+    # luxury-list rule all need them. Live feeds carry unpriced/unaddressed
+    # records; they are real listings, just not marketable here.
+    return (
+        listing.status is ListingStatus.ACTIVE
+        and bool(listing.address)
+        and listing.list_price is not None
+    )
 
 
 def plan_marketing_tasks(listing: Listing, draft: MarketingDraft) -> list[str]:
@@ -20,6 +26,6 @@ def plan_marketing_tasks(listing: Listing, draft: MarketingDraft) -> list[str]:
         f"Add listing flyer for {listing.address} to the office print queue",
         f"Schedule first open house for {listing.mls_id}",
     ]
-    if listing.list_price >= 750000:
+    if listing.list_price is not None and listing.list_price >= 750000:
         tasks.append(f"Notify luxury buyer list about {listing.mls_id}")
     return tasks

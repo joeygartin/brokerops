@@ -31,14 +31,16 @@ def listing_from_reso(record: Mapping[str, Any]) -> Listing:
     status = RESO_STATUS_TO_CORE.get(raw_status)
     if status is None:
         raise ValueError(f"unmapped RESO StandardStatus {raw_status!r}")
+    # Live feeds carry fractional prices; the domain keeps whole dollars.
+    raw_price = record.get("ListPrice")
     return Listing(
         mls_id=record["ListingKey"],
         status=status,
         address=record.get("UnparsedAddress") or "",
-        city=record["City"],
+        city=record.get("City") or "",
         state=record["StateOrProvince"],
         postal_code=record["PostalCode"],
-        list_price=record["ListPrice"],
+        list_price=None if raw_price is None else round(raw_price),
         bedrooms=record.get("BedroomsTotal"),
         bathrooms=record.get("BathroomsTotalInteger"),
         living_area_sqft=record.get("LivingArea"),

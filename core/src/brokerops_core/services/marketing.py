@@ -14,13 +14,14 @@ DEFAULT_CHANNELS = ["mls_portals", "facebook", "email_list"]
 def draft_marketing(listing: Listing) -> MarketingDraft:
     has_rooms = listing.bedrooms is not None and listing.bathrooms is not None
     sqft = f" | {listing.living_area_sqft:,} sqft" if listing.living_area_sqft else ""
-    price = f"{listing.city} — ${listing.list_price:,}"
+    where = f" in {listing.city}" if listing.city else ""
+    price = f" — ${listing.list_price:,}" if listing.list_price is not None else ""
     if has_rooms:
-        headline = f"Just Listed: {listing.bedrooms} bed / {listing.bathrooms} bath in {price}"
+        headline = f"Just Listed: {listing.bedrooms} bed / {listing.bathrooms} bath{where}{price}"
         facts = f"{listing.bedrooms} bd / {listing.bathrooms} ba"
     else:
         # Land and commercial inventory has no room counts to lead with.
-        headline = f"Just Listed in {price}"
+        headline = f"Just Listed{where}{price}"
         facts = listing.city
     body = (
         f"{listing.address}\n"

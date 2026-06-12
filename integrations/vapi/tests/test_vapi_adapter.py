@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 
@@ -39,3 +41,25 @@ async def test_scenario_override_and_missing_call(adapter: VapiVoiceAdapter) -> 
     assert record is not None
     assert "overpriced" in record.transcript
     assert await adapter.get_call("call-999999") is None
+
+
+async def test_outbound_call_includes_phone_number_id_when_configured() -> None:
+    seen: dict[str, object] = {}
+
+    def record_body(request: httpx.Request) -> httpx.Response:
+        seen.update(json.loads(request.content))
+        return httpx.Response(201, json={"id": "call-test-1"})
+
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(record_body), base_url="http://vapi.test"
+    )
+    adapter = VapiVoiceAdapter(
+        api_key="stub-key",
+        base_url="http://vapi.test",
+        client=client,
+        phone_number_id="pn-123",
+    )
+    call_id = await adapter.start_outbound_call("101", "asst-1", {"phone": "+15551234567"})
+    assert call_id == "call-test-1"
+    assert seen["phoneNumberId"] == "pn-123"
+    assert seen["customer"] == {"number": "+15551234567"}

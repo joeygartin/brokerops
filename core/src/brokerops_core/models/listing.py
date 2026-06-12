@@ -24,10 +24,10 @@ class Listing(BaseModel):
     # Live feeds omit these for non-residential inventory (land, commercial)
     # and the address for unaddressed parcels — absence is real data, not error.
     address: str = ""
-    city: str
+    city: str = ""
     state: str
     postal_code: str
-    list_price: int = Field(description="List price in whole dollars")
+    list_price: int | None = Field(default=None, description="List price in whole dollars")
     bedrooms: int | None = None
     bathrooms: int | None = None
     living_area_sqft: int | None = None

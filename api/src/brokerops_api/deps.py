@@ -73,7 +73,11 @@ def build_voice_adapter() -> VapiVoiceAdapter:
             base_url="http://stub.internal",
             client=_internal_client(create_stub_app()),
         )
-    return VapiVoiceAdapter(api_key=api_key, base_url=base_url)
+    return VapiVoiceAdapter(
+        api_key=api_key,
+        base_url=base_url,
+        phone_number_id=os.environ.get("VAPI_PHONE_NUMBER_ID") or None,
+    )
 
 
 @lru_cache(maxsize=1)
