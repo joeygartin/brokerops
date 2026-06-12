@@ -100,6 +100,30 @@ infra/                   # Terraform per-client module + bootstrap
 docs/                    # ARCHITECTURE.md · DEMO.md · ADRs/
 ```
 
+## Status & roadmap
+
+**Done:** V1 — all three workflows end-to-end with durable HITL, demo mode, and
+per-client GCP deploys. V2 — the Google ADK engine, side-by-side with LangGraph
+and CI-proven equivalent (ADR-0004).
+
+**Next, in rough order — each lands when a demo- or client-path justifies it,
+never speculatively:**
+
+- **Live-credential proofs:** point the CRM adapter at a real FollowUpBoss
+  sandbox and the voice adapter at a real Vapi number. The stubs already speak
+  the real APIs' shapes, so each flip is an env-var change plus a verification
+  pass — no code.
+- **Demo recording:** a 60–90s screen capture of the docs/DEMO.md path.
+- **LLM-backed transcript extraction:** swap the deterministic extractor's
+  function body behind the same Pydantic schema (the upgrade path pinned by
+  ADR-0002).
+- **Live RESO MLS feed:** base URL + OAuth against a real MLS; the OData
+  contract tests pin the surface.
+- **Loosen the `google-adk` pin** once its invocation-resumability API leaves
+  experimental status (tracked in ADR-0004).
+- **Documented-but-dormant:** real auth (Identity Platform), MCP servers as
+  separate Cloud Run services, and caching (revisit triggers in ADR-0001).
+
 ## License
 
 Apache-2.0 — see [LICENSE](LICENSE).
