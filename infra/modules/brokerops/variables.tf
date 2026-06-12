@@ -56,6 +56,16 @@ variable "vapi_assistant_id" {
   default     = "demo-assistant"
 }
 
+variable "orchestrator" {
+  description = "Workflow engine: langgraph (default) or adk — same workflows, approvals, and API surface either way (ADR-0004)."
+  type        = string
+  default     = "langgraph"
+  validation {
+    condition     = contains(["langgraph", "adk"], var.orchestrator)
+    error_message = "orchestrator must be \"langgraph\" or \"adk\"."
+  }
+}
+
 # Integration endpoints. The sentinel "internal" runs that integration's stub
 # in-process inside the api container — a demo client deploys with zero
 # external credentials. Real clients point these at the live APIs.

@@ -34,6 +34,7 @@ module "client" {
   frontend_image    = var.frontend_image
   enable_langsmith  = var.enable_langsmith
   enable_redis      = var.enable_redis
+  orchestrator      = var.orchestrator
   vapi_assistant_id = var.vapi_assistant_id
   reso_base_url     = var.reso_base_url
   fub_base_url      = var.fub_base_url

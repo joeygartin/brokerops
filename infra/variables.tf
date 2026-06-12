@@ -39,6 +39,11 @@ variable "vapi_assistant_id" {
   default = "demo-assistant"
 }
 
+variable "orchestrator" {
+  type    = string
+  default = "langgraph"
+}
+
 variable "reso_base_url" {
   type    = string
   default = "internal"

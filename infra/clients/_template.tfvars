@@ -9,9 +9,14 @@ region      = "us-west1"
 api_image      = "us-west1-docker.pkg.dev/your-gcp-project-id/brokerops/api:latest"
 frontend_image = "us-west1-docker.pkg.dev/your-gcp-project-id/brokerops/frontend:latest"
 
-# Real client integrations (drop these lines to run the bundled stubs):
+# Real client integrations (drop these lines to run the bundled stubs).
+# Keys go to Secret Manager via `make secrets` — never here.
+# reso_base_url = "https://reso.your-mls.example/odata"   # + reso-auth-token secret
 # fub_base_url  = "https://api.followupboss.com/v1"
 # vapi_base_url = "https://api.vapi.ai"
 # vapi_assistant_id = "your-vapi-assistant-id"
+
+# Workflow engine: langgraph (default) or adk — see ADR-0004.
+# orchestrator = "adk"
 
 # enable_langsmith = true

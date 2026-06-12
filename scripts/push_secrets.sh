@@ -30,5 +30,6 @@ push fub-api-key "FollowUpBoss API key"
 push vapi-api-key "Vapi API key"
 push vapi-webhook-secret "Vapi webhook secret"
 push langsmith-api-key "LangSmith API key"
+push reso-auth-token "RESO Web API bearer token (skip for the bundled mock)"
 
 echo "==> done. Deploy a new revision to pick up changes: make deploy CLIENT=${CLIENT}"

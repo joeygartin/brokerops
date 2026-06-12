@@ -3,7 +3,13 @@
 # Placeholders exist so Cloud Run can reference :latest at first deploy.
 
 locals {
-  client_secrets = ["fub-api-key", "vapi-api-key", "vapi-webhook-secret", "langsmith-api-key"]
+  client_secrets = [
+    "fub-api-key",
+    "vapi-api-key",
+    "vapi-webhook-secret",
+    "langsmith-api-key",
+    "reso-auth-token",
+  ]
 }
 
 resource "google_secret_manager_secret" "client" {

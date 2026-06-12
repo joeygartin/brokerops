@@ -32,8 +32,26 @@ resource "google_cloud_run_v2_service" "api" {
       }
 
       env {
+        name  = "ORCHESTRATOR"
+        value = var.orchestrator
+      }
+      env {
         name  = "RESO_BASE_URL"
         value = var.reso_base_url
+      }
+      dynamic "env" {
+        # Live RESO endpoints authorize with a bearer token; the bundled mock
+        # needs none, so demo deploys don't reference the secret at all.
+        for_each = var.reso_base_url == "internal" ? [] : [1]
+        content {
+          name = "RESO_AUTH_TOKEN"
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.client["reso-auth-token"].secret_id
+              version = "latest"
+            }
+          }
+        }
       }
       env {
         name  = "FUB_BASE_URL"
