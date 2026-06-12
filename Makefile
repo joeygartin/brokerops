@@ -15,7 +15,8 @@ lint:
 		integrations/mls_reso/src integrations/mls_reso/tests \
 		integrations/followupboss/src integrations/followupboss/tests \
 		integrations/vapi/src integrations/vapi/tests \
-		orchestration/langgraph/src orchestration/langgraph/tests
+		orchestration/langgraph/src orchestration/langgraph/tests \
+		orchestration/adk/src orchestration/adk/tests
 
 migrate:
 	uv run alembic -c api/alembic.ini upgrade head
