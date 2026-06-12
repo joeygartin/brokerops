@@ -16,7 +16,10 @@ mcp = FastMCP("mls-reso")
 
 
 def _adapter() -> ResoMLSAdapter:
-    return ResoMLSAdapter(os.environ.get("RESO_BASE_URL", "http://localhost:8001"))
+    return ResoMLSAdapter(
+        os.environ.get("RESO_BASE_URL", "http://localhost:8001"),
+        auth_token=os.environ.get("RESO_AUTH_TOKEN") or None,
+    )
 
 
 async def search_listings(

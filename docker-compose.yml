@@ -47,17 +47,19 @@ services:
       # Orchestration engine: langgraph (V1 default) or adk (V2) — same
       # workflows, approvals, and API surface either way.
       ORCHESTRATOR: ${ORCHESTRATOR:-langgraph}
-      RESO_BASE_URL: http://mls:8001
+      # Every integration interpolates from the environment (or a gitignored
+      # .env) with the bundled stub as the default — `docker compose up` stays
+      # zero-credential, and a .env flips any integration to its real
+      # counterpart with no file edits (see .env.example).
+      RESO_BASE_URL: ${RESO_BASE_URL:-http://mls:8001}
+      RESO_AUTH_TOKEN: ${RESO_AUTH_TOKEN:-}
       DATABASE_URL: postgresql://brokerops:brokerops@db:5432/brokerops_demo
-      # Demo mode: the FUB stub. A real sandbox is FUB_BASE_URL +
-      # FUB_API_KEY (from .env / Secret Manager) — same adapter, no code change.
-      FUB_BASE_URL: http://fub:8002
-      FUB_API_KEY: demo-stub-key
-      # Demo mode: the Vapi stub. A real Vapi account is VAPI_BASE_URL removal
-      # + real VAPI_API_KEY + VAPI_ASSISTANT_ID — same adapter, no code change.
-      VAPI_BASE_URL: http://vapi:8003
-      VAPI_API_KEY: demo-stub-key
-      VAPI_WEBHOOK_SECRET: demo-webhook-secret
+      FUB_BASE_URL: ${FUB_BASE_URL:-http://fub:8002}
+      FUB_API_KEY: ${FUB_API_KEY:-demo-stub-key}
+      VAPI_BASE_URL: ${VAPI_BASE_URL:-http://vapi:8003}
+      VAPI_API_KEY: ${VAPI_API_KEY:-demo-stub-key}
+      VAPI_ASSISTANT_ID: ${VAPI_ASSISTANT_ID:-demo-assistant}
+      VAPI_WEBHOOK_SECRET: ${VAPI_WEBHOOK_SECRET:-demo-webhook-secret}
     ports:
       - "8000:8000"
     depends_on:

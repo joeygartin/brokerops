@@ -60,3 +60,23 @@ def test_unmapped_status_raises() -> None:
     }
     with pytest.raises(ValueError, match="unmapped RESO StandardStatus"):
         listing_from_reso(record)
+
+
+async def test_auth_token_is_sent_as_bearer_header() -> None:
+    seen: dict[str, str | None] = {}
+
+    def record_auth(request: httpx.Request) -> httpx.Response:
+        seen["auth"] = request.headers.get("Authorization")
+        return httpx.Response(200, json={"value": []})
+
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(record_auth), base_url="http://mls.test"
+    )
+    adapter = ResoMLSAdapter(base_url="http://mls.test", client=client, auth_token="live-token")
+    await adapter.search_listings(ListingQuery())
+    assert seen["auth"] == "Bearer live-token"
+
+
+async def test_no_auth_header_without_token(adapter: ResoMLSAdapter) -> None:
+    # The mock-backed fixture has no token; requests must carry no Authorization.
+    assert "Authorization" not in adapter._client.headers

@@ -42,7 +42,7 @@ def build_mls_adapter() -> ResoMLSAdapter:
         return ResoMLSAdapter(
             base_url="http://stub.internal", client=_internal_client(create_app())
         )
-    return ResoMLSAdapter(base_url=base_url)
+    return ResoMLSAdapter(base_url=base_url, auth_token=os.environ.get("RESO_AUTH_TOKEN") or None)
 
 
 def build_crm_adapter() -> FUBCRMAdapter:

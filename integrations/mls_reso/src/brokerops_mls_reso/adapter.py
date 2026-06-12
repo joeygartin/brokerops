@@ -58,8 +58,20 @@ def media_from_reso(record: Mapping[str, Any]) -> ListingMedia:
 
 
 class ResoMLSAdapter:
-    def __init__(self, base_url: str, client: httpx.AsyncClient | None = None) -> None:
-        self._client = client or httpx.AsyncClient(base_url=base_url, timeout=10.0)
+    def __init__(
+        self,
+        base_url: str,
+        client: httpx.AsyncClient | None = None,
+        auth_token: str | None = None,
+    ) -> None:
+        # Live RESO endpoints (e.g. an MLS vendor's Web API) authorize with a
+        # bearer token; the bundled mock needs none.
+        headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
+        if client is None:
+            client = httpx.AsyncClient(base_url=base_url, timeout=10.0, headers=headers)
+        elif headers:
+            client.headers.update(headers)
+        self._client = client
 
     async def search_listings(self, query: ListingQuery) -> list[Listing]:
         params: dict[str, str] = {"$top": str(query.limit), "$orderby": "ListPrice desc"}
