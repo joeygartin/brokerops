@@ -84,6 +84,24 @@ async def test_log_call_supplies_fub_required_fields(adapter: FUBCRMAdapter) -> 
     assert payload["outcome"] == "Interested"
 
 
+async def test_log_call_logs_every_feedback_sentiment_as_interested() -> None:
+    # All feedback calls connected, so they log as "Interested" regardless of
+    # sentiment — the sentiment is captured in the note, not the disposition.
+    transport = httpx.ASGITransport(app=create_stub_app())
+    client = httpx.AsyncClient(transport=transport, base_url="http://fub.test", auth=("k", ""))
+    adapter = FUBCRMAdapter(api_key="k", base_url="http://fub.test", client=client)
+    captured: list[dict[str, Any]] = []
+
+    async def capture(request: httpx.Request) -> None:
+        if request.url.path == "/calls":
+            captured.append(json.loads(request.content))
+
+    adapter._client.event_hooks["request"].append(capture)
+    for sentiment in ("positive", "neutral", "negative"):
+        await adapter.log_call("101", outcome=sentiment, note="n/a")
+    assert [c["outcome"] for c in captured] == ["Interested", "Interested", "Interested"]
+
+
 async def test_log_call_omits_unmappable_outcome(adapter: FUBCRMAdapter) -> None:
     # An outcome FUB would reject is dropped (it is optional) rather than sent.
     call_id = await adapter.log_call("101", outcome="vaguely upbeat", note="n/a")

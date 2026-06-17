@@ -17,20 +17,21 @@ from brokerops_followupboss.ratelimit import TokenBucket
 FUB_API_BASE = "https://api.followupboss.com/v1"
 
 # FUB's /calls endpoint accepts a fixed outcome vocabulary. The feedback
-# workflow hands us a sentiment ("positive"/"negative"/"neutral"); the call
-# always connected and feedback was collected, so sentiment maps onto the
-# "did they engage" axis. Already-valid FUB values pass through unchanged.
+# workflow hands us a sentiment ("positive"/"negative"/"neutral"); every such
+# call connected and feedback was collected, so they all log as "Interested" —
+# the sentiment itself lives in the accompanying note, not the call disposition
+# (Joey's call, 2026-06-17). Already-valid FUB values pass through unchanged.
 # Keys are lowercased; an unmapped value means we omit outcome (it is optional).
 _FUB_CALL_OUTCOMES = {
+    "positive": "Interested",
+    "neutral": "Interested",
+    "negative": "Interested",
     "interested": "Interested",
     "not interested": "Not Interested",
     "left message": "Left Message",
     "no answer": "No Answer",
     "busy": "Busy",
     "bad number": "Bad Number",
-    "positive": "Interested",
-    "neutral": "Interested",
-    "negative": "Not Interested",
 }
 
 
