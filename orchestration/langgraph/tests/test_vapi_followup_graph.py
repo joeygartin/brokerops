@@ -70,6 +70,10 @@ async def test_hot_call_pauses_then_creates_hot_task_on_approval() -> None:
     hot_tasks = [t for t in crm.created_tasks if t.name.startswith("HOT LEAD")]
     assert len(hot_tasks) == 1
     assert result["hot_task_id"] == hot_tasks[0].id
+    # resuming past the gate must NOT replay the pre-gate CRM sync — otherwise
+    # every approved hot lead double-writes its note and call log to the CRM
+    assert len(crm.notes) == 1
+    assert len(crm.logged_calls) == 1
 
 
 async def test_hot_signal_dismissed_creates_no_task() -> None:
