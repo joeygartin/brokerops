@@ -1,6 +1,8 @@
 """Adapter contract tests against the stub — the same shapes the real API returns."""
 
+import json
 from datetime import date
+from typing import Any
 
 import httpx
 import pytest
@@ -58,4 +60,31 @@ async def test_add_note_and_log_call_return_ids(adapter: FUBCRMAdapter) -> None:
     note_id = await adapter.add_note("101", "Showing feedback", "Loved the kitchen.")
     assert note_id
     call_id = await adapter.log_call("101", outcome="interested", note="Wants a second showing")
+    assert call_id
+
+
+async def test_log_call_supplies_fub_required_fields(adapter: FUBCRMAdapter) -> None:
+    # FUB demands phone + isIncoming and a fixed outcome vocabulary; the adapter
+    # fills phone from the contact, flags the call outbound, and maps the
+    # feedback sentiment onto FUB's enum. The stub rejects a non-conforming
+    # payload, so a returned id proves the shape is right.
+    captured: list[dict[str, Any]] = []
+
+    async def capture(request: httpx.Request) -> None:
+        if request.url.path == "/calls":
+            captured.append(json.loads(request.content))
+
+    adapter._client.event_hooks["request"].append(capture)
+    call_id = await adapter.log_call("101", outcome="positive", note="Loved it")
+    assert call_id
+    payload = captured[0]
+    assert payload["personId"] == 101
+    assert payload["isIncoming"] is False
+    assert payload["phone"] == "+1-555-0101"
+    assert payload["outcome"] == "Interested"
+
+
+async def test_log_call_omits_unmappable_outcome(adapter: FUBCRMAdapter) -> None:
+    # An outcome FUB would reject is dropped (it is optional) rather than sent.
+    call_id = await adapter.log_call("101", outcome="vaguely upbeat", note="n/a")
     assert call_id

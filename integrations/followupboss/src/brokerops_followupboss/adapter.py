@@ -16,6 +16,23 @@ from brokerops_followupboss.ratelimit import TokenBucket
 
 FUB_API_BASE = "https://api.followupboss.com/v1"
 
+# FUB's /calls endpoint accepts a fixed outcome vocabulary. The feedback
+# workflow hands us a sentiment ("positive"/"negative"/"neutral"); the call
+# always connected and feedback was collected, so sentiment maps onto the
+# "did they engage" axis. Already-valid FUB values pass through unchanged.
+# Keys are lowercased; an unmapped value means we omit outcome (it is optional).
+_FUB_CALL_OUTCOMES = {
+    "interested": "Interested",
+    "not interested": "Not Interested",
+    "left message": "Left Message",
+    "no answer": "No Answer",
+    "busy": "Busy",
+    "bad number": "Bad Number",
+    "positive": "Interested",
+    "neutral": "Interested",
+    "negative": "Not Interested",
+}
+
 
 def contact_from_fub(person: Mapping[str, Any]) -> Contact:
     emails = person.get("emails") or []
@@ -102,15 +119,22 @@ class FUBCRMAdapter:
     async def log_call(
         self, contact_id: str, outcome: str, note: str = "", duration_seconds: int = 0
     ) -> str:
-        response = await self._request(
-            "POST",
-            "/calls",
-            json={
-                "personId": int(contact_id),
-                "outcome": outcome,
-                "note": note,
-                "duration": duration_seconds,
-            },
-        )
+        # Real FUB requires the contact's phone and a direction flag, and only
+        # accepts a fixed outcome vocabulary — concerns that stay inside this
+        # adapter so the port and workflow nodes never learn FUB's shape.
+        # brokerops only ever logs the outbound feedback calls it placed.
+        contact = await self.get_contact(contact_id)
+        payload: dict[str, Any] = {
+            "personId": int(contact_id),
+            "isIncoming": False,
+            "note": note,
+            "duration": duration_seconds,
+        }
+        if contact is not None and contact.phone:
+            payload["phone"] = contact.phone
+        mapped_outcome = _FUB_CALL_OUTCOMES.get(outcome.strip().lower())
+        if mapped_outcome is not None:
+            payload["outcome"] = mapped_outcome
+        response = await self._request("POST", "/calls", json=payload)
         response.raise_for_status()
         return str(response.json()["id"])

@@ -109,8 +109,33 @@ def create_stub_app() -> FastAPI:
         notes[note_id] = {"id": note_id, **body}
         return notes[note_id]
 
+    # Real FUB rejects calls missing phone/personId/isIncoming, and constrains
+    # outcome to a fixed vocabulary; the stub enforces the same so the contract
+    # tests catch payload drift instead of letting it surface in production.
+    _CALL_OUTCOMES = {
+        "Interested",
+        "Not Interested",
+        "Left Message",
+        "No Answer",
+        "Busy",
+        "Bad Number",
+    }
+
     @app.post("/calls", status_code=201)
     async def log_call(body: dict[str, Any]) -> dict[str, Any]:
+        for field in ("personId", "phone", "isIncoming"):
+            if body.get(field) is None:
+                raise HTTPException(
+                    status_code=400, detail=f"Missing required field in the request body: {field}."
+                )
+        if "outcome" in body and body["outcome"] not in _CALL_OUTCOMES:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Invalid field value, field name: outcome, allowed values: "
+                    f"{', '.join(sorted(_CALL_OUTCOMES))}"
+                ),
+            )
         call_id = next(ids)
         calls[call_id] = {"id": call_id, **body}
         return calls[call_id]
