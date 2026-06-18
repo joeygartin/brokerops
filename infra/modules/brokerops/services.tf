@@ -138,6 +138,28 @@ resource "google_cloud_run_v2_service" "api" {
           }
         }
       }
+
+      # LLM feedback extraction (ADR-0006). Off → the deterministic extractor
+      # runs and no LLM secret is referenced, so a key-less deploy stays clean.
+      dynamic "env" {
+        for_each = var.enable_llm_extraction ? [1] : []
+        content {
+          name = "LLM_API_KEY"
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.client["llm-api-key"].secret_id
+              version = "latest"
+            }
+          }
+        }
+      }
+      dynamic "env" {
+        for_each = var.enable_llm_extraction ? [1] : []
+        content {
+          name  = "LLM_MODEL"
+          value = var.llm_model
+        }
+      }
     }
   }
 

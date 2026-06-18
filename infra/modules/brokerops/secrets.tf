@@ -8,6 +8,7 @@ locals {
     "vapi-api-key",
     "vapi-webhook-secret",
     "langsmith-api-key",
+    "llm-api-key",
     "reso-auth-token",
   ]
 }

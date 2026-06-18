@@ -40,6 +40,18 @@ variable "enable_langsmith" {
   default     = false
 }
 
+variable "enable_llm_extraction" {
+  description = "Inject the LLM extraction key (ADR-0006); otherwise the deterministic extractor runs."
+  type        = bool
+  default     = false
+}
+
+variable "llm_model" {
+  description = "Claude model id for feedback extraction when enable_llm_extraction is true."
+  type        = string
+  default     = "claude-sonnet-4-6"
+}
+
 variable "enable_redis" {
   description = "Memorystore + VPC connector for the RedisCache backend. Not implemented in V1 — the in-memory cache backend is the default; revisit per ADR-0001."
   type        = bool

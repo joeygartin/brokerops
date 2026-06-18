@@ -26,21 +26,23 @@ provider "google" {
 module "client" {
   source = "./modules/brokerops"
 
-  client_name       = var.client_name
-  project_id        = var.project_id
-  region            = var.region
-  db_tier           = var.db_tier
-  api_image         = var.api_image
-  frontend_image    = var.frontend_image
-  enable_langsmith  = var.enable_langsmith
-  enable_redis      = var.enable_redis
-  orchestrator      = var.orchestrator
-  vapi_assistant_id = var.vapi_assistant_id
-  reso_base_url     = var.reso_base_url
-  fub_base_url      = var.fub_base_url
-  vapi_base_url     = var.vapi_base_url
-  public            = var.public
-  cron_schedule     = var.cron_schedule
+  client_name           = var.client_name
+  project_id            = var.project_id
+  region                = var.region
+  db_tier               = var.db_tier
+  api_image             = var.api_image
+  frontend_image        = var.frontend_image
+  enable_langsmith      = var.enable_langsmith
+  enable_llm_extraction = var.enable_llm_extraction
+  llm_model             = var.llm_model
+  enable_redis          = var.enable_redis
+  orchestrator          = var.orchestrator
+  vapi_assistant_id     = var.vapi_assistant_id
+  reso_base_url         = var.reso_base_url
+  fub_base_url          = var.fub_base_url
+  vapi_base_url         = var.vapi_base_url
+  public                = var.public
+  cron_schedule         = var.cron_schedule
 }
 
 output "api_url" {

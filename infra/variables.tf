@@ -29,6 +29,18 @@ variable "enable_langsmith" {
   default = false
 }
 
+variable "enable_llm_extraction" {
+  description = "Use the Claude feedback extractor (ADR-0006) instead of the deterministic default. Push the real key with `make secrets`."
+  type        = bool
+  default     = false
+}
+
+variable "llm_model" {
+  description = "Claude model id for feedback extraction when enable_llm_extraction is true."
+  type        = string
+  default     = "claude-sonnet-4-6"
+}
+
 variable "enable_redis" {
   type    = bool
   default = false
