@@ -46,7 +46,11 @@ def _adapter() -> ClaudeExtractionAdapter:
 @pytest.mark.parametrize("call", golden_calls(), ids=lambda call: str(call["id"]))
 async def test_llm_extraction_matches_golden_expectations(call: dict[str, Any]) -> None:
     expected = ExtractedFeedback.model_validate(call["expected"])
-    got = await _adapter().extract(call["transcript"])
+    adapter = _adapter()
+    try:
+        got = await adapter.extract(call["transcript"])
+    finally:
+        await adapter.aclose()
 
     # Exact on the load-bearing fields — these are where v1 fails.
     assert got.sentiment == expected.sentiment, f"{call['id']}: sentiment"

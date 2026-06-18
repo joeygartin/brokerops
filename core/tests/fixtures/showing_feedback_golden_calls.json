@@ -54,7 +54,7 @@
       "outcome": "customer-ended-call",
       "transcript": "AI: Hi. This is the assistant for the listing team. Do you have 2 quick minutes to share feedback on the home you toured?\nUser: Sure.\nAI: Great. 1st, what was your overall impression of the home?\nUser: I thought it was a beautiful home.\nAI: That's wonderful to hear.\nUser: I really liked it.\nAI: What did you like most about the home?\nUser: The kitchen. And the master bedroom\nAI: Thanks for sharing. Do you have any concerns or things you didn't like?\nUser: The yard wasn't big enough. I I need more space.\nAI: Thanks for your honesty. Does the price feel right for the home? Or is it a bit higher low?\nUser: I I thought it was a bit high. I mean, I get it. You know, you that's the asking price but I I honestly think it's about 30000 dollars overpriced.\nAI: I appreciate your feedback on that. What's your budget range if you're still looking?\nUser: Between 5 50 and 6.\nAI: Got it. Would you like to schedule a 2nd showing for this home, or are you considering writing an offer?\nUser: Well, I told you the home's too small for me. I don't like the yard, so I don't need a 2nd showing. And I'm I'm definitely not gonna write an offer.\nAI: Thank you for your insights. Anything changes or you need more assistance, feel free to reach out. Have a great day.\nUser: You too.\nAI: End call.\nUser: Bye.\n",
       "expected": {
-        "sentiment": "neutral",
+        "sentiment": "positive",
         "hot_signal": false,
         "highlights": [
           "kitchen",
@@ -182,7 +182,7 @@
       "outcome": "assistant-said-end-call-phrase",
       "transcript": "User: Hello?\nAI: Hi. This is the assistant for the listing team. Do you have 2 quick minutes? To share feedback on the home you toured?\nUser: Yes.\nAI: Great. What was your overall impression of the home?\nUser: I thought it was a beautiful home. I thought it was a little overpriced. It was a little too small for me and my family, and I would I would want more land. It was on.\nAI: Got it. It sounds like you're looking for something with more space. Both inside and out.\nUser: Oh, yeah. Yes.\nAI: Could you share a bit about what you're looking for so we can send you better matches?\nUser: Absolutely. I'd like I'd like that home layout, but I wanted to be bigger with an extra bedroom, and I want it to be on at least half an acre. Preferably 2 acres.\nAI: Thanks for sharing those details. Keep an eye out for homes that that fit that description. Thank you for your time and feedback. Have a great day.\nUser: You too. Thank you.\nAI: Goodbye.\n",
       "expected": {
-        "sentiment": "neutral",
+        "sentiment": "positive",
         "hot_signal": false,
         "highlights": [
           "layout"

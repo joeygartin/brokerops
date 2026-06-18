@@ -68,3 +68,6 @@ class ClaudeExtractionAdapter:
                 f"extraction returned no structured output (stop={message.stop_reason})"
             )
         return parsed
+
+    async def aclose(self) -> None:
+        await self._client.close()
