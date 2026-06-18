@@ -14,6 +14,7 @@ from brokerops_api.db import InMemoryApprovalRepo, InMemoryFeedbackStore
 from brokerops_api.deps import get_approval_repo, get_feedback_store, get_workflow_engine
 from brokerops_api.main import app
 from brokerops_api.workflows import VAPI_FOLLOWUP
+from brokerops_core.services.feedback_extraction import DeterministicExtractor
 from brokerops_followupboss.adapter import FUBCRMAdapter
 from brokerops_followupboss.stub import create_stub_app
 from brokerops_langgraph.engine import LangGraphWorkflowEngine
@@ -43,7 +44,7 @@ repo = InMemoryApprovalRepo()
 engine = LangGraphWorkflowEngine(
     {
         VAPI_FOLLOWUP: build_vapi_followup(
-            _stub_voice(), _stub_crm(), feedback_store, InMemorySaver()
+            _stub_voice(), _stub_crm(), feedback_store, DeterministicExtractor(), InMemorySaver()
         )
     },
     repo,

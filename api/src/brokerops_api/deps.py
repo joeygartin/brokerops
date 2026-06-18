@@ -8,9 +8,11 @@ from fastapi import FastAPI, Request
 from brokerops_api.db import ApprovalRepo, TransactionStoreAdmin
 from brokerops_api.workflows import WorkflowEngine
 from brokerops_core.ports.crm import CRMPort
+from brokerops_core.ports.extraction import ExtractionPort
 from brokerops_core.ports.feedback import FeedbackStore
 from brokerops_core.ports.transactions import TransactionStore
 from brokerops_core.ports.voice import VoicePort
+from brokerops_core.services.feedback_extraction import DeterministicExtractor
 from brokerops_core.services.listing_service import ListingService
 from brokerops_followupboss.adapter import FUB_API_BASE, FUBCRMAdapter
 from brokerops_mls_reso.adapter import ResoMLSAdapter
@@ -77,6 +79,21 @@ def build_voice_adapter() -> VapiVoiceAdapter:
         api_key=api_key,
         base_url=base_url,
         phone_number_id=os.environ.get("VAPI_PHONE_NUMBER_ID") or None,
+    )
+
+
+def build_extraction_port() -> ExtractionPort:
+    # Zero-credential default: feedback extraction is keyword/pattern based and
+    # demo mode runs with no LLM key. A real key flips to the Claude adapter
+    # (ADR-0006). "unset" is the Terraform secret placeholder — treat it as no
+    # key so a not-yet-pushed secret can't select the LLM path with a bad key.
+    api_key = os.environ.get("LLM_API_KEY", "")
+    if not api_key or api_key == "unset":
+        return DeterministicExtractor()
+    from brokerops_llm_extraction.adapter import DEFAULT_MODEL, ClaudeExtractionAdapter
+
+    return ClaudeExtractionAdapter(
+        api_key=api_key, model=os.environ.get("LLM_MODEL", DEFAULT_MODEL)
     )
 
 

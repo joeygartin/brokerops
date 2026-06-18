@@ -18,9 +18,10 @@ from brokerops_core.models.call import CallRecord
 from brokerops_core.models.feedback import FeedbackSource, ShowingFeedback
 from brokerops_core.models.workflow_state import ApprovalOutcome, VapiFollowupState
 from brokerops_core.ports.crm import CRMPort
+from brokerops_core.ports.extraction import ExtractionPort
 from brokerops_core.ports.feedback import FeedbackStore
 from brokerops_core.ports.voice import VoicePort
-from brokerops_core.services.feedback_extraction import ExtractedFeedback, extract_feedback
+from brokerops_core.services.feedback_extraction import ExtractedFeedback
 
 NOTIFY_AGENT = "notify_agent"
 
@@ -28,7 +29,12 @@ NOTIFY_AGENT = "notify_agent"
 STOP = "stop"
 
 
-def build_vapi_followup(voice: VoicePort, crm: CRMPort, feedback_store: FeedbackStore) -> Workflow:
+def build_vapi_followup(
+    voice: VoicePort,
+    crm: CRMPort,
+    feedback_store: FeedbackStore,
+    extraction: ExtractionPort,
+) -> Workflow:
     async def ingest_call(
         ctx: Context,
         call_id: str,
@@ -67,7 +73,7 @@ def build_vapi_followup(voice: VoicePort, crm: CRMPort, feedback_store: Feedback
         ctx.route = "ingested"
 
     async def extract_structured(ctx: Context, transcript: str) -> None:
-        extracted = extract_feedback(transcript)
+        extracted = await extraction.extract(transcript)
         ctx.state["extracted"] = extracted.model_dump(mode="json")
 
     async def upsert_feedback(

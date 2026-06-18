@@ -17,6 +17,7 @@ from langgraph.types import Command
 from brokerops_core.models.approval import ApprovalDecision, ApprovalRequest
 from brokerops_core.ports.approvals import ApprovalRepo
 from brokerops_core.ports.crm import CRMPort
+from brokerops_core.ports.extraction import ExtractionPort
 from brokerops_core.ports.feedback import FeedbackStore
 from brokerops_core.ports.mls import MLSPort
 from brokerops_core.ports.transactions import TransactionStore
@@ -87,6 +88,7 @@ async def build_engine(
     mls: MLSPort,
     crm: CRMPort,
     voice: VoicePort,
+    extraction: ExtractionPort,
     transaction_store: TransactionStore,
     feedback_store: FeedbackStore,
     approval_repo: ApprovalRepo,
@@ -100,10 +102,19 @@ async def build_engine(
     """
     if database_url:
         async with postgres_checkpointer(database_url) as saver:
-            yield _engine(mls, crm, voice, transaction_store, feedback_store, approval_repo, saver)
+            yield _engine(
+                mls, crm, voice, extraction, transaction_store, feedback_store, approval_repo, saver
+            )
     else:
         yield _engine(
-            mls, crm, voice, transaction_store, feedback_store, approval_repo, InMemorySaver()
+            mls,
+            crm,
+            voice,
+            extraction,
+            transaction_store,
+            feedback_store,
+            approval_repo,
+            InMemorySaver(),
         )
 
 
@@ -111,6 +122,7 @@ def _engine(
     mls: MLSPort,
     crm: CRMPort,
     voice: VoicePort,
+    extraction: ExtractionPort,
     transaction_store: TransactionStore,
     feedback_store: FeedbackStore,
     approval_repo: ApprovalRepo,
@@ -119,6 +131,6 @@ def _engine(
     graphs = {
         LISTING_TO_CONTRACT: build_listing_to_contract(mls, crm, saver),
         TRANSACTION_COORDINATION: build_transaction_coordination(transaction_store, crm, saver),
-        VAPI_FOLLOWUP: build_vapi_followup(voice, crm, feedback_store, saver),
+        VAPI_FOLLOWUP: build_vapi_followup(voice, crm, feedback_store, extraction, saver),
     }
     return LangGraphWorkflowEngine(graphs, approval_repo)

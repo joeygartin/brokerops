@@ -6,6 +6,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
 from brokerops_core.models.call import CallRecord
+from brokerops_core.services.feedback_extraction import DeterministicExtractor
 from brokerops_langgraph.graphs.vapi_followup import build_vapi_followup
 
 HOT_TRANSCRIPT = (
@@ -33,7 +34,9 @@ def _input(transcript: str, call_id: str = "call-1") -> dict[str, Any]:
 
 
 def _build(crm: GraphFakeCRM, store: FakeFeedbackStore, voice: FakeVoice | None = None) -> Any:
-    return build_vapi_followup(voice or FakeVoice(), crm, store, InMemorySaver())
+    return build_vapi_followup(
+        voice or FakeVoice(), crm, store, DeterministicExtractor(), InMemorySaver()
+    )
 
 
 async def test_cool_call_syncs_feedback_and_crm_without_hitl() -> None:

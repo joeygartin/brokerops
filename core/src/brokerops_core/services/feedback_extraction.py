@@ -11,7 +11,7 @@ import re
 
 from pydantic import BaseModel, Field
 
-from brokerops_core.models.feedback import Sentiment
+from brokerops_core.models.feedback import PriceOpinion, Sentiment
 
 POSITIVE_CUES = (
     "loved",
@@ -81,9 +81,12 @@ class ExtractedFeedback(BaseModel):
     hot_signal: bool = False
     highlights: list[str] = Field(default_factory=list)
     concerns: list[str] = Field(default_factory=list)
-    price_opinion: str | None = None
+    price_opinion: PriceOpinion | None = None
     budget_min: int | None = Field(default=None, description="Whole dollars")
     budget_max: int | None = Field(default=None, description="Whole dollars")
+    # What the buyer wants in a home they'd pursue — feeds future-match search.
+    # The deterministic extractor leaves this empty; the LLM adapter fills it.
+    desired_features: list[str] = Field(default_factory=list)
     summary: str = ""
 
 
@@ -143,9 +146,9 @@ def extract_feedback(transcript: str) -> ExtractedFeedback:
     hot_signal = any(phrase in lowered for phrase in HOT_PHRASES)
 
     if "overpriced" in lowered or "too expensive" in lowered:
-        price_opinion: str | None = "overpriced"
+        price_opinion: PriceOpinion | None = PriceOpinion.OVERPRICED
     elif "good value" in lowered or "great price" in lowered or "priced right" in lowered:
-        price_opinion = "fair"
+        price_opinion = PriceOpinion.FAIR
     else:
         price_opinion = None
 
@@ -173,3 +176,14 @@ def extract_feedback(transcript: str) -> ExtractedFeedback:
         budget_max=budget[1] if budget else None,
         summary=" ".join(parts),
     )
+
+
+class DeterministicExtractor:
+    """Zero-credential default behind ExtractionPort — wraps extract_feedback.
+
+    Demo mode and any deploy without an LLM key run through this; the LLM
+    adapter (integrations/llm_extraction) is selected only when a key is set.
+    """
+
+    async def extract(self, transcript: str) -> ExtractedFeedback:
+        return extract_feedback(transcript)

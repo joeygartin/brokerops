@@ -9,6 +9,7 @@ dependencies = [
     "brokerops-core",
     "brokerops-followupboss",
     "brokerops-langgraph",
+    "brokerops-llm-extraction",
     "brokerops-mls-reso",
     "brokerops-vapi",
     "fastapi>=0.115",
@@ -32,6 +33,7 @@ brokerops-adk = { workspace = true }
 brokerops-core = { workspace = true }
 brokerops-followupboss = { workspace = true }
 brokerops-langgraph = { workspace = true }
+brokerops-llm-extraction = { workspace = true }
 brokerops-mls-reso = { workspace = true }
 brokerops-vapi = { workspace = true }
 

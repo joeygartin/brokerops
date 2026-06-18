@@ -1,0 +1,16 @@
+[project]
+name = "brokerops-llm-extraction"
+version = "0.1.0"
+description = "ExtractionPort adapter backed by Claude structured outputs"
+requires-python = ">=3.12"
+dependencies = [
+    "brokerops-core",
+    "anthropic>=0.69",
+]
+
+[tool.uv.sources]
+brokerops-core = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

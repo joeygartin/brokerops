@@ -7,6 +7,7 @@ from workflow_fixtures import FakeFeedbackStore, FakeVoice, GraphFakeCRM, final_
 from brokerops_adk.workflows.vapi_followup import build_vapi_followup
 from brokerops_core.models.approval import ApprovalDecision, ApprovalStatus
 from brokerops_core.models.call import CallRecord
+from brokerops_core.services.feedback_extraction import DeterministicExtractor
 from brokerops_core.services.workflow_runs import VAPI_FOLLOWUP
 
 HOT_TRANSCRIPT = (
@@ -35,7 +36,7 @@ def _decision(decision: ApprovalStatus) -> ApprovalDecision:
 
 async def test_cool_call_syncs_feedback_and_crm_without_hitl() -> None:
     crm, store = GraphFakeCRM(), FakeFeedbackStore()
-    engine, _ = make_engine(build_vapi_followup(FakeVoice(), crm, store))
+    engine, _ = make_engine(build_vapi_followup(FakeVoice(), crm, store, DeterministicExtractor()))
     run = await engine.start(VAPI_FOLLOWUP, _input(COOL_TRANSCRIPT))
     assert run.status == "completed"
     assert run.output is not None and run.output["outcome"] == "synced"
@@ -55,7 +56,9 @@ async def test_cool_call_syncs_feedback_and_crm_without_hitl() -> None:
 
 async def test_hot_call_pauses_then_creates_hot_task_on_approval() -> None:
     crm, store = GraphFakeCRM(), FakeFeedbackStore()
-    engine, sessions = make_engine(build_vapi_followup(FakeVoice(), crm, store))
+    engine, sessions = make_engine(
+        build_vapi_followup(FakeVoice(), crm, store, DeterministicExtractor())
+    )
     run = await engine.start(VAPI_FOLLOWUP, _input(HOT_TRANSCRIPT, "call-2"))
     assert run.status == "awaiting_approval"
     assert run.approval is not None
@@ -80,7 +83,7 @@ async def test_hot_call_pauses_then_creates_hot_task_on_approval() -> None:
 
 async def test_hot_signal_dismissed_creates_no_task() -> None:
     crm, store = GraphFakeCRM(), FakeFeedbackStore()
-    engine, _ = make_engine(build_vapi_followup(FakeVoice(), crm, store))
+    engine, _ = make_engine(build_vapi_followup(FakeVoice(), crm, store, DeterministicExtractor()))
     run = await engine.start(VAPI_FOLLOWUP, _input(HOT_TRANSCRIPT, "call-3"))
     assert run.approval is not None
 
@@ -102,7 +105,7 @@ async def test_missing_transcript_falls_back_to_voice_port() -> None:
             )
         }
     )
-    engine, _ = make_engine(build_vapi_followup(voice, crm, store))
+    engine, _ = make_engine(build_vapi_followup(voice, crm, store, DeterministicExtractor()))
     run = await engine.start(VAPI_FOLLOWUP, {"call_id": "call-4"})
     assert run.status == "completed"
     assert run.output is not None and run.output["outcome"] == "synced"
@@ -111,7 +114,7 @@ async def test_missing_transcript_falls_back_to_voice_port() -> None:
 
 async def test_no_transcript_anywhere_ends_cleanly() -> None:
     crm, store = GraphFakeCRM(), FakeFeedbackStore()
-    engine, _ = make_engine(build_vapi_followup(FakeVoice(), crm, store))
+    engine, _ = make_engine(build_vapi_followup(FakeVoice(), crm, store, DeterministicExtractor()))
     run = await engine.start(VAPI_FOLLOWUP, {"call_id": "call-x"})
     assert run.status == "no_transcript"
     assert store.feedback == {}

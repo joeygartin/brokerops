@@ -25,6 +25,7 @@ from brokerops_adk.workflows.vapi_followup import build_vapi_followup
 from brokerops_core.models.approval import ApprovalDecision, ApprovalRequest
 from brokerops_core.ports.approvals import ApprovalRepo
 from brokerops_core.ports.crm import CRMPort
+from brokerops_core.ports.extraction import ExtractionPort
 from brokerops_core.ports.feedback import FeedbackStore
 from brokerops_core.ports.mls import MLSPort
 from brokerops_core.ports.transactions import TransactionStore
@@ -149,6 +150,7 @@ async def build_engine(
     mls: MLSPort,
     crm: CRMPort,
     voice: VoicePort,
+    extraction: ExtractionPort,
     transaction_store: TransactionStore,
     feedback_store: FeedbackStore,
     approval_repo: ApprovalRepo,
@@ -165,7 +167,7 @@ async def build_engine(
     workflows = {
         LISTING_TO_CONTRACT: build_listing_to_contract(mls, crm),
         TRANSACTION_COORDINATION: build_transaction_coordination(transaction_store, crm),
-        VAPI_FOLLOWUP: build_vapi_followup(voice, crm, feedback_store),
+        VAPI_FOLLOWUP: build_vapi_followup(voice, crm, feedback_store, extraction),
     }
     runners = {
         name: Runner(

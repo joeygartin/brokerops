@@ -14,7 +14,12 @@ from brokerops_api.db import (
     SqlTransactionStore,
     create_engine,
 )
-from brokerops_api.deps import build_crm_adapter, build_mls_adapter, build_voice_adapter
+from brokerops_api.deps import (
+    build_crm_adapter,
+    build_extraction_port,
+    build_mls_adapter,
+    build_voice_adapter,
+)
 from brokerops_api.routes.approvals import router as approvals_router
 from brokerops_api.routes.calls import router as calls_router
 from brokerops_api.routes.contacts import router as contacts_router
@@ -47,6 +52,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     mls = build_mls_adapter()
     crm = build_crm_adapter()
     voice = build_voice_adapter()
+    extraction = build_extraction_port()
     app.state.crm = crm
     app.state.voice = voice
     engine = create_engine(database_url) if database_url else None
@@ -65,6 +71,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         mls=mls,
         crm=crm,
         voice=voice,
+        extraction=extraction,
         transaction_store=app.state.transaction_store,
         feedback_store=app.state.feedback_store,
         approval_repo=app.state.approval_repo,

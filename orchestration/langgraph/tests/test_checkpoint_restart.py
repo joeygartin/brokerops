@@ -13,6 +13,7 @@ from conftest import FakeFeedbackStore, FakeVoice, GraphFakeCRM, GraphFakeMLS
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
 
+from brokerops_core.services.feedback_extraction import DeterministicExtractor
 from brokerops_langgraph.checkpointer import postgres_checkpointer
 from brokerops_langgraph.graphs.listing_to_contract import build_listing_to_contract
 from brokerops_langgraph.graphs.vapi_followup import build_vapi_followup
@@ -60,7 +61,7 @@ async def test_pre_gate_crm_sync_does_not_replay_on_postgres_resume() -> None:
     crm, store = GraphFakeCRM(), FakeFeedbackStore()
 
     async with postgres_checkpointer(database_url) as saver:
-        graph = build_vapi_followup(FakeVoice(), crm, store, saver)
+        graph = build_vapi_followup(FakeVoice(), crm, store, DeterministicExtractor(), saver)
         paused = await graph.ainvoke(
             {
                 "call_id": uuid4().hex,

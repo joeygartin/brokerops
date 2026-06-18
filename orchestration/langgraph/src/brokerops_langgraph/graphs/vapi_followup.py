@@ -16,9 +16,10 @@ from langgraph.types import interrupt
 from brokerops_core.models.call import CallRecord
 from brokerops_core.models.feedback import FeedbackSource, ShowingFeedback
 from brokerops_core.ports.crm import CRMPort
+from brokerops_core.ports.extraction import ExtractionPort
 from brokerops_core.ports.feedback import FeedbackStore
 from brokerops_core.ports.voice import VoicePort
-from brokerops_core.services.feedback_extraction import ExtractedFeedback, extract_feedback
+from brokerops_core.services.feedback_extraction import ExtractedFeedback
 from brokerops_langgraph.state import ApprovalOutcome, VapiFollowupState
 
 NOTIFY_AGENT = "notify_agent"
@@ -28,6 +29,7 @@ def build_vapi_followup(
     voice: VoicePort,
     crm: CRMPort,
     feedback_store: FeedbackStore,
+    extraction: ExtractionPort,
     checkpointer: BaseCheckpointSaver[Any],
 ) -> CompiledStateGraph[Any, Any, Any, Any]:
     async def ingest_call(state: VapiFollowupState) -> dict[str, Any]:
@@ -64,7 +66,7 @@ def build_vapi_followup(
         }
 
     async def extract_structured(state: VapiFollowupState) -> dict[str, Any]:
-        extracted = extract_feedback(state.transcript)
+        extracted = await extraction.extract(state.transcript)
         return {"extracted": extracted.model_dump(mode="json")}
 
     async def upsert_feedback(state: VapiFollowupState) -> dict[str, Any]:

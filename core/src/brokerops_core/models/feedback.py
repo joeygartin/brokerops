@@ -16,6 +16,12 @@ class Sentiment(StrEnum):
     NEGATIVE = "negative"
 
 
+class PriceOpinion(StrEnum):
+    OVERPRICED = "overpriced"
+    FAIR = "fair"
+    UNDERPRICED = "underpriced"
+
+
 class ShowingFeedback(BaseModel):
     id: str
     listing_key: str

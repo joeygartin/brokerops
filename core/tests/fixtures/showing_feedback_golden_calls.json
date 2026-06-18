@@ -17,7 +17,12 @@
         ],
         "price_opinion": "fair",
         "budget_min": 550000,
-        "budget_max": 600000
+        "budget_max": 600000,
+        "desired_features": [
+          "more interior space",
+          "bigger backyard",
+          "acreage (a couple acres)"
+        ]
       },
       "deterministic_v1": {
         "sentiment": "positive",
@@ -34,7 +39,8 @@
         "price_opinion": null,
         "budget_min": null,
         "budget_max": null,
-        "summary": "Sentiment: positive. Liked: kitchen, backyard, yard. Concerns: backyard, yard."
+        "summary": "Sentiment: positive. Liked: kitchen, backyard, yard. Concerns: backyard, yard.",
+        "desired_features": []
       },
       "known_gaps_v1": [
         "budget missed: '5 50 and 6' transcribed-numeral form not parsed",
@@ -60,7 +66,11 @@
         ],
         "price_opinion": "overpriced",
         "budget_min": 550000,
-        "budget_max": 600000
+        "budget_max": 600000,
+        "desired_features": [
+          "more space",
+          "bigger yard"
+        ]
       },
       "deterministic_v1": {
         "sentiment": "positive",
@@ -70,7 +80,8 @@
         "price_opinion": "overpriced",
         "budget_min": null,
         "budget_max": null,
-        "summary": "Sentiment: positive. HOT: buyer signaled offer intent. Price opinion: overpriced."
+        "summary": "Sentiment: positive. HOT: buyer signaled offer intent. Price opinion: overpriced.",
+        "desired_features": []
       },
       "known_gaps_v1": [
         "hot_signal FALSE POSITIVE: 'definitely not gonna write an offer' matched the 'write an offer' phrase list — negation invisible to substring match",
@@ -96,7 +107,11 @@
         ],
         "price_opinion": "underpriced",
         "budget_min": 500000,
-        "budget_max": 600000
+        "budget_max": 600000,
+        "desired_features": [
+          "more space",
+          "bigger backyard"
+        ]
       },
       "deterministic_v1": {
         "sentiment": "positive",
@@ -111,7 +126,8 @@
         "price_opinion": null,
         "budget_min": null,
         "budget_max": null,
-        "summary": "Sentiment: positive. HOT: buyer signaled offer intent. Concerns: kitchen, backyard, yard, bedroom."
+        "summary": "Sentiment: positive. HOT: buyer signaled offer intent. Concerns: kitchen, backyard, yard, bedroom.",
+        "desired_features": []
       },
       "known_gaps_v1": [
         "hot_signal FALSE POSITIVE: 'don't ... see it again or write an offer'",
@@ -137,7 +153,12 @@
         ],
         "price_opinion": null,
         "budget_min": null,
-        "budget_max": null
+        "budget_max": null,
+        "desired_features": [
+          "one more bedroom",
+          "bigger living space",
+          "half-acre to 2 acres"
+        ]
       },
       "deterministic_v1": {
         "sentiment": "positive",
@@ -147,7 +168,8 @@
         "price_opinion": null,
         "budget_min": null,
         "budget_max": null,
-        "summary": "Sentiment: positive."
+        "summary": "Sentiment: positive.",
+        "desired_features": []
       },
       "known_gaps_v1": [
         "concerns empty: 'too small' sits in a mixed-cue sentence and the acreage/space requests carry no negative cue word",
@@ -171,7 +193,12 @@
         ],
         "price_opinion": "overpriced",
         "budget_min": null,
-        "budget_max": null
+        "budget_max": null,
+        "desired_features": [
+          "same layout but larger",
+          "extra bedroom",
+          "half-acre to 2 acres"
+        ]
       },
       "deterministic_v1": {
         "sentiment": "positive",
@@ -181,7 +208,8 @@
         "price_opinion": "overpriced",
         "budget_min": null,
         "budget_max": null,
-        "summary": "Sentiment: positive. Price opinion: overpriced."
+        "summary": "Sentiment: positive. Price opinion: overpriced.",
+        "desired_features": []
       },
       "known_gaps_v1": [
         "concerns empty: size and land complaints carry no in-sentence cue",
