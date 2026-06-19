@@ -76,6 +76,26 @@ variable "public" {
   default = true
 }
 
+variable "enable_auth" {
+  type    = bool
+  default = false
+}
+
+variable "google_oidc_client_id" {
+  type    = string
+  default = "unset"
+}
+
+variable "auth_allowed_domain" {
+  type    = string
+  default = ""
+}
+
+variable "auth_allowed_emails" {
+  type    = string
+  default = ""
+}
+
 variable "cron_schedule" {
   type    = string
   default = "0 13 * * *"

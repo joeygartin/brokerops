@@ -90,7 +90,9 @@ def test_full_hitl_round_trip_through_the_api() -> None:
     assert decided.status_code == 200
     outcome = decided.json()
     assert outcome["approval"]["status"] == "approved"
-    assert outcome["approval"]["decided_by"] == "demo-operator"
+    # decided_by is stamped server-side from the authenticated principal; the
+    # demo verifier resolves the demo operator when no OIDC client is set.
+    assert outcome["approval"]["decided_by"] == "operator@demo.brokerops"
     assert outcome["workflow"]["status"] == "completed"
     # the approval fanned out into CRM tasks via the FUB adapter
     output = outcome["workflow"]["output"]

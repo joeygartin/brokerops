@@ -1,0 +1,16 @@
+[project]
+name = "brokerops-google-oidc"
+version = "0.1.0"
+description = "IdentityVerifier adapter that verifies Google OIDC ID tokens"
+requires-python = ">=3.12"
+dependencies = [
+    "brokerops-core",
+    "google-auth>=2.0",
+]
+
+[tool.uv.sources]
+brokerops-core = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

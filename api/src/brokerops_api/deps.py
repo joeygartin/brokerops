@@ -1,18 +1,20 @@
 import os
 from functools import lru_cache
-from typing import cast
+from typing import Annotated, cast
 
 import httpx
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 
 from brokerops_api.db import ApprovalRepo, TransactionStoreAdmin
 from brokerops_api.workflows import WorkflowEngine
 from brokerops_core.ports.crm import CRMPort
 from brokerops_core.ports.extraction import ExtractionPort
 from brokerops_core.ports.feedback import FeedbackStore
+from brokerops_core.ports.identity import AuthError, IdentityVerifier, Principal
 from brokerops_core.ports.transactions import TransactionStore
 from brokerops_core.ports.voice import VoicePort
 from brokerops_core.services.feedback_extraction import DeterministicExtractor
+from brokerops_core.services.identity import DemoIdentityVerifier
 from brokerops_core.services.listing_service import ListingService
 from brokerops_followupboss.adapter import FUB_API_BASE, FUBCRMAdapter
 from brokerops_mls_reso.adapter import ResoMLSAdapter
@@ -95,6 +97,49 @@ def build_extraction_port() -> ExtractionPort:
     return ClaudeExtractionAdapter(
         api_key=api_key, model=os.environ.get("LLM_MODEL", DEFAULT_MODEL)
     )
+
+
+def build_identity_verifier() -> IdentityVerifier:
+    # Zero-credential default: with no OIDC client configured the dashboard and
+    # API run under a single demo operator, so demo mode needs no login
+    # (ADR-0007). A client id flips to verifying Google ID tokens. "unset" is
+    # the Terraform placeholder — treat it as no client, same as the LLM key.
+    client_id = os.environ.get("GOOGLE_OIDC_CLIENT_ID", "")
+    if not client_id or client_id == "unset":
+        return DemoIdentityVerifier()
+    from brokerops_google_oidc.adapter import GoogleOIDCVerifier
+
+    allowed_emails = {
+        e.strip() for e in os.environ.get("AUTH_ALLOWED_EMAILS", "").split(",") if e.strip()
+    }
+    return GoogleOIDCVerifier(
+        client_id=client_id,
+        allowed_domain=os.environ.get("AUTH_ALLOWED_DOMAIN") or None,
+        allowed_emails=frozenset(allowed_emails) or None,
+    )
+
+
+def get_identity_verifier(request: Request) -> IdentityVerifier:
+    return cast(IdentityVerifier, request.app.state.identity_verifier)
+
+
+async def get_current_principal(
+    verifier: Annotated[IdentityVerifier, Depends(get_identity_verifier)],
+    authorization: Annotated[str | None, Header()] = None,
+) -> Principal:
+    # The demo verifier ignores the token, so demo mode resolves a principal
+    # with no Authorization header (auto demo user). The Google verifier needs a
+    # real bearer; "Bearer " is stripped here so adapters only see the token.
+    token = authorization
+    if token and token.lower().startswith("bearer "):
+        token = token[7:].strip()
+    try:
+        return await verifier.verify(token)
+    except AuthError as exc:
+        raise HTTPException(status_code=403 if exc.forbidden else 401, detail=str(exc)) from exc
+
+
+PrincipalDep = Annotated[Principal, Depends(get_current_principal)]
 
 
 @lru_cache(maxsize=1)

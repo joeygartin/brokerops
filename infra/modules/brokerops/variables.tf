@@ -105,6 +105,34 @@ variable "public" {
   default     = true
 }
 
+# Operator authentication (ADR-0007). Off → the demo verifier runs and every
+# caller is the demo operator, so a key-less deploy stays login-free. On →
+# the api verifies Google OIDC ID tokens. The client id is public (it rides
+# in the browser sign-in), so it's a plain env var, not a Secret Manager secret.
+variable "enable_auth" {
+  description = "Require a verified Google operator on the dashboard + API (ADR-0007)."
+  type        = bool
+  default     = false
+}
+
+variable "google_oidc_client_id" {
+  description = "Google OAuth web client id the dashboard signs in against; required when enable_auth is true."
+  type        = string
+  default     = "unset"
+}
+
+variable "auth_allowed_domain" {
+  description = "Optional Google Workspace domain allowlist (e.g. \"acme.com\"); empty allows any verified Google account."
+  type        = string
+  default     = ""
+}
+
+variable "auth_allowed_emails" {
+  description = "Optional comma-separated email allowlist; empty defers to auth_allowed_domain."
+  type        = string
+  default     = ""
+}
+
 variable "cron_schedule" {
   description = "Cloud Scheduler cron for the milestone check."
   type        = string

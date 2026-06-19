@@ -80,6 +80,32 @@ resource "google_cloud_run_v2_service" "api" {
         value = var.enable_langsmith ? "true" : "false"
       }
 
+      # Operator auth (ADR-0007). Off → no auth env is set, so the api falls
+      # back to the demo verifier and the deploy stays login-free. The client
+      # id is public (it rides in the browser flow), so these are plain env,
+      # not secrets.
+      dynamic "env" {
+        for_each = var.enable_auth ? [1] : []
+        content {
+          name  = "GOOGLE_OIDC_CLIENT_ID"
+          value = var.google_oidc_client_id
+        }
+      }
+      dynamic "env" {
+        for_each = var.enable_auth && var.auth_allowed_domain != "" ? [1] : []
+        content {
+          name  = "AUTH_ALLOWED_DOMAIN"
+          value = var.auth_allowed_domain
+        }
+      }
+      dynamic "env" {
+        for_each = var.enable_auth && var.auth_allowed_emails != "" ? [1] : []
+        content {
+          name  = "AUTH_ALLOWED_EMAILS"
+          value = var.auth_allowed_emails
+        }
+      }
+
       env {
         name = "DATABASE_URL"
         value_source {

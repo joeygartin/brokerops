@@ -113,15 +113,16 @@ which surfaced and fixed a real `POST /calls` incompatibility (phone + direction
 a fixed outcome vocabulary the stub had accepted too loosely). LLM-backed feedback
 extraction shipped behind `ExtractionPort` — a Claude Sonnet 4.6 adapter selected
 per-client, deterministic default otherwise (ADR-0006), validated against the five
-real call transcripts.
+real call transcripts. Operator authentication shipped behind an `IdentityVerifier`
+port — the dashboard and API verify Google OIDC ID tokens when a client id is
+configured, with a demo operator default so demo mode stays login-free (ADR-0007).
 
 **Next, in rough order — each lands when a demo- or client-path justifies it,
 never speculatively:**
 
-- **Authentication & access control:** the api and frontend are open in demo
-  mode; a real client deploy needs login and per-user access (Identity Platform
-  is the intended path). This is the main gap between the demo and a product a
-  brokerage can be handed.
+- **Authorization depth:** operator login ships (Google OIDC, ADR-0007), but
+  access is a flat allowlist — per-user roles/RBAC land when a client path needs
+  them. The `Principal` seam is shaped for it.
 - **Demo recording:** a 60–90s screen capture of the docs/DEMO.md path.
 - **Loosen the `google-adk` pin** once its invocation-resumability API leaves
   experimental status (tracked in ADR-0004).

@@ -2,7 +2,7 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from brokerops_api.db import (
@@ -17,10 +17,13 @@ from brokerops_api.db import (
 from brokerops_api.deps import (
     build_crm_adapter,
     build_extraction_port,
+    build_identity_verifier,
     build_mls_adapter,
     build_voice_adapter,
+    get_current_principal,
 )
 from brokerops_api.routes.approvals import router as approvals_router
+from brokerops_api.routes.auth import router as auth_router
 from brokerops_api.routes.calls import router as calls_router
 from brokerops_api.routes.contacts import router as contacts_router
 from brokerops_api.routes.cron import router as cron_router
@@ -85,6 +88,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="brokerops api", lifespan=lifespan)
 
+# The identity verifier is resolved from env at import time (env is fixed for
+# the process lifetime). Done at module scope, not in lifespan, so it's present
+# even for tests that drive the app without running the lifespan.
+app.state.identity_verifier = build_identity_verifier()
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=os.environ.get("CORS_ORIGINS", "http://localhost:5173").split(","),
@@ -92,15 +100,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(listings_router)
-app.include_router(approvals_router)
-app.include_router(contacts_router)
-app.include_router(transactions_router)
-app.include_router(workflows_router)
-app.include_router(calls_router)
+# Operator-facing routes require an authenticated principal. In demo mode the
+# demo verifier resolves one with no token, so these stay open without a login;
+# with an OIDC client configured they demand a valid Google bearer (ADR-0007).
+operator_auth = [Depends(get_current_principal)]
+app.include_router(listings_router, dependencies=operator_auth)
+app.include_router(approvals_router, dependencies=operator_auth)
+app.include_router(contacts_router, dependencies=operator_auth)
+app.include_router(transactions_router, dependencies=operator_auth)
+app.include_router(workflows_router, dependencies=operator_auth)
+app.include_router(calls_router, dependencies=operator_auth)
+
+# Machine + public surfaces keep their own controls: webhooks verify their
+# provider signature, cron its X-Cron-Key, and /auth bootstraps the SPA.
 app.include_router(webhooks_router)
 app.include_router(cron_router)
 app.include_router(demo_router)
+app.include_router(auth_router)
 
 
 @app.get("/healthz")
