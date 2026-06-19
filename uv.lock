@@ -13,6 +13,7 @@ members = [
     "brokerops-adk",
     "brokerops-api",
     "brokerops-core",
+    "brokerops-email-smtp",
     "brokerops-followupboss",
     "brokerops-google-oidc",
     "brokerops-langgraph",
@@ -183,6 +184,7 @@ dependencies = [
     { name = "alembic" },
     { name = "brokerops-adk" },
     { name = "brokerops-core" },
+    { name = "brokerops-email-smtp" },
     { name = "brokerops-followupboss" },
     { name = "brokerops-google-oidc" },
     { name = "brokerops-langgraph" },
@@ -191,6 +193,7 @@ dependencies = [
     { name = "brokerops-vapi" },
     { name = "fastapi" },
     { name = "psycopg", extra = ["binary"] },
+    { name = "pyjwt" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -210,6 +213,7 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.14" },
     { name = "brokerops-adk", editable = "orchestration/adk" },
     { name = "brokerops-core", editable = "core" },
+    { name = "brokerops-email-smtp", editable = "integrations/email_smtp" },
     { name = "brokerops-followupboss", editable = "integrations/followupboss" },
     { name = "brokerops-google-oidc", editable = "integrations/google_oidc" },
     { name = "brokerops-langgraph", editable = "orchestration/langgraph" },
@@ -218,6 +222,7 @@ requires-dist = [
     { name = "brokerops-vapi", editable = "integrations/vapi" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
+    { name = "pyjwt", specifier = ">=2.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
 ]
@@ -242,6 +247,17 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "pydantic", specifier = ">=2.10" }]
+
+[[package]]
+name = "brokerops-email-smtp"
+version = "0.1.0"
+source = { editable = "integrations/email_smtp" }
+dependencies = [
+    { name = "brokerops-core" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "brokerops-core", editable = "core" }]
 
 [[package]]
 name = "brokerops-followupboss"

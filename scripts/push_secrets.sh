@@ -32,5 +32,6 @@ push vapi-webhook-secret "Vapi webhook secret"
 push langsmith-api-key "LangSmith API key"
 push llm-api-key "Anthropic API key for feedback extraction (needs enable_llm_extraction=true)"
 push reso-auth-token "RESO Web API bearer token (skip for the bundled mock)"
+push smtp-password "SMTP password for magic-link email (needs magic in auth_methods + smtp_host)"
 
 echo "==> done. Deploy a new revision to pick up changes: make deploy CLIENT=${CLIENT}"

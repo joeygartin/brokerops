@@ -114,8 +114,9 @@ a fixed outcome vocabulary the stub had accepted too loosely). LLM-backed feedba
 extraction shipped behind `ExtractionPort` — a Claude Sonnet 4.6 adapter selected
 per-client, deterministic default otherwise (ADR-0006), validated against the five
 real call transcripts. Operator authentication shipped behind an `IdentityVerifier`
-port — the dashboard and API verify Google OIDC ID tokens when a client id is
-configured, with a demo operator default so demo mode stays login-free (ADR-0007).
+port — a deployment offers Google OIDC and/or magic-link email login (selectable per
+client), gated by a shared email allowlist, with a demo operator default so demo mode
+stays login-free (ADR-0007, ADR-0008).
 
 **Next, in rough order — each lands when a demo- or client-path justifies it,
 never speculatively:**

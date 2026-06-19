@@ -1,3 +1,8 @@
+locals {
+  # "magic" present in the comma-separated auth_methods (whitespace-tolerant).
+  magic_enabled = contains([for m in split(",", var.auth_methods) : trimspace(m)], "magic")
+}
+
 resource "google_cloud_run_v2_service" "api" {
   project  = var.project_id
   name     = local.api_service
@@ -106,6 +111,77 @@ resource "google_cloud_run_v2_service" "api" {
         }
       }
 
+      # Multi-method auth (ADR-0008): AUTH_METHODS selects google/magic; magic
+      # additionally needs a session signing key, the public frontend URL for
+      # email links, and (for real delivery) SMTP. The signing key is terraform-
+      # generated; SMTP password is the only pushed secret here.
+      dynamic "env" {
+        for_each = var.auth_methods != "" ? [1] : []
+        content {
+          name  = "AUTH_METHODS"
+          value = var.auth_methods
+        }
+      }
+      dynamic "env" {
+        for_each = local.magic_enabled ? [1] : []
+        content {
+          name = "SESSION_SIGNING_KEY"
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.session_signing_key.secret_id
+              version = "latest"
+            }
+          }
+        }
+      }
+      dynamic "env" {
+        for_each = local.magic_enabled ? [1] : []
+        content {
+          name  = "PUBLIC_BASE_URL"
+          value = var.public_base_url
+        }
+      }
+      dynamic "env" {
+        for_each = local.magic_enabled && var.smtp_host != "" ? [1] : []
+        content {
+          name  = "SMTP_HOST"
+          value = var.smtp_host
+        }
+      }
+      dynamic "env" {
+        for_each = local.magic_enabled && var.smtp_host != "" ? [1] : []
+        content {
+          name  = "SMTP_PORT"
+          value = tostring(var.smtp_port)
+        }
+      }
+      dynamic "env" {
+        for_each = local.magic_enabled && var.smtp_host != "" ? [1] : []
+        content {
+          name  = "SMTP_FROM"
+          value = var.smtp_from
+        }
+      }
+      dynamic "env" {
+        for_each = local.magic_enabled && var.smtp_username != "" ? [1] : []
+        content {
+          name  = "SMTP_USERNAME"
+          value = var.smtp_username
+        }
+      }
+      dynamic "env" {
+        for_each = local.magic_enabled && var.smtp_host != "" ? [1] : []
+        content {
+          name = "SMTP_PASSWORD"
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.client["smtp-password"].secret_id
+              version = "latest"
+            }
+          }
+        }
+      }
+
       env {
         name = "DATABASE_URL"
         value_source {
@@ -193,6 +269,7 @@ resource "google_cloud_run_v2_service" "api" {
     google_secret_manager_secret_version.client_placeholder,
     google_secret_manager_secret_version.database_url,
     google_secret_manager_secret_version.cron_secret,
+    google_secret_manager_secret_version.session_signing_key,
     google_secret_manager_secret_iam_member.api_access,
   ]
 }

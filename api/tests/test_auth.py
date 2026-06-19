@@ -51,7 +51,7 @@ def _use(verifier: object) -> None:
 def test_config_reports_disabled_in_demo() -> None:
     _use(DEMO_VERIFIER)
     body = client.get("/auth/config").json()
-    assert body == {"enabled": False, "client_id": None}
+    assert body == {"enabled": False, "methods": [], "client_id": None}
 
 
 def test_protected_route_open_in_demo() -> None:
@@ -71,7 +71,7 @@ def test_config_reports_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GOOGLE_OIDC_CLIENT_ID", "client-xyz")
     _use(StubGoogleVerifier())
     body = client.get("/auth/config").json()
-    assert body == {"enabled": True, "client_id": "client-xyz"}
+    assert body == {"enabled": True, "methods": ["google"], "client_id": "client-xyz"}
 
 
 def test_protected_route_401_without_token() -> None:

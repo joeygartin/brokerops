@@ -4,7 +4,7 @@
 `InMemory*` twins back tests and database-less local dev.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Protocol
 
 import sqlalchemy as sa
@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from brokerops_core.models.approval import ApprovalRequest, ApprovalStatus
 from brokerops_core.models.call import CallRecord
 from brokerops_core.ports.approvals import ApprovalRepo as ApprovalRepo
+from brokerops_core.ports.auth import ConsumedToken
 from brokerops_core.models.feedback import ShowingFeedback
 from brokerops_core.models.milestone import Milestone
 from brokerops_core.models.transaction import ACTIVE_STAGES, Transaction
@@ -84,6 +85,17 @@ showing_feedback = sa.Table(
     sa.Column("sentiment", sa.String(16), nullable=False, server_default="neutral"),
     sa.Column("structured_answers", sa.JSON(), nullable=False),
     sa.Column("created_at", sa.DateTime(timezone=True)),
+)
+
+
+magic_login_tokens = sa.Table(
+    "magic_login_tokens",
+    metadata,
+    # Only the SHA-256 hash of the emailed token is stored, never the token.
+    sa.Column("token_hash", sa.String(64), primary_key=True),
+    sa.Column("email", sa.String(254), nullable=False),
+    sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("consumed_at", sa.DateTime(timezone=True)),
 )
 
 
@@ -343,3 +355,48 @@ class InMemoryApprovalRepo:
         self._items[approval_id] = existing.model_copy(
             update={"status": status, "decided_by": decided_by, "decided_at": decided_at}
         )
+
+
+class SqlMagicTokenStore:
+    def __init__(self, engine: AsyncEngine) -> None:
+        self._engine = engine
+
+    async def create(self, token_hash: str, email: str, expires_at: datetime) -> None:
+        async with self._engine.begin() as conn:
+            await conn.execute(
+                magic_login_tokens.insert().values(
+                    token_hash=token_hash, email=email, expires_at=expires_at
+                )
+            )
+
+    async def consume(self, token_hash: str) -> ConsumedToken | None:
+        # Single atomic claim: flip consumed_at only if still unused, returning
+        # the row. A second redemption matches no unconsumed row → None.
+        async with self._engine.begin() as conn:
+            result = await conn.execute(
+                magic_login_tokens.update()
+                .where(
+                    magic_login_tokens.c.token_hash == token_hash,
+                    magic_login_tokens.c.consumed_at.is_(None),
+                )
+                .values(consumed_at=datetime.now(UTC))
+                .returning(magic_login_tokens.c.email, magic_login_tokens.c.expires_at)
+            )
+            row = result.first()
+        return ConsumedToken.model_validate(dict(row._mapping)) if row is not None else None
+
+
+class InMemoryMagicTokenStore:
+    def __init__(self) -> None:
+        self._rows: dict[str, tuple[str, datetime]] = {}
+        self._consumed: set[str] = set()
+
+    async def create(self, token_hash: str, email: str, expires_at: datetime) -> None:
+        self._rows[token_hash] = (email, expires_at)
+
+    async def consume(self, token_hash: str) -> ConsumedToken | None:
+        if token_hash not in self._rows or token_hash in self._consumed:
+            return None
+        self._consumed.add(token_hash)
+        email, expires_at = self._rows[token_hash]
+        return ConsumedToken(email=email, expires_at=expires_at)

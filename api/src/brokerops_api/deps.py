@@ -7,15 +7,19 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request
 
 from brokerops_api.db import ApprovalRepo, TransactionStoreAdmin
 from brokerops_api.workflows import WorkflowEngine
+from brokerops_core.ports.auth import MagicTokenStore
 from brokerops_core.ports.crm import CRMPort
+from brokerops_core.ports.email import EmailSender
 from brokerops_core.ports.extraction import ExtractionPort
 from brokerops_core.ports.feedback import FeedbackStore
 from brokerops_core.ports.identity import AuthError, IdentityVerifier, Principal
 from brokerops_core.ports.transactions import TransactionStore
 from brokerops_core.ports.voice import VoicePort
+from brokerops_core.services.email import ConsoleEmailSender
 from brokerops_core.services.feedback_extraction import DeterministicExtractor
-from brokerops_core.services.identity import DemoIdentityVerifier
+from brokerops_core.services.identity import DemoIdentityVerifier, EmailAllowlist
 from brokerops_core.services.listing_service import ListingService
+from brokerops_core.services.magic_link import MagicLinkService
 from brokerops_followupboss.adapter import FUB_API_BASE, FUBCRMAdapter
 from brokerops_mls_reso.adapter import ResoMLSAdapter
 from brokerops_vapi.adapter import VAPI_API_BASE, VapiVoiceAdapter
@@ -99,28 +103,120 @@ def build_extraction_port() -> ExtractionPort:
     )
 
 
-def build_identity_verifier() -> IdentityVerifier:
-    # Zero-credential default: with no OIDC client configured the dashboard and
-    # API run under a single demo operator, so demo mode needs no login
-    # (ADR-0007). A client id flips to verifying Google ID tokens. "unset" is
-    # the Terraform placeholder — treat it as no client, same as the LLM key.
+def _google_client_id() -> str | None:
+    # "unset" is the Terraform secret/placeholder — treat it as no client.
     client_id = os.environ.get("GOOGLE_OIDC_CLIENT_ID", "")
-    if not client_id or client_id == "unset":
-        return DemoIdentityVerifier()
-    from brokerops_google_oidc.adapter import GoogleOIDCVerifier
+    return client_id if client_id and client_id != "unset" else None
 
-    allowed_emails = {
-        e.strip() for e in os.environ.get("AUTH_ALLOWED_EMAILS", "").split(",") if e.strip()
-    }
-    return GoogleOIDCVerifier(
-        client_id=client_id,
+
+def _build_allowlist() -> EmailAllowlist:
+    emails = {e.strip() for e in os.environ.get("AUTH_ALLOWED_EMAILS", "").split(",") if e.strip()}
+    return EmailAllowlist(
         allowed_domain=os.environ.get("AUTH_ALLOWED_DOMAIN") or None,
-        allowed_emails=frozenset(allowed_emails) or None,
+        allowed_emails=frozenset(emails) or None,
+    )
+
+
+def _session_signing_key() -> str:
+    key = os.environ.get("SESSION_SIGNING_KEY", "")
+    if not key:
+        raise RuntimeError(
+            "SESSION_SIGNING_KEY is required when a session-issuing auth method (magic) is on"
+        )
+    return key
+
+
+def configured_auth_methods() -> list[str]:
+    """Which login methods this deployment offers, in display order.
+
+    Authoritative source is AUTH_METHODS (csv); for back-compat with ADR-0007 a
+    bare GOOGLE_OIDC_CLIENT_ID alone still enables google. Google is dropped if
+    no valid client id is present, so a misconfig degrades rather than 500s.
+    """
+    requested = {
+        m.strip().lower() for m in os.environ.get("AUTH_METHODS", "").split(",") if m.strip()
+    }
+    if not requested and _google_client_id():
+        requested = {"google"}
+    methods: list[str] = []
+    if "magic" in requested:
+        methods.append("magic")
+    if "google" in requested and _google_client_id():
+        methods.append("google")
+    return methods
+
+
+def build_identity_verifier() -> IdentityVerifier:
+    # Zero-credential default: no methods configured → a single demo operator, so
+    # demo mode needs no login (ADR-0007/0008). Otherwise build one verifier per
+    # acceptable bearer and try them in turn (session JWT, then Google).
+    methods = configured_auth_methods()
+    if not methods:
+        return DemoIdentityVerifier()
+    verifiers: list[IdentityVerifier] = []
+    if "magic" in methods:
+        from brokerops_api.auth.session import SessionTokenVerifier
+
+        verifiers.append(SessionTokenVerifier(_session_signing_key()))
+    if "google" in methods:
+        from brokerops_google_oidc.adapter import GoogleOIDCVerifier
+
+        emails = {
+            e.strip() for e in os.environ.get("AUTH_ALLOWED_EMAILS", "").split(",") if e.strip()
+        }
+        verifiers.append(
+            GoogleOIDCVerifier(
+                client_id=cast(str, _google_client_id()),
+                allowed_domain=os.environ.get("AUTH_ALLOWED_DOMAIN") or None,
+                allowed_emails=frozenset(emails) or None,
+            )
+        )
+    from brokerops_api.auth.composite import CompositeIdentityVerifier
+
+    return CompositeIdentityVerifier(verifiers)
+
+
+def build_email_sender() -> EmailSender:
+    # SMTP when a host is configured; otherwise the console sender logs the link
+    # so magic-link login works in demo/local with no provider.
+    host = os.environ.get("SMTP_HOST", "")
+    if not host:
+        return ConsoleEmailSender()
+    from brokerops_email_smtp.adapter import SMTPEmailSender
+
+    return SMTPEmailSender(
+        host=host,
+        port=int(os.environ.get("SMTP_PORT", "587")),
+        from_addr=os.environ.get("SMTP_FROM") or "no-reply@brokerops.app",
+        username=os.environ.get("SMTP_USERNAME") or None,
+        password=os.environ.get("SMTP_PASSWORD") or None,
+        use_starttls=os.environ.get("SMTP_STARTTLS", "true").lower() != "false",
+    )
+
+
+def build_magic_link_service(store: MagicTokenStore) -> MagicLinkService | None:
+    if "magic" not in configured_auth_methods():
+        return None
+    from brokerops_api.auth.session import SessionTokenService
+
+    return MagicLinkService(
+        store=store,
+        email=build_email_sender(),
+        session_issuer=SessionTokenService(_session_signing_key()),
+        allowlist=_build_allowlist(),
+        public_base_url=os.environ.get("PUBLIC_BASE_URL", "http://localhost:5173"),
     )
 
 
 def get_identity_verifier(request: Request) -> IdentityVerifier:
     return cast(IdentityVerifier, request.app.state.identity_verifier)
+
+
+def get_magic_link_service(request: Request) -> MagicLinkService:
+    service = request.app.state.magic_link_service
+    if service is None:
+        raise HTTPException(status_code=404, detail="magic-link login is not enabled")
+    return cast(MagicLinkService, service)
 
 
 async def get_current_principal(
