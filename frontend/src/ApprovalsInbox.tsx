@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import { apiFetch } from "./auth";
 import { API_BASE, ApprovalRequest } from "./types";
-
-const DECIDED_BY = "demo-operator";
 
 function MarketingPreview({ approval }: { approval: ApprovalRequest }) {
   const draft = approval.payload.draft;
@@ -81,10 +80,10 @@ function ApprovalCard({
   const decide = async (decision: "approved" | "rejected") => {
     setBusy(true);
     try {
-      const response = await fetch(`${API_BASE}/approvals/${approval.id}/decide`, {
+      const response = await apiFetch(`${API_BASE}/approvals/${approval.id}/decide`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ decision, decided_by: DECIDED_BY }),
+        body: JSON.stringify({ decision }),
       });
       if (!response.ok) throw new Error(`api returned ${response.status}`);
       const outcome = (await response.json()) as {
@@ -179,7 +178,7 @@ export default function ApprovalsInbox() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
-    fetch(`${API_BASE}/approvals`)
+    apiFetch(`${API_BASE}/approvals`)
       .then((response) => {
         if (!response.ok) throw new Error(`api returned ${response.status}`);
         return response.json() as Promise<ApprovalRequest[]>;

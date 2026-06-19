@@ -65,6 +65,11 @@ services:
       # real key flips to the Claude adapter (ADR-0006).
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-claude-sonnet-4-6}
+      # Operator auth: unset client id = demo operator, no login (ADR-0007); a
+      # Google OAuth client id flips the api to verifying ID tokens.
+      GOOGLE_OIDC_CLIENT_ID: ${GOOGLE_OIDC_CLIENT_ID:-}
+      AUTH_ALLOWED_DOMAIN: ${AUTH_ALLOWED_DOMAIN:-}
+      AUTH_ALLOWED_EMAILS: ${AUTH_ALLOWED_EMAILS:-}
       LANGCHAIN_TRACING_V2: ${LANGCHAIN_TRACING_V2:-false}
       LANGCHAIN_API_KEY: ${LANGCHAIN_API_KEY:-}
       LANGCHAIN_PROJECT: ${LANGCHAIN_PROJECT:-brokerops-local}

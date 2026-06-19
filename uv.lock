@@ -14,6 +14,7 @@ members = [
     "brokerops-api",
     "brokerops-core",
     "brokerops-followupboss",
+    "brokerops-google-oidc",
     "brokerops-langgraph",
     "brokerops-llm-extraction",
     "brokerops-mls-reso",
@@ -183,6 +184,7 @@ dependencies = [
     { name = "brokerops-adk" },
     { name = "brokerops-core" },
     { name = "brokerops-followupboss" },
+    { name = "brokerops-google-oidc" },
     { name = "brokerops-langgraph" },
     { name = "brokerops-llm-extraction" },
     { name = "brokerops-mls-reso" },
@@ -209,6 +211,7 @@ requires-dist = [
     { name = "brokerops-adk", editable = "orchestration/adk" },
     { name = "brokerops-core", editable = "core" },
     { name = "brokerops-followupboss", editable = "integrations/followupboss" },
+    { name = "brokerops-google-oidc", editable = "integrations/google_oidc" },
     { name = "brokerops-langgraph", editable = "orchestration/langgraph" },
     { name = "brokerops-llm-extraction", editable = "integrations/llm_extraction" },
     { name = "brokerops-mls-reso", editable = "integrations/mls_reso" },
@@ -259,6 +262,21 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28" },
     { name = "mcp", specifier = ">=1.2" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
+]
+
+[[package]]
+name = "brokerops-google-oidc"
+version = "0.1.0"
+source = { editable = "integrations/google_oidc" }
+dependencies = [
+    { name = "brokerops-core" },
+    { name = "google-auth" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "brokerops-core", editable = "core" },
+    { name = "google-auth", specifier = ">=2.0" },
 ]
 
 [[package]]

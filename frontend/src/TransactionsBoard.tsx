@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { apiFetch } from "./auth";
 import { API_BASE, MilestoneView, TransactionDetail } from "./types";
 
 const CLASS_STYLES: Record<string, { color: string; background: string; label: string }> = {
@@ -59,7 +60,7 @@ export default function TransactionsBoard() {
   const [running, setRunning] = useState(false);
 
   const refresh = useCallback(() => {
-    fetch(`${API_BASE}/transactions`)
+    apiFetch(`${API_BASE}/transactions`)
       .then((response) => {
         if (!response.ok) throw new Error(`api returned ${response.status}`);
         return response.json() as Promise<TransactionDetail[]>;

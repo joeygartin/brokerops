@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { apiFetch } from "./auth";
 import { API_BASE, Listing, WorkflowRunResult } from "./types";
 
 const price = new Intl.NumberFormat("en-US", {
@@ -28,7 +29,7 @@ function ListingCard({
   const startWorkflow = async () => {
     setStarting(true);
     try {
-      const response = await fetch(`${API_BASE}/workflows/listing-to-contract/start`, {
+      const response = await apiFetch(`${API_BASE}/workflows/listing-to-contract/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ listing_key: listing.mls_id }),
@@ -50,7 +51,7 @@ function ListingCard({
   const startFeedbackCall = async () => {
     setCalling(true);
     try {
-      const response = await fetch(`${API_BASE}/calls/outbound`, {
+      const response = await apiFetch(`${API_BASE}/calls/outbound`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ listing_key: listing.mls_id, contact_id: DEMO_FEEDBACK_CONTACT }),
@@ -146,7 +147,7 @@ export default function ListingsBoard() {
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`${API_BASE}/listings`)
+    apiFetch(`${API_BASE}/listings`)
       .then((response) => {
         if (!response.ok) throw new Error(`api returned ${response.status}`);
         return response.json() as Promise<Listing[]>;
