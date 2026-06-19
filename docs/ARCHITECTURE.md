@@ -57,11 +57,13 @@ domain isolation, and per-client GCP deploys via Terraform.
                       └────────────────────────────────────────────────────────────────┘
 ```
 
-Each integration ships three things: an **adapter** (implements a core port over the
-real API's shapes), a **stub** (recorded-shape double for demo mode and contract
-tests), and an **MCP server** (the same operations as MCP tools). The sentinel base
-URL `internal` mounts the stub in-process over an ASGI transport — which is how the
-demo client deploys to Cloud Run as a single container with zero secrets.
+Each external-API integration ships three things: an **adapter** (implements a core
+port over the real API's shapes), a **stub** (recorded-shape double for demo mode and
+contract tests), and an **MCP server** (the same operations as MCP tools). The sentinel
+base URL `internal` mounts the stub in-process over an ASGI transport — which is how the
+demo client deploys to Cloud Run as a single container with zero secrets. (The
+`llm_extraction` integration is the exception: an extraction adapter selected by config
+behind `ExtractionPort`, with no stub or MCP server — see ADR-0006.)
 
 ## Monorepo layout
 
@@ -71,6 +73,7 @@ integrations/
   mls_reso/              # mock RESO Web API + adapter + MCP server
   followupboss/          # FUB adapter (token-bucket rate limited) + stub + MCP server
   vapi/                  # voice adapter + webhook-firing stub + MCP server
+  llm_extraction/        # Claude extraction adapter behind ExtractionPort (ADR-0006)
 orchestration/
   langgraph/             # V1 engine: graphs/, checkpointer (state schemas in core)
   adk/                   # V2 engine: workflows/, sessions, interrupts
@@ -99,9 +102,11 @@ a pending escalation, so gates never stack.
 **`vapi_followup`** — webhook-driven: a completed feedback call's end-of-call report
 drives ingest → structured extraction → persisted feedback → CRM sync (note + call
 log). Offer-intent signals pause at a notify-agent gate that creates a hot-lead task
-on approval. Extraction is deterministic in V1 behind a Pydantic schema, including a
-spoken price-range parser ("four fifty" → $450,000); the LLM upgrade is a one-
-function swap (ADR-0002).
+on approval. Extraction sits behind `ExtractionPort` (ADR-0006): a deterministic
+keyword/parser default (zero-credential, including a spoken price-range parser,
+"four fifty" → $450,000) and a Claude Sonnet 4.6 adapter selected per-client when an
+LLM key is configured. The `ExtractedFeedback` Pydantic schema is the contract for
+both (ADR-0002).
 
 ## The HITL contract
 

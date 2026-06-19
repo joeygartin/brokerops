@@ -92,7 +92,7 @@ in the cloud.
 
 ```
 core/                    # framework-free domain: models, services, ports
-integrations/            # mls_reso · followupboss · vapi — adapter + stub + MCP server each
+integrations/            # mls_reso · followupboss · vapi (adapter + stub + MCP server each) · llm_extraction (Claude adapter)
 orchestration/           # the three workflows, twice: langgraph/ (V1) + adk/ (V2)
 api/                     # FastAPI: routes, webhooks, cron, workflow engine, Alembic
 frontend/                # React + Vite: Listings, Transactions, Approval Inbox
@@ -104,28 +104,29 @@ docs/                    # ARCHITECTURE.md · DEMO.md · ADRs/
 
 **Done:** V1 — all three workflows end-to-end with durable HITL, demo mode, and
 per-client GCP deploys. V2 — the Google ADK engine, side-by-side with LangGraph
-and CI-proven equivalent (ADR-0004). Live-integration proofs for two of the
-three external systems: the MLS adapter runs against a live RESO Web API feed
-(real-feed gaps — sparse fields, fractional prices, vendor path casing — found
-and fixed), and the voice path is proven end-to-end with real phone calls
-(webhook → extraction → feedback → CRM sync; assistant behavior hardened over
-five live calls, captured in the shipped spec and ADR-0005).
+and CI-proven equivalent (ADR-0004). Live-integration proofs for **all three**
+external systems: the MLS adapter runs against a live RESO Web API feed (sparse
+fields, fractional prices, vendor path casing — found and fixed); the voice path
+is proven end-to-end with real phone calls (assistant hardened over five live
+calls — ADR-0005); and the CRM adapter runs against a live FollowUpBoss account,
+which surfaced and fixed a real `POST /calls` incompatibility (phone + direction +
+a fixed outcome vocabulary the stub had accepted too loosely). LLM-backed feedback
+extraction shipped behind `ExtractionPort` — a Claude Sonnet 4.6 adapter selected
+per-client, deterministic default otherwise (ADR-0006), validated against the five
+real call transcripts.
 
 **Next, in rough order — each lands when a demo- or client-path justifies it,
 never speculatively:**
 
-- **Live CRM proof:** point the CRM adapter at a clean FollowUpBoss account —
-  an env-var flip like the other two. One known open question: whether the
-  real API accepts tasks without a person attached (the stub allows it).
-- **LLM-backed transcript extraction:** swap the deterministic extractor's
-  function body behind the same Pydantic schema (ADR-0002). Live calls made
-  the case: natural speech ("between five fifty and six") routinely defeats
-  the deterministic budget/price parsing.
+- **Authentication & access control:** the api and frontend are open in demo
+  mode; a real client deploy needs login and per-user access (Identity Platform
+  is the intended path). This is the main gap between the demo and a product a
+  brokerage can be handed.
 - **Demo recording:** a 60–90s screen capture of the docs/DEMO.md path.
 - **Loosen the `google-adk` pin** once its invocation-resumability API leaves
   experimental status (tracked in ADR-0004).
-- **Documented-but-dormant:** real auth (Identity Platform), MCP servers as
-  separate Cloud Run services, and caching (revisit triggers in ADR-0001).
+- **Documented-but-dormant:** MCP servers as separate Cloud Run services, and
+  caching (revisit triggers in ADR-0001).
 
 ## License
 
