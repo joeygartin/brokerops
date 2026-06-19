@@ -96,6 +96,36 @@ variable "auth_allowed_emails" {
   default = ""
 }
 
+variable "auth_methods" {
+  type    = string
+  default = ""
+}
+
+variable "public_base_url" {
+  type    = string
+  default = ""
+}
+
+variable "smtp_host" {
+  type    = string
+  default = ""
+}
+
+variable "smtp_port" {
+  type    = number
+  default = 587
+}
+
+variable "smtp_from" {
+  type    = string
+  default = "no-reply@brokerops.app"
+}
+
+variable "smtp_username" {
+  type    = string
+  default = ""
+}
+
 variable "cron_schedule" {
   type    = string
   default = "0 13 * * *"

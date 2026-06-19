@@ -23,12 +23,36 @@ export function setUnauthorizedHandler(handler: (() => void) | null): void {
   onUnauthorized = handler;
 }
 
-export type AuthConfig = { enabled: boolean; client_id: string | null };
+export type AuthConfig = { enabled: boolean; methods: string[]; client_id: string | null };
 
 export async function loadAuthConfig(): Promise<AuthConfig> {
   const response = await fetch(`${API_BASE}/auth/config`);
   if (!response.ok) throw new Error(`auth config returned ${response.status}`);
   return (await response.json()) as AuthConfig;
+}
+
+// Pre-auth flows use plain fetch (no bearer to attach yet).
+export async function requestMagicLink(email: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/auth/magic/request`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  if (response.status === 429) {
+    throw new Error("Too many requests — wait a minute and try again.");
+  }
+  if (!response.ok) throw new Error(`request failed (${response.status})`);
+}
+
+export async function redeemMagicLink(token: string): Promise<string> {
+  const response = await fetch(`${API_BASE}/auth/magic/redeem`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+  if (!response.ok) throw new Error("This sign-in link is invalid or has expired.");
+  const data = (await response.json()) as { session_token: string };
+  return data.session_token;
 }
 
 // Drop-in for fetch on protected endpoints: attaches the bearer when present

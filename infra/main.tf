@@ -46,6 +46,12 @@ module "client" {
   google_oidc_client_id = var.google_oidc_client_id
   auth_allowed_domain   = var.auth_allowed_domain
   auth_allowed_emails   = var.auth_allowed_emails
+  auth_methods          = var.auth_methods
+  public_base_url       = var.public_base_url
+  smtp_host             = var.smtp_host
+  smtp_port             = var.smtp_port
+  smtp_from             = var.smtp_from
+  smtp_username         = var.smtp_username
   cron_schedule         = var.cron_schedule
 }
 

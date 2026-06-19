@@ -5,12 +5,15 @@ import {
   useEffect,
   useRef,
   useState,
+  type FormEvent,
   type ReactNode,
 } from "react";
 import { API_BASE } from "./types";
 import {
   apiFetch,
   loadAuthConfig,
+  redeemMagicLink,
+  requestMagicLink,
   setToken,
   setUnauthorizedHandler,
   type AuthConfig,
@@ -65,6 +68,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [config, setConfig] = useState<AuthConfig | null>(null);
   const [email, setEmail] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [magicEmail, setMagicEmail] = useState("");
+  const [magicSent, setMagicSent] = useState(false);
+  const [magicError, setMagicError] = useState<string | null>(null);
   const buttonRef = useRef<HTMLDivElement>(null);
 
   // Confirm the current bearer and capture the operator's email.
@@ -83,8 +89,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setPhase("login");
   }, []);
 
-  // Bootstrap: read /auth/config, then either run open (demo) or resume/await a
-  // Google sign-in.
+  // Bootstrap: read /auth/config, then either run open (demo), complete a magic
+  // callback, resume a stored session, or show the sign-in screen.
   useEffect(() => {
     setUnauthorizedHandler(() => {
       setEmail(null);
@@ -97,6 +103,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setPhase("demo");
           return;
         }
+        // Magic-link callback: redeem the URL token for a session, then scrub it.
+        const token = new URL(window.location.href).searchParams.get("token");
+        if (token) {
+          try {
+            setToken(await redeemMagicLink(token));
+            window.history.replaceState({}, "", "/");
+            if (await loadMe()) {
+              setPhase("ready");
+              return;
+            }
+          } catch (cause) {
+            setMagicError(String(cause));
+          }
+        }
         // A stored token may still be valid after a reload.
         if (await loadMe()) setPhase("ready");
         else setPhase("login");
@@ -104,6 +124,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .catch((cause) => setError(String(cause)));
     return () => setUnauthorizedHandler(null);
   }, [loadMe]);
+
+  const submitMagic = useCallback(
+    async (event: FormEvent) => {
+      event.preventDefault();
+      setMagicError(null);
+      try {
+        await requestMagicLink(magicEmail.trim());
+        setMagicSent(true);
+      } catch (cause) {
+        setMagicError(String(cause));
+      }
+    },
+    [magicEmail],
+  );
 
   // Render the Google button once we're in the login phase and have a client id.
   useEffect(() => {
@@ -137,12 +171,67 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return <CenteredNote text="Loading…" tone="muted" />;
   }
   if (phase === "login") {
+    const methods = config?.methods ?? [];
     return (
-      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", gap: "1rem" }}>
-        <div style={{ textAlign: "center" }}>
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center" }}>
+        <div style={{ textAlign: "center", width: 320 }}>
           <h1>brokerops</h1>
           <p style={{ color: "#57606a" }}>Sign in to continue</p>
-          <div ref={buttonRef} style={{ display: "inline-block", marginTop: "0.5rem" }} />
+
+          {methods.includes("magic") &&
+            (magicSent ? (
+              <p
+                style={{
+                  background: "#dafbe1",
+                  color: "#1a7f37",
+                  borderRadius: 6,
+                  padding: "0.75rem",
+                }}
+              >
+                Check your email for a sign-in link.
+              </p>
+            ) : (
+              <form onSubmit={submitMagic} style={{ display: "grid", gap: "0.5rem" }}>
+                <input
+                  type="email"
+                  required
+                  placeholder="you@example.com"
+                  value={magicEmail}
+                  onChange={(e) => setMagicEmail(e.target.value)}
+                  style={{
+                    padding: "0.5rem 0.7rem",
+                    borderRadius: 6,
+                    border: "1px solid #d0d7de",
+                    fontSize: "0.95rem",
+                  }}
+                />
+                <button
+                  type="submit"
+                  style={{
+                    padding: "0.5rem 1.1rem",
+                    borderRadius: 6,
+                    border: "1px solid #1a7f37",
+                    background: "#2da44e",
+                    color: "#fff",
+                    cursor: "pointer",
+                  }}
+                >
+                  Email me a sign-in link
+                </button>
+              </form>
+            ))}
+
+          {magicError && (
+            <p style={{ color: "#cf222e", fontSize: "0.85rem" }}>{magicError}</p>
+          )}
+
+          {methods.includes("magic") && methods.includes("google") && (
+            <div style={{ color: "#57606a", margin: "1rem 0", fontSize: "0.8rem" }}>or</div>
+          )}
+
+          {methods.includes("google") && (
+            <div ref={buttonRef} style={{ display: "inline-block", marginTop: "0.5rem" }} />
+          )}
         </div>
       </div>
     );

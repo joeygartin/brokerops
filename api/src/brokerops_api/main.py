@@ -8,9 +8,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from brokerops_api.db import (
     InMemoryApprovalRepo,
     InMemoryFeedbackStore,
+    InMemoryMagicTokenStore,
     InMemoryTransactionStore,
     SqlApprovalRepo,
     SqlFeedbackStore,
+    SqlMagicTokenStore,
     SqlTransactionStore,
     create_engine,
 )
@@ -18,6 +20,7 @@ from brokerops_api.deps import (
     build_crm_adapter,
     build_extraction_port,
     build_identity_verifier,
+    build_magic_link_service,
     build_mls_adapter,
     build_voice_adapter,
     get_current_principal,
@@ -32,6 +35,7 @@ from brokerops_api.routes.listings import router as listings_router
 from brokerops_api.routes.transactions import router as transactions_router
 from brokerops_api.routes.webhooks import router as webhooks_router
 from brokerops_api.routes.workflows import router as workflows_router
+from brokerops_core.ports.auth import MagicTokenStore
 from brokerops_adk.engine import build_engine as build_adk_engine
 from brokerops_langgraph.engine import build_engine as build_langgraph_engine
 
@@ -59,17 +63,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.crm = crm
     app.state.voice = voice
     engine = create_engine(database_url) if database_url else None
+    magic_store: MagicTokenStore
     if engine is not None:
         # Durable path: workflow state and approvals share Postgres, so HITL
         # pauses survive restarts and deploys.
         app.state.approval_repo = SqlApprovalRepo(engine)
         app.state.transaction_store = SqlTransactionStore(engine)
         app.state.feedback_store = SqlFeedbackStore(engine)
+        magic_store = SqlMagicTokenStore(engine)
     else:
         # Database-less local dev: everything in memory, nothing survives.
         app.state.approval_repo = InMemoryApprovalRepo()
         app.state.transaction_store = InMemoryTransactionStore()
         app.state.feedback_store = InMemoryFeedbackStore()
+        magic_store = InMemoryMagicTokenStore()
+    # Magic-link service is None unless the "magic" method is enabled; routes
+    # that need it 404 otherwise.
+    app.state.magic_link_service = build_magic_link_service(magic_store)
     async with build_engine(
         mls=mls,
         crm=crm,
@@ -90,8 +100,10 @@ app = FastAPI(title="brokerops api", lifespan=lifespan)
 
 # The identity verifier is resolved from env at import time (env is fixed for
 # the process lifetime). Done at module scope, not in lifespan, so it's present
-# even for tests that drive the app without running the lifespan.
+# even for tests that drive the app without running the lifespan. The magic-link
+# service defaults to None here (no store yet); lifespan builds the real one.
 app.state.identity_verifier = build_identity_verifier()
+app.state.magic_link_service = None
 
 app.add_middleware(
     CORSMiddleware,

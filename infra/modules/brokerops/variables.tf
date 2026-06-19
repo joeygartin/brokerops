@@ -133,6 +133,42 @@ variable "auth_allowed_emails" {
   default     = ""
 }
 
+variable "auth_methods" {
+  description = "Comma-separated login methods to offer: any of \"google\", \"magic\" (ADR-0008). Empty + no client id = demo operator."
+  type        = string
+  default     = ""
+}
+
+variable "public_base_url" {
+  description = "Public URL of the frontend, used to build magic-link emails (e.g. https://app.client.com). Required when \"magic\" is in auth_methods; set explicitly (a custom domain or the frontend run.app URL) — not derived, to avoid an api↔frontend cycle (ADR-0008)."
+  type        = string
+  default     = ""
+}
+
+variable "smtp_host" {
+  description = "SMTP server host for magic-link delivery; empty falls back to the console sender (logs the link)."
+  type        = string
+  default     = ""
+}
+
+variable "smtp_port" {
+  description = "SMTP server port."
+  type        = number
+  default     = 587
+}
+
+variable "smtp_from" {
+  description = "From address on magic-link emails."
+  type        = string
+  default     = "no-reply@brokerops.app"
+}
+
+variable "smtp_username" {
+  description = "SMTP auth username; empty sends without login (e.g. an IP-allowlisted relay)."
+  type        = string
+  default     = ""
+}
+
 variable "cron_schedule" {
   description = "Cloud Scheduler cron for the milestone check."
   type        = string

@@ -17,6 +17,7 @@ from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
 
 from brokerops_core.ports.identity import AuthError, Principal
+from brokerops_core.services.identity import EmailAllowlist
 
 # Google mints ID tokens with one of these two issuers; reject anything else
 # even if the signature and audience check out.
@@ -31,14 +32,9 @@ class GoogleOIDCVerifier:
         allowed_emails: frozenset[str] | None = None,
     ) -> None:
         self._client_id = client_id
-        self._allowed_domain = allowed_domain or None
-        # Compare case-insensitively; Google emails are already lowercase but a
-        # hand-edited allowlist may not be.
-        self._allowed_emails = (
-            frozenset(e.strip().lower() for e in allowed_emails if e.strip())
-            if allowed_emails
-            else None
-        )
+        # Shared with the magic-link path so a deployment's access list is
+        # enforced identically however the operator signs in.
+        self._allowlist = EmailAllowlist(allowed_domain, allowed_emails)
         # One transport instance; google-auth caches Google's certs on it.
         self._transport = google_requests.Request()
 
@@ -64,7 +60,8 @@ class GoogleOIDCVerifier:
         if not email or not claims.get("email_verified", False):
             raise AuthError("token has no verified email")
 
-        self._check_allowlist(email, claims.get("hd"))
+        if not self._allowlist.permits(email, claims.get("hd")):
+            raise AuthError(f"{email} is not permitted", forbidden=True)
 
         return Principal(
             subject=str(claims["sub"]),
@@ -72,15 +69,3 @@ class GoogleOIDCVerifier:
             name=str(claims.get("name", "")),
             verified=True,
         )
-
-    def _check_allowlist(self, email: str, hosted_domain: object) -> None:
-        if self._allowed_emails is not None and email in self._allowed_emails:
-            return
-        if self._allowed_domain is not None:
-            domain = email.rpartition("@")[2]
-            if hosted_domain == self._allowed_domain or domain == self._allowed_domain:
-                return
-        # No allowlist configured at all → any verified Google account is in.
-        if self._allowed_emails is None and self._allowed_domain is None:
-            return
-        raise AuthError(f"{email} is not permitted", forbidden=True)

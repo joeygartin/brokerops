@@ -10,6 +10,7 @@ locals {
     "langsmith-api-key",
     "llm-api-key",
     "reso-auth-token",
+    "smtp-password",
   ]
 }
 
@@ -68,12 +69,35 @@ resource "google_secret_manager_secret_version" "cron_secret" {
   secret_data = random_password.cron.result
 }
 
+# The session-token signing key (ADR-0008). Like the cron secret, terraform
+# generates it — no `make secrets` push — so enabling magic link needs no manual
+# key handling.
+resource "random_password" "session_signing_key" {
+  length  = 48
+  special = false
+}
+
+resource "google_secret_manager_secret" "session_signing_key" {
+  project   = var.project_id
+  secret_id = "${local.prefix}-session-signing-key"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "session_signing_key" {
+  secret      = google_secret_manager_secret.session_signing_key.id
+  secret_data = random_password.session_signing_key.result
+}
+
 locals {
   api_secret_ids = merge(
     { for name, secret in google_secret_manager_secret.client : name => secret.secret_id },
     {
-      "database-url" = google_secret_manager_secret.database_url.secret_id
-      "cron-secret"  = google_secret_manager_secret.cron_secret.secret_id
+      "database-url"        = google_secret_manager_secret.database_url.secret_id
+      "cron-secret"         = google_secret_manager_secret.cron_secret.secret_id
+      "session-signing-key" = google_secret_manager_secret.session_signing_key.secret_id
     }
   )
 }
