@@ -7,7 +7,8 @@ action gated by human approval.
 Built as a deliberate demonstration of production agent architecture: the same three
 workflows run on either of two orchestration engines — LangGraph and Google ADK —
 behind one seam, with durable human-in-the-loop, an MCP tool boundary, hexagonal
-domain isolation, and per-client GCP deploys via Terraform.
+domain isolation, operator auth with role-based access, and per-client GCP deploys
+via Terraform.
 
 ## Principles
 
@@ -74,6 +75,8 @@ integrations/
   followupboss/          # FUB adapter (token-bucket rate limited) + stub + MCP server
   vapi/                  # voice adapter + webhook-firing stub + MCP server
   llm_extraction/        # Claude extraction adapter behind ExtractionPort (ADR-0006)
+  google_oidc/           # Google ID-token verifier behind IdentityVerifier (ADR-0007)
+  email_smtp/            # SMTP EmailSender adapter for magic-link delivery (ADR-0008)
 orchestration/
   langgraph/             # V1 engine: graphs/, checkpointer (state schemas in core)
   adk/                   # V2 engine: workflows/, sessions, interrupts
@@ -133,13 +136,41 @@ models in core — so the port touched orchestration wiring and nothing else. CI
 the same e2e demo script against both engines on every push; neither needs an LLM
 key for these deterministic workflows.
 
+## Operator authentication & access control
+
+Auth follows the same hexagonal discipline: `core/` defines an `IdentityVerifier`
+port producing a `Principal`, and adapters prove identity however a deployment
+chooses. It is **opt-in** — with nothing configured, a `DemoIdentityVerifier` returns
+a fixed operator so `docker compose up` stays login-free.
+
+- **Methods, selectable per deploy** (`AUTH_METHODS`): Google OIDC (verify the ID
+  token against Google's certs, ADR-0007) and magic-link email (single-use,
+  SHA-256-hashed, 15-minute token, ADR-0008). A self-issued **session JWT** is the
+  unifying bearer, so a `CompositeIdentityVerifier` treats both behind one
+  `verify()`. Who may sign in is a shared **email allowlist** (domain and/or explicit
+  list), enforced identically by both methods. Magic-link delivery is an
+  `EmailSender` port — a console default (logs the link) and an SMTP adapter for real
+  delivery through any provider.
+- **Roles (ADR-0009).** A `Principal` carries a hierarchical role
+  (`viewer < operator < admin`), assigned from config by a `RoleResolver` and carried
+  in the session JWT — no per-request lookup. A `require_role` dependency gates the
+  privilege-sensitive routes: admins decide approvals, operators also start workflows
+  and place calls, viewers read. Like the allowlist it is opt-in — no role config
+  means every signed-in operator is an admin (pre-RBAC behavior). The frontend reads
+  the role from `/auth/me` to hide controls it can't use, but the API is the
+  authority: a route a role can't reach returns 403 regardless of the UI.
+
+Secrets stay out of the repo as everywhere else: the session signing key is
+Terraform-generated, OIDC client ids are public env, and any SMTP password is pushed
+to Secret Manager out-of-band.
+
 ## Data
 
 Cloud SQL Postgres (one small instance per client — cheap isolation; consolidation
 to a shared instance is a DSN change). Alembic migrations run on container start.
 Domain tables: approval_requests, transactions, milestones, call_records,
-showing_feedback. Each engine manages its own state tables alongside (LangGraph's
-checkpointer; ADK's session service).
+showing_feedback, magic_login_tokens. Each engine manages its own state tables
+alongside (LangGraph's checkpointer; ADK's session service).
 
 Contacts are deliberately **not** a domain table: the CRM is the source of truth and
 contacts are read-through DTOs via `CRMPort`. Caching policy is ADR-0001: a thin
@@ -161,10 +192,11 @@ external health checks on `/readyz` because Google's frontend reserves `/healthz
 
 ## Verification
 
-~120 tests: OData contract tests pinning the RESO subset, adapter tests against the
+~190 tests: OData contract tests pinning the RESO subset, adapter tests against the
 stubs (the same shapes the real APIs return), workflow tests for every branch of all
-three workflows on **both engines**, API-level flow tests, a Postgres
-restart-survival proof per engine (runs in CI against a service container), and a
-scripted e2e demo check that CI runs against the full compose stack under both
-`ORCHESTRATOR` values. Ruff + mypy strict across the workspace; gitleaks on every
-commit and in CI.
+three workflows on **both engines**, API-level flow tests, auth tests (allowlist,
+magic-link lifecycle, session-JWT round-trip, role resolution, and `require_role`
+enforcement), a Postgres restart-survival proof per engine (runs in CI against a
+service container), and a scripted e2e demo check that CI runs against the full
+compose stack under both `ORCHESTRATOR` values. Ruff + mypy strict across the
+workspace; gitleaks on every commit and in CI.
