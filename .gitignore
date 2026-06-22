@@ -37,3 +37,6 @@ frontend/dist/
 .DS_Store
 .idea/
 .vscode/
+
+# Internal task backlog — system of record is GitHub Issues
+docs/tasks/
