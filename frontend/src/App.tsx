@@ -8,7 +8,7 @@ type Tab = "listings" | "transactions" | "approvals";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("listings");
-  const { email, signOut } = useAuth();
+  const { email, role, signOut } = useAuth();
 
   const tabStyle = (active: boolean) => ({
     padding: "0.5rem 1.2rem",
@@ -40,6 +40,22 @@ export default function App() {
           }}
         >
           <span>{email}</span>
+          {role && (
+            <span
+              style={{
+                textTransform: "uppercase",
+                fontSize: "0.7rem",
+                fontWeight: 600,
+                letterSpacing: "0.03em",
+                padding: "0.1rem 0.5rem",
+                borderRadius: 999,
+                background: "#eaeef2",
+                color: "#57606a",
+              }}
+            >
+              {role}
+            </span>
+          )}
           <button
             onClick={signOut}
             style={{

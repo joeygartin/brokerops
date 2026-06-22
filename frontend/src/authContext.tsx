@@ -8,7 +8,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
-import { API_BASE } from "./types";
+import { API_BASE, roleAtLeast, type Role } from "./types";
 import {
   apiFetch,
   loadAuthConfig,
@@ -53,9 +53,21 @@ function loadGisScript(): Promise<void> {
   });
 }
 
-type AuthState = { email: string | null; signOut: () => void };
+type AuthState = {
+  email: string | null;
+  role: Role | null;
+  // True if the current operator's role meets `minimum`. Hides controls the API
+  // would reject anyway; the server remains the authority.
+  hasRole: (minimum: Role) => boolean;
+  signOut: () => void;
+};
 
-const AuthContext = createContext<AuthState>({ email: null, signOut: () => {} });
+const AuthContext = createContext<AuthState>({
+  email: null,
+  role: null,
+  hasRole: () => false,
+  signOut: () => {},
+});
 
 export function useAuth(): AuthState {
   return useContext(AuthContext);
@@ -67,6 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [phase, setPhase] = useState<Phase>("loading");
   const [config, setConfig] = useState<AuthConfig | null>(null);
   const [email, setEmail] = useState<string | null>(null);
+  const [role, setRole] = useState<Role | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [magicEmail, setMagicEmail] = useState("");
   const [magicSent, setMagicSent] = useState(false);
@@ -77,14 +90,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loadMe = useCallback(async (): Promise<boolean> => {
     const response = await apiFetch(`${API_BASE}/auth/me`);
     if (!response.ok) return false;
-    const me = (await response.json()) as { email: string };
+    const me = (await response.json()) as { email: string; role: Role };
     setEmail(me.email);
+    setRole(me.role);
     return true;
   }, []);
 
   const signOut = useCallback(() => {
     setToken(null);
     setEmail(null);
+    setRole(null);
     window.google?.accounts.id.disableAutoSelect();
     setPhase("login");
   }, []);
@@ -94,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setUnauthorizedHandler(() => {
       setEmail(null);
+      setRole(null);
       setPhase("login");
     });
     loadAuthConfig()
@@ -236,7 +252,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       </div>
     );
   }
-  return <AuthContext.Provider value={{ email, signOut }}>{children}</AuthContext.Provider>;
+  // Demo mode (auth disabled) is full-access — it matches the backend's demo
+  // operator (admin). With auth on, children only render once loadMe has set the
+  // role, so there's no flash of hidden-then-shown controls.
+  const effectiveRole: Role | null = config?.enabled ? role : "admin";
+  const hasRole = (minimum: Role) => roleAtLeast(effectiveRole, minimum);
+  return (
+    <AuthContext.Provider value={{ email, role: effectiveRole, hasRole, signOut }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 function CenteredNote({ text, tone }: { text: string; tone: "error" | "muted" }) {

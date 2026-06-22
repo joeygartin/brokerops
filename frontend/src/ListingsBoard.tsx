@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "./auth";
+import { useAuth } from "./authContext";
 import { API_BASE, Listing, WorkflowRunResult } from "./types";
 
 const price = new Intl.NumberFormat("en-US", {
@@ -25,6 +26,7 @@ function ListingCard({
 }) {
   const [starting, setStarting] = useState(false);
   const [calling, setCalling] = useState(false);
+  const { hasRole } = useAuth();
 
   const startWorkflow = async () => {
     setStarting(true);
@@ -105,7 +107,7 @@ function ListingCard({
       <div style={{ color: "#57606a", fontSize: "0.8rem", marginTop: "0.4rem" }}>
         {listing.mls_id} — {listing.agent_name}
       </div>
-      {listing.status === "active" && (
+      {listing.status === "active" && hasRole("operator") && (
         <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem", flexWrap: "wrap" }}>
           <button
             onClick={startWorkflow}

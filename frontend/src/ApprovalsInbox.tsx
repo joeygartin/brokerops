@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "./auth";
+import { useAuth } from "./authContext";
 import { API_BASE, ApprovalRequest } from "./types";
 
 function MarketingPreview({ approval }: { approval: ApprovalRequest }) {
@@ -69,6 +70,7 @@ function ApprovalCard({
   onDecided: (message: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const { hasRole } = useAuth();
   const isEscalation = approval.kind === "approve_escalation";
   const isHotLead = approval.kind === "notify_agent";
   const subject = isEscalation
@@ -138,36 +140,42 @@ function ApprovalCard({
       ) : (
         <MarketingPreview approval={approval} />
       )}
-      <div style={{ display: "flex", gap: "0.6rem", marginTop: "0.6rem" }}>
-        <button
-          onClick={() => decide("approved")}
-          disabled={busy}
-          style={{
-            padding: "0.4rem 1.1rem",
-            borderRadius: 6,
-            border: "1px solid #1a7f37",
-            background: "#2da44e",
-            color: "#fff",
-            cursor: busy ? "wait" : "pointer",
-          }}
-        >
-          Approve
-        </button>
-        <button
-          onClick={() => decide("rejected")}
-          disabled={busy}
-          style={{
-            padding: "0.4rem 1.1rem",
-            borderRadius: 6,
-            border: "1px solid #cf222e",
-            background: "#fff",
-            color: "#cf222e",
-            cursor: busy ? "wait" : "pointer",
-          }}
-        >
-          Reject
-        </button>
-      </div>
+      {hasRole("admin") ? (
+        <div style={{ display: "flex", gap: "0.6rem", marginTop: "0.6rem" }}>
+          <button
+            onClick={() => decide("approved")}
+            disabled={busy}
+            style={{
+              padding: "0.4rem 1.1rem",
+              borderRadius: 6,
+              border: "1px solid #1a7f37",
+              background: "#2da44e",
+              color: "#fff",
+              cursor: busy ? "wait" : "pointer",
+            }}
+          >
+            Approve
+          </button>
+          <button
+            onClick={() => decide("rejected")}
+            disabled={busy}
+            style={{
+              padding: "0.4rem 1.1rem",
+              borderRadius: 6,
+              border: "1px solid #cf222e",
+              background: "#fff",
+              color: "#cf222e",
+              cursor: busy ? "wait" : "pointer",
+            }}
+          >
+            Reject
+          </button>
+        </div>
+      ) : (
+        <p style={{ color: "#57606a", fontSize: "0.8rem", marginTop: "0.6rem" }}>
+          Awaiting an admin decision.
+        </p>
+      )}
     </article>
   );
 }

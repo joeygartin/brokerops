@@ -102,4 +102,23 @@ export type TransactionDetail = {
   milestones: MilestoneView[];
 };
 
+// Operator authorization level (mirrors core's Role). Hierarchical:
+// admin > operator > viewer. The API is the security boundary; the UI uses this
+// only to hide controls a role can't use.
+export type Role = "viewer" | "operator" | "admin";
+
+const ROLE_RANK: Record<Role, number> = { viewer: 0, operator: 1, admin: 2 };
+
+export function roleAtLeast(role: Role | null, minimum: Role): boolean {
+  return role != null && ROLE_RANK[role] >= ROLE_RANK[minimum];
+}
+
+export type Principal = {
+  subject: string;
+  email: string;
+  name: string;
+  verified: boolean;
+  role: Role;
+};
+
 export const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
