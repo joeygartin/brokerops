@@ -16,6 +16,7 @@ CLAUDE.local.md
 .internal/
 .internal-denylist
 *.session.md
+docs/tasks/
 
 # ── Python ───────────────────────────────────────────────────────────
 __pycache__/
