@@ -117,14 +117,19 @@ per-client, deterministic default otherwise (ADR-0006), validated against the fi
 real call transcripts. Operator authentication shipped behind an `IdentityVerifier`
 port — a deployment offers Google OIDC and/or magic-link email login (selectable per
 client), gated by a shared email allowlist, with a demo operator default so demo mode
-stays login-free (ADR-0007, ADR-0008).
+stays login-free (ADR-0007, ADR-0008); magic-link delivery goes through any SMTP
+provider via an `EmailSender` adapter. Role-based access control followed
+(`viewer`/`operator`/`admin`, ADR-0009): roles are assigned from config and carried in
+the session, `require_role` gates the privilege-sensitive routes (admins decide
+approvals, operators also start workflows and place calls, viewers read), and the
+React app hides controls a role can't use — opt-in, so a deploy without role config
+keeps a flat operator list.
 
 **Next, in rough order — each lands when a demo- or client-path justifies it,
 never speculatively:**
 
-- **Authorization depth:** operator login ships (Google OIDC, ADR-0007), but
-  access is a flat allowlist — per-user roles/RBAC land when a client path needs
-  them. The `Principal` seam is shaped for it.
+- **Session longevity:** session JWTs (8h) and Google ID tokens just re-prompt on
+  expiry; a refresh flow lands when an operator path needs longer sessions.
 - **Demo recording:** a 60–90s screen capture of the docs/DEMO.md path.
 - **Loosen the `google-adk` pin** once its invocation-resumability API leaves
   experimental status (tracked in ADR-0004).
