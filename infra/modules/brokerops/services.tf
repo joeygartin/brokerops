@@ -111,6 +111,37 @@ resource "google_cloud_run_v2_service" "api" {
         }
       }
 
+      # RBAC (ADR-0009): role assignment among allowlisted operators. Absent →
+      # every operator is admin (pre-RBAC flat behavior).
+      dynamic "env" {
+        for_each = var.enable_auth && var.auth_admin_emails != "" ? [1] : []
+        content {
+          name  = "AUTH_ADMIN_EMAILS"
+          value = var.auth_admin_emails
+        }
+      }
+      dynamic "env" {
+        for_each = var.enable_auth && var.auth_admin_domain != "" ? [1] : []
+        content {
+          name  = "AUTH_ADMIN_DOMAIN"
+          value = var.auth_admin_domain
+        }
+      }
+      dynamic "env" {
+        for_each = var.enable_auth && var.auth_viewer_emails != "" ? [1] : []
+        content {
+          name  = "AUTH_VIEWER_EMAILS"
+          value = var.auth_viewer_emails
+        }
+      }
+      dynamic "env" {
+        for_each = var.enable_auth && var.auth_viewer_domain != "" ? [1] : []
+        content {
+          name  = "AUTH_VIEWER_DOMAIN"
+          value = var.auth_viewer_domain
+        }
+      }
+
       # Multi-method auth (ADR-0008): AUTH_METHODS selects google/magic; magic
       # additionally needs a session signing key, the public frontend URL for
       # email links, and (for real delivery) SMTP. The signing key is terraform-

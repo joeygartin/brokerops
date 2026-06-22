@@ -3,15 +3,19 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from brokerops_api.deps import PrincipalDep, get_approval_repo, get_workflow_engine
+from brokerops_api.deps import get_approval_repo, get_workflow_engine, require_role
 from brokerops_api.db import ApprovalRepo
 from brokerops_api.workflows import WorkflowEngine, WorkflowRunResult
 from brokerops_core.models.approval import ApprovalDecision, ApprovalRequest, ApprovalStatus
+from brokerops_core.ports.identity import Principal, Role
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
 
 RepoDep = Annotated[ApprovalRepo, Depends(get_approval_repo)]
 EngineDep = Annotated[WorkflowEngine, Depends(get_workflow_engine)]
+# Deciding a human-in-the-loop approval is the one action with real-world side
+# effects (CRM writes, contract steps, outbound calls) — restricted to admins.
+AdminDep = Annotated[Principal, Depends(require_role(Role.ADMIN))]
 
 
 class DecideRequest(BaseModel):
@@ -48,7 +52,7 @@ async def decide_approval(
     request: DecideRequest,
     repo: RepoDep,
     engine: EngineDep,
-    principal: PrincipalDep,
+    principal: AdminDep,
 ) -> DecisionResponse:
     if request.decision is ApprovalStatus.PENDING:
         raise HTTPException(status_code=422, detail="decision must be approved or rejected")

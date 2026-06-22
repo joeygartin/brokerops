@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 from brokerops_core.ports.auth import MagicTokenStore, SessionIssuer
 from brokerops_core.ports.email import EmailSender
 from brokerops_core.ports.identity import AuthError, Principal
-from brokerops_core.services.identity import EmailAllowlist
+from brokerops_core.services.identity import EmailAllowlist, RoleResolver
 
 DEFAULT_TTL = timedelta(minutes=15)
 
@@ -31,12 +31,14 @@ class MagicLinkService:
         session_issuer: SessionIssuer,
         allowlist: EmailAllowlist,
         public_base_url: str,
+        roles: RoleResolver | None = None,
         ttl: timedelta = DEFAULT_TTL,
     ) -> None:
         self._store = store
         self._email = email
         self._issuer = session_issuer
         self._allowlist = allowlist
+        self._roles = roles or RoleResolver()
         self._base_url = public_base_url.rstrip("/")
         self._ttl = ttl
 
@@ -67,5 +69,11 @@ class MagicLinkService:
             raise AuthError("sign-in link expired")
         if not self._allowlist.permits(record.email):
             raise AuthError(f"{record.email} is not permitted", forbidden=True)
-        principal = Principal(subject=record.email, email=record.email, name="", verified=True)
+        principal = Principal(
+            subject=record.email,
+            email=record.email,
+            name="",
+            verified=True,
+            role=self._roles.role_for(record.email),
+        )
         return self._issuer.issue(principal)

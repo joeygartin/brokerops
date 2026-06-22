@@ -101,6 +101,29 @@ variable "auth_methods" {
   default = ""
 }
 
+# RBAC: who is an admin / viewer among the allowlisted operators. With none set,
+# every signed-in operator is admin (= pre-RBAC flat behavior). Admins decide
+# approvals; viewers are read-only; everyone else is an operator.
+variable "auth_admin_emails" {
+  type    = string
+  default = ""
+}
+
+variable "auth_admin_domain" {
+  type    = string
+  default = ""
+}
+
+variable "auth_viewer_emails" {
+  type    = string
+  default = ""
+}
+
+variable "auth_viewer_domain" {
+  type    = string
+  default = ""
+}
+
 variable "public_base_url" {
   type    = string
   default = ""

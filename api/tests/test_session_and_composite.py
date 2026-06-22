@@ -6,7 +6,7 @@ import pytest
 
 from brokerops_api.auth.composite import CompositeIdentityVerifier
 from brokerops_api.auth.session import SessionTokenService, SessionTokenVerifier
-from brokerops_core.ports.identity import AuthError, IdentityVerifier, Principal
+from brokerops_core.ports.identity import AuthError, IdentityVerifier, Principal, Role
 
 KEY = "test-signing-key"
 
@@ -19,6 +19,26 @@ async def test_session_round_trip() -> None:
     token = SessionTokenService(KEY).issue(_principal())
     principal = await SessionTokenVerifier(KEY).verify(token)
     assert principal.email == "op@acme.com"
+
+
+async def test_session_round_trips_role() -> None:
+    admin = Principal(subject="a@x.com", email="a@x.com", role=Role.ADMIN)
+    token = SessionTokenService(KEY).issue(admin)
+    assert (await SessionTokenVerifier(KEY).verify(token)).role is Role.ADMIN
+
+
+async def test_session_defaults_missing_role_to_operator() -> None:
+    # A pre-RBAC token (no role claim) must never resolve as admin.
+    import jwt
+
+    from brokerops_api.auth.session import ISSUER
+
+    legacy = jwt.encode(
+        {"iss": ISSUER, "sub": "a@x.com", "email": "a@x.com", "exp": 9999999999},
+        KEY,
+        algorithm="HS256",
+    )
+    assert (await SessionTokenVerifier(KEY).verify(legacy)).role is Role.OPERATOR
 
 
 async def test_session_rejects_wrong_key() -> None:

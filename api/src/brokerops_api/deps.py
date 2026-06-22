@@ -1,4 +1,5 @@
 import os
+from collections.abc import Callable
 from functools import lru_cache
 from typing import Annotated, cast
 
@@ -12,12 +13,12 @@ from brokerops_core.ports.crm import CRMPort
 from brokerops_core.ports.email import EmailSender
 from brokerops_core.ports.extraction import ExtractionPort
 from brokerops_core.ports.feedback import FeedbackStore
-from brokerops_core.ports.identity import AuthError, IdentityVerifier, Principal
+from brokerops_core.ports.identity import AuthError, IdentityVerifier, Principal, Role
 from brokerops_core.ports.transactions import TransactionStore
 from brokerops_core.ports.voice import VoicePort
 from brokerops_core.services.email import ConsoleEmailSender
 from brokerops_core.services.feedback_extraction import DeterministicExtractor
-from brokerops_core.services.identity import DemoIdentityVerifier, EmailAllowlist
+from brokerops_core.services.identity import DemoIdentityVerifier, EmailAllowlist, RoleResolver
 from brokerops_core.services.listing_service import ListingService
 from brokerops_core.services.magic_link import MagicLinkService
 from brokerops_followupboss.adapter import FUB_API_BASE, FUBCRMAdapter
@@ -117,6 +118,22 @@ def _build_allowlist() -> EmailAllowlist:
     )
 
 
+def _csv_env(name: str) -> frozenset[str] | None:
+    values = {e.strip() for e in os.environ.get(name, "").split(",") if e.strip()}
+    return frozenset(values) or None
+
+
+def _build_role_resolver() -> RoleResolver:
+    # Parallel to the allowlist: no admin/viewer rule set → unrestricted, so an
+    # auth-enabled deploy with no role config behaves as a flat admin list.
+    return RoleResolver(
+        admin_emails=_csv_env("AUTH_ADMIN_EMAILS"),
+        admin_domain=os.environ.get("AUTH_ADMIN_DOMAIN") or None,
+        viewer_emails=_csv_env("AUTH_VIEWER_EMAILS"),
+        viewer_domain=os.environ.get("AUTH_VIEWER_DOMAIN") or None,
+    )
+
+
 def _session_signing_key() -> str:
     key = os.environ.get("SESSION_SIGNING_KEY", "")
     if not key:
@@ -161,14 +178,12 @@ def build_identity_verifier() -> IdentityVerifier:
     if "google" in methods:
         from brokerops_google_oidc.adapter import GoogleOIDCVerifier
 
-        emails = {
-            e.strip() for e in os.environ.get("AUTH_ALLOWED_EMAILS", "").split(",") if e.strip()
-        }
         verifiers.append(
             GoogleOIDCVerifier(
                 client_id=cast(str, _google_client_id()),
                 allowed_domain=os.environ.get("AUTH_ALLOWED_DOMAIN") or None,
-                allowed_emails=frozenset(emails) or None,
+                allowed_emails=_csv_env("AUTH_ALLOWED_EMAILS"),
+                roles=_build_role_resolver(),
             )
         )
     from brokerops_api.auth.composite import CompositeIdentityVerifier
@@ -204,6 +219,7 @@ def build_magic_link_service(store: MagicTokenStore) -> MagicLinkService | None:
         email=build_email_sender(),
         session_issuer=SessionTokenService(_session_signing_key()),
         allowlist=_build_allowlist(),
+        roles=_build_role_resolver(),
         public_base_url=os.environ.get("PUBLIC_BASE_URL", "http://localhost:5173"),
     )
 
@@ -236,6 +252,26 @@ async def get_current_principal(
 
 
 PrincipalDep = Annotated[Principal, Depends(get_current_principal)]
+
+
+def require_role(minimum: Role) -> Callable[[Principal], Principal]:
+    """Dependency factory: admit the caller only if their role meets `minimum`.
+
+    Authorization runs after authentication — the principal is already resolved by
+    get_current_principal, so a failure here is a 403 (known identity, insufficient
+    role), never a 401. Gate the privilege-sensitive routes; reads stay open to any
+    authenticated operator (viewer and up).
+    """
+
+    def _guard(principal: PrincipalDep) -> Principal:
+        if not principal.role.allows(minimum):
+            raise HTTPException(
+                status_code=403,
+                detail=f"requires {minimum.value} role (you are {principal.role.value})",
+            )
+        return principal
+
+    return _guard
 
 
 @lru_cache(maxsize=1)

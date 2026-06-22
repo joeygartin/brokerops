@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 
 import jwt
 
-from brokerops_core.ports.identity import AuthError, Principal
+from brokerops_core.ports.identity import AuthError, Principal, Role
 
 ISSUER = "brokerops"
 DEFAULT_TTL = timedelta(hours=8)
@@ -34,6 +34,7 @@ class SessionTokenService:
             "sub": principal.subject,
             "email": principal.email,
             "name": principal.name,
+            "role": principal.role.value,
             "iat": now,
             "exp": now + self._ttl,
         }
@@ -59,9 +60,16 @@ class SessionTokenVerifier:
             )
         except jwt.PyJWTError as exc:  # bad signature, expiry, issuer, or shape
             raise AuthError(f"invalid session token: {exc}") from exc
+        # A token issued before RBAC (or with a stale value) has no usable role
+        # claim; default to OPERATOR so an unknown bearer can never self-elevate.
+        try:
+            role = Role(claims["role"]) if claims.get("role") else Role.OPERATOR
+        except ValueError:
+            role = Role.OPERATOR
         return Principal(
             subject=str(claims["sub"]),
             email=str(claims.get("email", "")),
             name=str(claims.get("name", "")),
             verified=True,
+            role=role,
         )

@@ -7,7 +7,8 @@ import pytest
 from brokerops_core.ports.auth import ConsumedToken
 from brokerops_core.ports.identity import AuthError, Principal
 from brokerops_core.services.email import ConsoleEmailSender
-from brokerops_core.services.identity import EmailAllowlist
+from brokerops_core.ports.identity import Role
+from brokerops_core.services.identity import EmailAllowlist, RoleResolver
 from brokerops_core.services.magic_link import MagicLinkService
 
 
@@ -127,6 +128,39 @@ async def test_redeem_forbids_email_dropped_from_allowlist() -> None:
     with pytest.raises(AuthError) as exc:
         await tight.redeem(token)
     assert exc.value.forbidden is True
+
+
+class CapturingIssuer:
+    def __init__(self) -> None:
+        self.principal: Principal | None = None
+
+    def issue(self, principal: Principal) -> str:
+        self.principal = principal
+        return "session"
+
+
+async def test_redeem_stamps_resolved_role() -> None:
+    issuer = CapturingIssuer()
+    svc = MagicLinkService(
+        store=FakeStore(),
+        email=(email := CapturingEmail()),
+        session_issuer=issuer,
+        allowlist=EmailAllowlist(),
+        roles=RoleResolver(
+            admin_emails=frozenset({"boss@acme.com"}),
+            viewer_emails=frozenset({"auditor@acme.com"}),
+        ),
+        public_base_url="https://app.example.com",
+    )
+    for address, expected in [
+        ("boss@acme.com", Role.ADMIN),
+        ("auditor@acme.com", Role.VIEWER),
+        ("agent@acme.com", Role.OPERATOR),
+    ]:
+        await svc.request(address)
+        await svc.redeem(_link_token(email.sent[-1][2]))
+        assert issuer.principal is not None
+        assert issuer.principal.role is expected
 
 
 async def test_console_sender_does_not_raise() -> None:

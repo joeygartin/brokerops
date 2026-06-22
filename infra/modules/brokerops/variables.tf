@@ -139,6 +139,33 @@ variable "auth_methods" {
   default     = ""
 }
 
+# RBAC (ADR-0009): role assignment among allowlisted operators. With none of the
+# four set, every signed-in operator is admin (= pre-RBAC flat behavior). Admins
+# decide HITL approvals; viewers are read-only; unmatched emails are operators.
+variable "auth_admin_emails" {
+  description = "Comma-separated emails granted the admin role (can decide approvals)."
+  type        = string
+  default     = ""
+}
+
+variable "auth_admin_domain" {
+  description = "Workspace domain whose members get the admin role."
+  type        = string
+  default     = ""
+}
+
+variable "auth_viewer_emails" {
+  description = "Comma-separated emails granted the read-only viewer role."
+  type        = string
+  default     = ""
+}
+
+variable "auth_viewer_domain" {
+  description = "Workspace domain whose members get the read-only viewer role."
+  type        = string
+  default     = ""
+}
+
 variable "public_base_url" {
   description = "Public URL of the frontend, used to build magic-link emails (e.g. https://app.client.com). Required when \"magic\" is in auth_methods; set explicitly (a custom domain or the frontend run.app URL) — not derived, to avoid an api↔frontend cycle (ADR-0008)."
   type        = string

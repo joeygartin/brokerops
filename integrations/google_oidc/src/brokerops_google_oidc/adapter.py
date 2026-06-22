@@ -17,7 +17,7 @@ from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
 
 from brokerops_core.ports.identity import AuthError, Principal
-from brokerops_core.services.identity import EmailAllowlist
+from brokerops_core.services.identity import EmailAllowlist, RoleResolver
 
 # Google mints ID tokens with one of these two issuers; reject anything else
 # even if the signature and audience check out.
@@ -30,11 +30,15 @@ class GoogleOIDCVerifier:
         client_id: str,
         allowed_domain: str | None = None,
         allowed_emails: frozenset[str] | None = None,
+        roles: RoleResolver | None = None,
     ) -> None:
         self._client_id = client_id
         # Shared with the magic-link path so a deployment's access list is
         # enforced identically however the operator signs in.
         self._allowlist = EmailAllowlist(allowed_domain, allowed_emails)
+        # Same RoleResolver as the magic-link path; Google tokens are verified
+        # fresh each request, so a role change here takes effect immediately.
+        self._roles = roles or RoleResolver()
         # One transport instance; google-auth caches Google's certs on it.
         self._transport = google_requests.Request()
 
@@ -68,4 +72,5 @@ class GoogleOIDCVerifier:
             email=email,
             name=str(claims.get("name", "")),
             verified=True,
+            role=self._roles.role_for(email, claims.get("hd")),
         )

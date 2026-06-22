@@ -36,6 +36,8 @@ async def test_get_contact_found_and_missing(adapter: FUBCRMAdapter) -> None:
     assert contact is not None
     assert contact.role == "Hot Prospect"
     assert await adapter.get_contact("999999") is None
+    # A non-numeric id is "not found", not a 422 → 500 upstream (stub parity).
+    assert await adapter.get_contact("nope") is None
 
 
 async def test_create_contact_roundtrip(adapter: FUBCRMAdapter) -> None:

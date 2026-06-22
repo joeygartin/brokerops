@@ -70,8 +70,11 @@ def create_stub_app() -> FastAPI:
         return {"people": found}
 
     @app.get("/people/{person_id}")
-    async def get_person(person_id: int) -> dict[str, Any]:
-        person = people.get(person_id)
+    async def get_person(person_id: str) -> dict[str, Any]:
+        # Take the id as a string and 404 on anything unknown — including a
+        # non-numeric id — so the stub matches real FUB (an int path type would
+        # 422 "nope" before the handler, surfacing as a 500 upstream).
+        person = people.get(int(person_id)) if person_id.isdigit() else None
         if person is None:
             raise HTTPException(status_code=404, detail="person not found")
         return person

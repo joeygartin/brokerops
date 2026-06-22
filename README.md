@@ -92,7 +92,8 @@ in the cloud.
 
 ```
 core/                    # framework-free domain: models, services, ports
-integrations/            # mls_reso · followupboss · vapi (adapter + stub + MCP server each) · llm_extraction (Claude adapter)
+integrations/            # mls_reso · followupboss · vapi (adapter + stub + MCP server each)
+                         #   · llm_extraction (LLM adapter) · google_oidc · email_smtp (operator auth)
 orchestration/           # the three workflows, twice: langgraph/ (V1) + adk/ (V2)
 api/                     # FastAPI: routes, webhooks, cron, workflow engine, Alembic
 frontend/                # React + Vite: Listings, Transactions, Approval Inbox

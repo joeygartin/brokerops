@@ -47,6 +47,10 @@ module "client" {
   auth_allowed_domain   = var.auth_allowed_domain
   auth_allowed_emails   = var.auth_allowed_emails
   auth_methods          = var.auth_methods
+  auth_admin_emails     = var.auth_admin_emails
+  auth_admin_domain     = var.auth_admin_domain
+  auth_viewer_emails    = var.auth_viewer_emails
+  auth_viewer_domain    = var.auth_viewer_domain
   public_base_url       = var.public_base_url
   smtp_host             = var.smtp_host
   smtp_port             = var.smtp_port

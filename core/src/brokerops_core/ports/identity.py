@@ -1,6 +1,32 @@
+from enum import Enum
 from typing import Protocol
 
 from pydantic import BaseModel
+
+
+class Role(str, Enum):
+    """Operator authorization level, hierarchical: admin > operator > viewer.
+
+    viewer reads, operator also acts (start workflows, place calls), admin also
+    decides human-in-the-loop approvals. Roles are assigned from a deployment's
+    config (RoleResolver) — the allowlist gates *who* may sign in, the role gates
+    *what* they may do.
+    """
+
+    VIEWER = "viewer"
+    OPERATOR = "operator"
+    ADMIN = "admin"
+
+    @property
+    def rank(self) -> int:
+        return _ROLE_RANK[self]
+
+    def allows(self, required: "Role") -> bool:
+        """True if this role meets or exceeds a minimum required role."""
+        return self.rank >= required.rank
+
+
+_ROLE_RANK = {Role.VIEWER: 0, Role.OPERATOR: 1, Role.ADMIN: 2}
 
 
 class Principal(BaseModel):
@@ -15,6 +41,7 @@ class Principal(BaseModel):
     email: str
     name: str = ""
     verified: bool = True
+    role: Role = Role.OPERATOR
 
 
 class AuthError(Exception):

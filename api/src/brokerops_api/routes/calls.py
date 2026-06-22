@@ -4,11 +4,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from brokerops_api.deps import get_crm_port, get_feedback_store, get_voice_port
+from brokerops_api.deps import get_crm_port, get_feedback_store, get_voice_port, require_role
 from brokerops_core.models.call import CallRecord
 from brokerops_core.models.feedback import ShowingFeedback
 from brokerops_core.ports.crm import CRMPort
 from brokerops_core.ports.feedback import FeedbackStore
+from brokerops_core.ports.identity import Principal, Role
 from brokerops_core.ports.voice import VoicePort
 
 router = APIRouter(tags=["calls"])
@@ -16,6 +17,8 @@ router = APIRouter(tags=["calls"])
 VoiceDep = Annotated[VoicePort, Depends(get_voice_port)]
 CRMDep = Annotated[CRMPort, Depends(get_crm_port)]
 FeedbackDep = Annotated[FeedbackStore, Depends(get_feedback_store)]
+# Placing an outbound call is an action — operators and up, not viewers.
+OperatorDep = Annotated[Principal, Depends(require_role(Role.OPERATOR))]
 
 
 class OutboundCallRequest(BaseModel):
@@ -31,7 +34,7 @@ class OutboundCallResult(BaseModel):
 
 @router.post("/calls/outbound", status_code=202)
 async def start_outbound_call(
-    body: OutboundCallRequest, voice: VoiceDep, crm: CRMDep
+    body: OutboundCallRequest, voice: VoiceDep, crm: CRMDep, principal: OperatorDep
 ) -> OutboundCallResult:
     contact = await crm.get_contact(body.contact_id)
     if contact is None:
