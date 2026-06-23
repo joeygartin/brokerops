@@ -14,14 +14,21 @@ CLOSE = date(2026, 7, 1)
 
 
 def test_id_is_deterministic_and_bounded() -> None:
-    # A long MLS listing key must still yield ids that fit the 36-char id columns —
-    # including the longer milestone ids derived from the transaction id.
-    long_key = "RM" + "9" * 60
-    assert transaction_id_for_listing(long_key) == transaction_id_for_listing(long_key)
-    txn, milestones = build_open_transaction(long_key, CONTRACT, CLOSE)
-    assert txn.id == transaction_id_for_listing(long_key)
+    # At the longest listing key the schema allows, derived ids must still fit the
+    # 36-char id columns — including the longer milestone ids built from them.
+    max_key = "R" * 36
+    assert transaction_id_for_listing(max_key) == transaction_id_for_listing(max_key)
+    txn, milestones = build_open_transaction(max_key, CONTRACT, CLOSE)
+    assert txn.id == transaction_id_for_listing(max_key)
     assert len(txn.id) <= 36
     assert milestones and all(len(m.id) <= 36 for m in milestones)
+
+
+def test_listing_key_over_max_length_raises() -> None:
+    # The raw listing_key is persisted into a String(36) column; reject longer keys
+    # at the boundary instead of overflowing on Postgres.
+    with pytest.raises(ValueError, match="listing_key exceeds"):
+        build_open_transaction("R" * 37, CONTRACT, CLOSE)
 
 
 def test_distinct_listings_get_distinct_ids() -> None:

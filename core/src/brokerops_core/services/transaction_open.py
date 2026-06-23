@@ -12,6 +12,10 @@ from brokerops_core.models.milestone import Milestone, MilestoneTemplate
 from brokerops_core.models.transaction import Transaction, TransactionParty, TransactionStage
 from brokerops_core.services.milestone_schedule import DEFAULT_TIMELINE, generate_milestones
 
+# Mirrors the String(36) listing_key columns in the persistence schema. A longer
+# key would overflow on Postgres, so it is rejected at this boundary, not at write.
+LISTING_KEY_MAX_LENGTH = 36
+
 
 def transaction_id_for_listing(listing_key: str) -> str:
     """Deterministic, bounded transaction id for a listing.
@@ -38,6 +42,10 @@ def build_open_transaction(
     timeline that needs a close date but none was given, or a generated milestone
     that falls outside the contract→close window. The caller maps it to 422.
     """
+    if len(listing_key) > LISTING_KEY_MAX_LENGTH:
+        raise ValueError(
+            f"listing_key exceeds {LISTING_KEY_MAX_LENGTH} characters ({len(listing_key)})"
+        )
     if close_date is not None and close_date < contract_date:
         raise ValueError(f"close_date {close_date} is before contract_date {contract_date}")
 

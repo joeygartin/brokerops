@@ -100,7 +100,10 @@ ordering, external-blocker override); the workflow only routes on its results. N
 deadlines send CRM reminder tasks; external blockers queue voice-call intents;
 overdue milestones pause at an escalation gate — approval creates an URGENT CRM task
 and ratchets the milestone's escalation level. The cron run skips transactions with
-a pending escalation, so gates never stack.
+a pending escalation, so gates never stack. Active transactions are opened by
+`POST /transactions` (operator-gated): it validates the escrow dates and generates
+the milestone timeline from a per-client template (`milestone_schedule`) before
+persisting through the `TransactionStore` port.
 
 **`vapi_followup`** — webhook-driven: a completed feedback call's end-of-call report
 drives ingest → structured extraction → persisted feedback → CRM sync (note + call

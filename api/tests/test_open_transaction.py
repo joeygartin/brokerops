@@ -106,3 +106,9 @@ def test_open_transaction_without_close_date_is_rejected() -> None:
     # The default timeline anchors closing/walkthrough on the close date.
     resp = client.post("/transactions", json=_body(close_date=None))
     assert resp.status_code == 422
+
+
+def test_open_transaction_listing_key_too_long_is_422() -> None:
+    # Raw listing_key over the String(36) column bound is rejected before persistence.
+    resp = client.post("/transactions", json=_body(listing_key="R" * 37))
+    assert resp.status_code == 422
