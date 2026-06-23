@@ -74,6 +74,23 @@ export type WorkflowRunResult = {
 
 export type TransactionParty = { role: string; name: string; contact_id: string | null };
 
+// One line in the action audit-ledger: an external write the system performed
+// across the MCP boundary. Mirrors core's MutationRecord.
+export type MutationRecord = {
+  id: string;
+  workflow_run_id: string;
+  workflow: string;
+  tool: string;
+  integration: string;
+  args: Record<string, unknown>;
+  approval_id: string | null;
+  actor: string | null;
+  outcome: "success" | "failure";
+  external_id: string | null;
+  error: string | null;
+  created_at: string;
+};
+
 export type Transaction = {
   id: string;
   listing_key: string;

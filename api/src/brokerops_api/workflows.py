@@ -26,7 +26,9 @@ __all__ = [
 
 
 class WorkflowEngine(Protocol):
-    async def start(self, workflow: str, run_input: dict[str, Any]) -> WorkflowRunResult: ...
+    async def start(
+        self, workflow: str, run_input: dict[str, Any], actor: str | None = None
+    ) -> WorkflowRunResult: ...
 
     async def decide(
         self, approval: ApprovalRequest, decision: ApprovalDecision

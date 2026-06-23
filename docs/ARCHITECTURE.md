@@ -164,13 +164,33 @@ Secrets stay out of the repo as everywhere else: the session signing key is
 Terraform-generated, OIDC client ids are public env, and any SMTP password is pushed
 to Secret Manager out-of-band.
 
+## Action audit ledger
+
+Approvals record *decisions* and tracing records *execution for debugging*, but
+neither is a trustworthy business history of what the system actually did to a
+client's external systems. The audit ledger fills that gap (ADR-0010): every write
+that crosses the MCP boundary produces exactly one durable `MutationRecord` —
+success or failure — capturing the tool, integration, workflow run, originating
+`ApprovalRequest` (when gated), initiating actor, secret-redacted arguments,
+outcome, and external id or error.
+
+It honors the same seams. The record type is a `core/` Pydantic model and the
+`AuditLog` is a `core/ports/` Protocol (SQL-backed `SqlAuditLog` in `api/`, alembic
+`0005`; an `InMemoryAuditLog` for tests). Recording happens at a **single seam** —
+`RecordingCRM`/`RecordingVoice` port decorators wired once in `main.py` — so both
+engines record identically without any engine-specific callback; per-run context
+(workflow run id, approval id, actor) flows through a `ContextVar` each engine
+publishes at its run boundary. `GET /audit?workflow_run_id=` reads the trail and a
+React Audit-trail tab browses it. Demo mode still produces records against the stub
+integrations with zero credentials, and the trail survives a mid-run restart.
+
 ## Data
 
 Cloud SQL Postgres (one small instance per client — cheap isolation; consolidation
 to a shared instance is a DSN change). Alembic migrations run on container start.
 Domain tables: approval_requests, transactions, milestones, call_records,
-showing_feedback, magic_login_tokens. Each engine manages its own state tables
-alongside (LangGraph's checkpointer; ADK's session service).
+showing_feedback, magic_login_tokens, mutation_records. Each engine manages its own
+state tables alongside (LangGraph's checkpointer; ADK's session service).
 
 Contacts are deliberately **not** a domain table: the CRM is the source of truth and
 contacts are read-through DTOs via `CRMPort`. Caching policy is ADR-0001: a thin
@@ -192,11 +212,12 @@ external health checks on `/readyz` because Google's frontend reserves `/healthz
 
 ## Verification
 
-~190 tests: OData contract tests pinning the RESO subset, adapter tests against the
+~200 tests: OData contract tests pinning the RESO subset, adapter tests against the
 stubs (the same shapes the real APIs return), workflow tests for every branch of all
 three workflows on **both engines**, API-level flow tests, auth tests (allowlist,
 magic-link lifecycle, session-JWT round-trip, role resolution, and `require_role`
-enforcement), a Postgres restart-survival proof per engine (runs in CI against a
-service container), and a scripted e2e demo check that CI runs against the full
+enforcement), audit-ledger tests (deep secret redaction, success-and-failure
+recording, engine parity, restart survival), a Postgres restart-survival proof per
+engine (runs in CI against a service container), and a scripted e2e demo check that CI runs against the full
 compose stack under both `ORCHESTRATOR` values. Ruff + mypy strict across the
 workspace; gitleaks on every commit and in CI.

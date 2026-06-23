@@ -59,7 +59,9 @@ class StubRoleVerifier:
 
 
 class StubEngine:
-    async def start(self, name: str, payload: dict[str, object]) -> WorkflowRunResult:
+    async def start(
+        self, name: str, payload: dict[str, object], actor: str | None = None
+    ) -> WorkflowRunResult:
         return WorkflowRunResult(thread_id="t1", status="started")
 
 

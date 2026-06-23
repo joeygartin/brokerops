@@ -22,4 +22,6 @@ class StartListingToContract(BaseModel):
 async def start_listing_to_contract(
     body: StartListingToContract, engine: EngineDep, principal: OperatorDep
 ) -> WorkflowRunResult:
-    return await engine.start(LISTING_TO_CONTRACT, {"listing_key": body.listing_key})
+    return await engine.start(
+        LISTING_TO_CONTRACT, {"listing_key": body.listing_key}, actor=principal.email
+    )

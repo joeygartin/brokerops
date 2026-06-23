@@ -8,6 +8,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request
 
 from brokerops_api.db import ApprovalRepo, TransactionStoreAdmin
 from brokerops_api.workflows import WorkflowEngine
+from brokerops_core.ports.audit import AuditLog
 from brokerops_core.ports.auth import MagicTokenStore
 from brokerops_core.ports.crm import CRMPort
 from brokerops_core.ports.email import EmailSender
@@ -305,3 +306,7 @@ def get_voice_port(request: Request) -> VoicePort:
 
 def get_feedback_store(request: Request) -> FeedbackStore:
     return cast(FeedbackStore, request.app.state.feedback_store)
+
+
+def get_audit_log(request: Request) -> AuditLog:
+    return cast(AuditLog, request.app.state.audit_log)

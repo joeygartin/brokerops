@@ -14,9 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from brokerops_core.models.approval import ApprovalRequest, ApprovalStatus
 from brokerops_core.models.call import CallRecord
 from brokerops_core.ports.approvals import ApprovalRepo as ApprovalRepo
+from brokerops_core.ports.audit import AuditLog as AuditLog
 from brokerops_core.ports.auth import ConsumedToken
 from brokerops_core.models.feedback import ShowingFeedback
 from brokerops_core.models.milestone import Milestone
+from brokerops_core.models.mutation import MutationRecord
 from brokerops_core.models.transaction import ACTIVE_STAGES, Transaction
 
 metadata = sa.MetaData()
@@ -96,6 +98,25 @@ magic_login_tokens = sa.Table(
     sa.Column("email", sa.String(254), nullable=False),
     sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
     sa.Column("consumed_at", sa.DateTime(timezone=True)),
+)
+
+
+mutation_records = sa.Table(
+    "mutation_records",
+    metadata,
+    # The business audit trail: one row per external write across the MCP boundary.
+    sa.Column("id", sa.String(36), primary_key=True),
+    sa.Column("workflow_run_id", sa.String(64), nullable=False, server_default="", index=True),
+    sa.Column("workflow", sa.String(64), nullable=False, server_default=""),
+    sa.Column("tool", sa.String(64), nullable=False),
+    sa.Column("integration", sa.String(32), nullable=False, index=True),
+    sa.Column("args", sa.JSON(), nullable=False),
+    sa.Column("approval_id", sa.String(36)),
+    sa.Column("actor", sa.String(120)),
+    sa.Column("outcome", sa.String(16), nullable=False),
+    sa.Column("external_id", sa.String(120)),
+    sa.Column("error", sa.Text()),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
 )
 
 
@@ -384,6 +405,46 @@ class SqlMagicTokenStore:
             )
             row = result.first()
         return ConsumedToken.model_validate(dict(row._mapping)) if row is not None else None
+
+
+class SqlAuditLog:
+    def __init__(self, engine: AsyncEngine) -> None:
+        self._engine = engine
+
+    async def record(self, record: MutationRecord) -> None:
+        values = record.model_dump(mode="json")
+        values["created_at"] = record.created_at
+        async with self._engine.begin() as conn:
+            await conn.execute(mutation_records.insert().values(**values))
+
+    async def list(
+        self, workflow_run_id: str | None = None, limit: int = 200
+    ) -> list[MutationRecord]:
+        query = (
+            mutation_records.select().order_by(mutation_records.c.created_at.desc()).limit(limit)
+        )
+        if workflow_run_id is not None:
+            query = query.where(mutation_records.c.workflow_run_id == workflow_run_id)
+        async with self._engine.connect() as conn:
+            result = await conn.execute(query)
+            rows = result.all()
+        return [MutationRecord.model_validate(dict(row._mapping)) for row in rows]
+
+
+class InMemoryAuditLog:
+    def __init__(self) -> None:
+        self._items: list[MutationRecord] = []
+
+    async def record(self, record: MutationRecord) -> None:
+        self._items.append(record)
+
+    async def list(
+        self, workflow_run_id: str | None = None, limit: int = 200
+    ) -> list[MutationRecord]:
+        items = sorted(self._items, key=lambda r: r.created_at, reverse=True)
+        if workflow_run_id is not None:
+            items = [r for r in items if r.workflow_run_id == workflow_run_id]
+        return items[:limit]
 
 
 class InMemoryMagicTokenStore:

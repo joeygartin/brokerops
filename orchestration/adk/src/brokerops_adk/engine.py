@@ -24,6 +24,7 @@ from brokerops_adk.workflows.transaction_coordination import build_transaction_c
 from brokerops_adk.workflows.vapi_followup import build_vapi_followup
 from brokerops_core.models.approval import ApprovalDecision, ApprovalRequest
 from brokerops_core.ports.approvals import ApprovalRepo
+from brokerops_core.services.audit import AuditContext, audit_scope
 from brokerops_core.ports.crm import CRMPort
 from brokerops_core.ports.extraction import ExtractionPort
 from brokerops_core.ports.feedback import FeedbackStore
@@ -53,12 +54,16 @@ class AdkWorkflowEngine:
         self._sessions = sessions
         self._repo = repo
 
-    async def start(self, workflow: str, run_input: dict[str, Any]) -> WorkflowRunResult:
+    async def start(
+        self, workflow: str, run_input: dict[str, Any], actor: str | None = None
+    ) -> WorkflowRunResult:
         session = await self._sessions.create_session(
             app_name=workflow, user_id=USER_ID, session_id=uuid4().hex, state=dict(run_input)
         )
         message = types.Content(role="user", parts=[types.Part(text="start")])
-        return await self._run(workflow, session.id, new_message=message)
+        context = AuditContext(workflow_run_id=session.id, workflow=workflow, actor=actor)
+        with audit_scope(context):
+            return await self._run(workflow, session.id, new_message=message)
 
     async def decide(
         self, approval: ApprovalRequest, decision: ApprovalDecision
@@ -94,12 +99,21 @@ class AdkWorkflowEngine:
                 )
             ],
         )
-        return await self._run(
-            approval.workflow,
-            approval.graph_thread_id,
-            new_message=message,
-            invocation_id=interrupt_event.invocation_id,
+        # Writes performed on resume are attributed to the approver and linked back
+        # to the originating approval.
+        context = AuditContext(
+            workflow_run_id=approval.graph_thread_id,
+            workflow=approval.workflow,
+            approval_id=approval.id,
+            actor=decision.decided_by,
         )
+        with audit_scope(context):
+            return await self._run(
+                approval.workflow,
+                approval.graph_thread_id,
+                new_message=message,
+                invocation_id=interrupt_event.invocation_id,
+            )
 
     async def _run(
         self,

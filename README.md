@@ -123,7 +123,10 @@ provider via an `EmailSender` adapter. Role-based access control followed
 the session, `require_role` gates the privilege-sensitive routes (admins decide
 approvals, operators also start workflows and place calls, viewers read), and the
 React app hides controls a role can't use — opt-in, so a deploy without role config
-keeps a flat operator list.
+keeps a flat operator list. An action audit ledger records every write that crosses the
+MCP boundary as a durable, secret-redacted `MutationRecord` (success or failure) at a
+single port-decorator seam both engines share, linked to its approval when gated and
+browsable per workflow run (ADR-0010).
 
 **Next, in rough order — each lands when a demo- or client-path justifies it,
 never speculatively:**

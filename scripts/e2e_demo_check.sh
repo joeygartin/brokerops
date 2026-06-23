@@ -24,10 +24,15 @@ count=$(curl -sf "${API}/listings" | jget "len(d)")
 [ "${count}" = "12" ] || fail "expected 12 listings, got ${count}"
 
 say "marketing workflow: start → pending approval"
-approval_id=$(curl -sf -X POST "${API}/workflows/listing-to-contract/start" \
-  -H 'Content-Type: application/json' -d '{"listing_key": "RM1001"}' \
-  | jget "d['approval']['id']")
+started=$(curl -sf -X POST "${API}/workflows/listing-to-contract/start" \
+  -H 'Content-Type: application/json' -d '{"listing_key": "RM1001"}')
+approval_id=$(echo "${started}" | jget "d['approval']['id']")
+run_id=$(echo "${started}" | jget "d['thread_id']")
 [ -n "${approval_id}" ] || fail "no approval created"
+
+say "no audit records before the gate is decided"
+pre_audit=$(curl -sf "${API}/audit?workflow_run_id=${run_id}" | jget "len(d)")
+[ "${pre_audit}" = "0" ] || fail "expected 0 audit records pre-approval, got ${pre_audit}"
 
 say "approve marketing → CRM tasks"
 tasks=$(curl -sf -X POST "${API}/approvals/${approval_id}/decide" \
@@ -37,6 +42,14 @@ tasks=$(curl -sf -X POST "${API}/approvals/${approval_id}/decide" \
 [ "${tasks}" -ge 3 ] || fail "expected >=3 CRM tasks, got ${tasks}"
 fub_tasks=$(curl -sf "${FUB}/tasks" | jget "len(d['tasks'])")
 [ "${fub_tasks}" -ge 3 ] || fail "tasks not visible in CRM stub"
+
+say "audit ledger recorded each CRM write, linked to the approval (engine-agnostic)"
+audit=$(curl -sf "${API}/audit?workflow_run_id=${run_id}")
+audited=$(echo "${audit}" | jget "len(d)")
+[ "${audited}" = "${tasks}" ] || fail "expected ${tasks} audit records, got ${audited}"
+echo "${audit}" | jget "all(r['tool']=='create_task' and r['integration']=='followupboss' \
+  and r['outcome']=='success' and r['approval_id']=='${approval_id}' for r in d)" \
+  | grep -qi true || fail "audit records not linked/clean"
 
 say "milestone cron: overdue escalates, others fan out"
 cron=$(curl -sf -X POST "${API}/internal/cron/milestones")

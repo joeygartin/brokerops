@@ -16,6 +16,7 @@ from langgraph.types import Command
 
 from brokerops_core.models.approval import ApprovalDecision, ApprovalRequest
 from brokerops_core.ports.approvals import ApprovalRepo
+from brokerops_core.services.audit import AuditContext, audit_scope
 from brokerops_core.ports.crm import CRMPort
 from brokerops_core.ports.extraction import ExtractionPort
 from brokerops_core.ports.feedback import FeedbackStore
@@ -40,8 +41,13 @@ class LangGraphWorkflowEngine:
         self._graphs = dict(graphs)
         self._repo = repo
 
-    async def start(self, workflow: str, run_input: dict[str, Any]) -> WorkflowRunResult:
-        return await self._run(workflow, uuid4().hex, run_input)
+    async def start(
+        self, workflow: str, run_input: dict[str, Any], actor: str | None = None
+    ) -> WorkflowRunResult:
+        thread_id = uuid4().hex
+        context = AuditContext(workflow_run_id=thread_id, workflow=workflow, actor=actor)
+        with audit_scope(context):
+            return await self._run(workflow, thread_id, run_input)
 
     async def decide(
         self, approval: ApprovalRequest, decision: ApprovalDecision
@@ -54,9 +60,18 @@ class LangGraphWorkflowEngine:
             "decided_by": decision.decided_by,
             "edited_payload": decision.edited_payload,
         }
-        return await self._run(
-            approval.workflow, approval.graph_thread_id, Command(resume=resume_value)
+        # Writes performed on resume are attributed to the approver and linked back
+        # to the originating approval.
+        context = AuditContext(
+            workflow_run_id=approval.graph_thread_id,
+            workflow=approval.workflow,
+            approval_id=approval.id,
+            actor=decision.decided_by,
         )
+        with audit_scope(context):
+            return await self._run(
+                approval.workflow, approval.graph_thread_id, Command(resume=resume_value)
+            )
 
     async def _run(self, workflow: str, thread_id: str, run_input: Any) -> WorkflowRunResult:
         graph = self._graphs[workflow]

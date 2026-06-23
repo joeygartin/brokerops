@@ -3,6 +3,7 @@ from brokerops_core.models.contact import Contact, ContactCreate, CrmTask
 from brokerops_core.models.listing import Listing, ListingMedia, ListingQuery, ListingStatus
 from brokerops_core.models.marketing import MarketingDraft
 from brokerops_core.models.milestone import Milestone, MilestoneStatus, MilestoneType
+from brokerops_core.models.mutation import MutationOutcome, MutationRecord
 from brokerops_core.models.transaction import Transaction, TransactionParty, TransactionStage
 
 __all__ = [
@@ -20,6 +21,8 @@ __all__ = [
     "Milestone",
     "MilestoneStatus",
     "MilestoneType",
+    "MutationOutcome",
+    "MutationRecord",
     "Transaction",
     "TransactionParty",
     "TransactionStage",

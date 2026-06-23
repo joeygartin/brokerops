@@ -1,10 +1,11 @@
 import { useState } from "react";
 import ApprovalsInbox from "./ApprovalsInbox";
+import AuditTrail from "./AuditTrail";
 import ListingsBoard from "./ListingsBoard";
 import TransactionsBoard from "./TransactionsBoard";
 import { useAuth } from "./authContext";
 
-type Tab = "listings" | "transactions" | "approvals";
+type Tab = "listings" | "transactions" | "approvals" | "audit";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("listings");
@@ -84,10 +85,14 @@ export default function App() {
         <button style={tabStyle(tab === "approvals")} onClick={() => setTab("approvals")}>
           Approvals
         </button>
+        <button style={tabStyle(tab === "audit")} onClick={() => setTab("audit")}>
+          Audit trail
+        </button>
       </nav>
       {tab === "listings" && <ListingsBoard />}
       {tab === "transactions" && <TransactionsBoard />}
       {tab === "approvals" && <ApprovalsInbox />}
+      {tab === "audit" && <AuditTrail />}
     </main>
   );
 }

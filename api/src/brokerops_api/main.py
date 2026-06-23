@@ -7,10 +7,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from brokerops_api.db import (
     InMemoryApprovalRepo,
+    InMemoryAuditLog,
     InMemoryFeedbackStore,
     InMemoryMagicTokenStore,
     InMemoryTransactionStore,
     SqlApprovalRepo,
+    SqlAuditLog,
     SqlFeedbackStore,
     SqlMagicTokenStore,
     SqlTransactionStore,
@@ -26,6 +28,7 @@ from brokerops_api.deps import (
     get_current_principal,
 )
 from brokerops_api.routes.approvals import router as approvals_router
+from brokerops_api.routes.audit import router as audit_router
 from brokerops_api.routes.auth import router as auth_router
 from brokerops_api.routes.calls import router as calls_router
 from brokerops_api.routes.contacts import router as contacts_router
@@ -36,6 +39,7 @@ from brokerops_api.routes.transactions import router as transactions_router
 from brokerops_api.routes.webhooks import router as webhooks_router
 from brokerops_api.routes.workflows import router as workflows_router
 from brokerops_core.ports.auth import MagicTokenStore
+from brokerops_core.services.audit import RecordingCRM, RecordingVoice
 from brokerops_adk.engine import build_engine as build_adk_engine
 from brokerops_langgraph.engine import build_engine as build_langgraph_engine
 
@@ -65,25 +69,33 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     engine = create_engine(database_url) if database_url else None
     magic_store: MagicTokenStore
     if engine is not None:
-        # Durable path: workflow state and approvals share Postgres, so HITL
-        # pauses survive restarts and deploys.
+        # Durable path: workflow state, approvals, and the audit trail share
+        # Postgres, so HITL pauses and the action ledger survive restarts/deploys.
         app.state.approval_repo = SqlApprovalRepo(engine)
         app.state.transaction_store = SqlTransactionStore(engine)
         app.state.feedback_store = SqlFeedbackStore(engine)
+        app.state.audit_log = SqlAuditLog(engine)
         magic_store = SqlMagicTokenStore(engine)
     else:
         # Database-less local dev: everything in memory, nothing survives.
         app.state.approval_repo = InMemoryApprovalRepo()
         app.state.transaction_store = InMemoryTransactionStore()
         app.state.feedback_store = InMemoryFeedbackStore()
+        app.state.audit_log = InMemoryAuditLog()
         magic_store = InMemoryMagicTokenStore()
     # Magic-link service is None unless the "magic" method is enabled; routes
     # that need it 404 otherwise.
     app.state.magic_link_service = build_magic_link_service(magic_store)
+    # The single audit seam: both engines reach the CRM and voice platform through
+    # these recording decorators, so every external write is logged in one place,
+    # identically under either orchestrator (architecture rule #5). The raw adapters
+    # stay on app.state for the operator-driven direct routes.
+    recording_crm = RecordingCRM(crm, app.state.audit_log)
+    recording_voice = RecordingVoice(voice, app.state.audit_log)
     async with build_engine(
         mls=mls,
-        crm=crm,
-        voice=voice,
+        crm=recording_crm,
+        voice=recording_voice,
         extraction=extraction,
         transaction_store=app.state.transaction_store,
         feedback_store=app.state.feedback_store,
@@ -118,6 +130,7 @@ app.add_middleware(
 operator_auth = [Depends(get_current_principal)]
 app.include_router(listings_router, dependencies=operator_auth)
 app.include_router(approvals_router, dependencies=operator_auth)
+app.include_router(audit_router, dependencies=operator_auth)
 app.include_router(contacts_router, dependencies=operator_auth)
 app.include_router(transactions_router, dependencies=operator_auth)
 app.include_router(workflows_router, dependencies=operator_auth)
