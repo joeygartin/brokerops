@@ -195,7 +195,9 @@ class TransactionStoreAdmin(Protocol):
 
     async def count_transactions(self) -> int: ...
 
-    async def insert(self, transaction: Transaction, txn_milestones: list[Milestone]) -> None: ...
+    async def create_transaction(
+        self, transaction: Transaction, txn_milestones: list[Milestone]
+    ) -> None: ...
 
     async def clear(self) -> None: ...
 
@@ -257,7 +259,9 @@ class SqlTransactionStore:
             result = await conn.execute(sa.select(sa.func.count()).select_from(transactions))
         return int(result.scalar_one())
 
-    async def insert(self, transaction: Transaction, txn_milestones: list[Milestone]) -> None:
+    async def create_transaction(
+        self, transaction: Transaction, txn_milestones: list[Milestone]
+    ) -> None:
         async with self._engine.begin() as conn:
             await conn.execute(transactions.insert().values(**_txn_to_row(transaction)))
             for milestone in txn_milestones:
@@ -291,7 +295,9 @@ class InMemoryTransactionStore:
     async def count_transactions(self) -> int:
         return len(self._transactions)
 
-    async def insert(self, transaction: Transaction, txn_milestones: list[Milestone]) -> None:
+    async def create_transaction(
+        self, transaction: Transaction, txn_milestones: list[Milestone]
+    ) -> None:
         self._transactions[transaction.id] = transaction
         for milestone in txn_milestones:
             self._milestones[milestone.id] = milestone

@@ -11,6 +11,16 @@ class TransactionStore(Protocol):
     workflows and services never see SQL.
     """
 
+    async def create_transaction(
+        self, transaction: Transaction, milestones: list[Milestone], /
+    ) -> None:
+        """Persist a new transaction and its milestone timeline together.
+
+        Positional-only: implementations use their own parameter names (the SQL
+        store's `milestones` table would otherwise shadow the argument).
+        """
+        ...
+
     async def get_transaction(self, transaction_id: str) -> Transaction | None: ...
 
     async def list_active_transactions(self) -> list[Transaction]: ...

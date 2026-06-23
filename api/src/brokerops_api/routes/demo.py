@@ -36,6 +36,6 @@ async def seed_demo_data(admin: AdminDep, body: SeedRequest | None = None) -> Se
     seeded = demo_transactions(date.today())
     milestone_count = 0
     for transaction, milestones in seeded:
-        await admin.insert(transaction, milestones)
+        await admin.create_transaction(transaction, milestones)
         milestone_count += len(milestones)
     return SeedResult(seeded=True, transactions=len(seeded), milestones=milestone_count)

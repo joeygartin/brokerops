@@ -129,6 +129,13 @@ class FakeTransactionStore:
         self._transactions = {t.id: t for t in transactions}
         self.milestones = {m.id: m for m in milestones}
 
+    async def create_transaction(
+        self, transaction: Transaction, milestones: list[Milestone]
+    ) -> None:
+        self._transactions[transaction.id] = transaction
+        for milestone in milestones:
+            self.milestones[milestone.id] = milestone
+
     async def get_transaction(self, transaction_id: str) -> Transaction | None:
         return self._transactions.get(transaction_id)
 
