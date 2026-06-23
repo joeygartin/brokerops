@@ -8,6 +8,7 @@ from langgraph.types import Command
 
 from brokerops_core.models.milestone import Milestone, MilestoneType
 from brokerops_core.models.transaction import Transaction, TransactionStage
+from brokerops_core.services.milestone_schedule import generate_milestones
 from brokerops_langgraph.graphs.transaction_coordination import build_transaction_coordination
 
 TODAY = date.today()
@@ -110,3 +111,22 @@ async def test_unknown_transaction_ends_not_found() -> None:
     store = FakeTransactionStore([], [])
     result = await _build(store).ainvoke({"transaction_id": "TXN-9999"}, _config(uuid4().hex))
     assert result["outcome"] == "not_found"
+
+
+async def test_transaction_opened_via_new_path_is_assessed() -> None:
+    # BOP-004 step 4: a transaction created through the domain write path (step 1)
+    # with a template-generated timeline (step 2) is assessed unchanged. The
+    # generated inspection (contract + 10 = TODAY + 2) lands in the due-soon window.
+    txn = Transaction(
+        id="TXN-NEW",
+        listing_key="RM-NEW",
+        stage=TransactionStage.UNDER_CONTRACT,
+        contract_date=TODAY - timedelta(days=8),
+        close_date=TODAY + timedelta(days=30),
+    )
+    store = FakeTransactionStore([], [])
+    await store.create_transaction(txn, generate_milestones(txn))
+    crm = GraphFakeCRM()
+    result = await _build(store, crm).ainvoke({"transaction_id": "TXN-NEW"}, _config(uuid4().hex))
+    assert result["outcome"] == "reminders_sent"
+    assert len(result["reminder_task_ids"]) == 1

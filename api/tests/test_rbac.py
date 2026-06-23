@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from brokerops_api.deps import (
     get_approval_repo,
     get_crm_port,
+    get_transaction_store,
     get_voice_port,
     get_workflow_engine,
     require_role,
@@ -76,6 +77,7 @@ def _wire() -> Iterator[None]:
     # a missing-dependency error.
     app.dependency_overrides[get_voice_port] = lambda: object()
     app.dependency_overrides[get_crm_port] = lambda: object()
+    app.dependency_overrides[get_transaction_store] = lambda: object()
     yield
     app.state.identity_verifier = original
     app.dependency_overrides.clear()
@@ -126,6 +128,12 @@ def test_outbound_call_requires_operator() -> None:
     body = {"listing_key": "L1", "contact_id": "c1"}
     # viewer is blocked at the gate before any handler work.
     assert client.post("/calls/outbound", json=body, headers=_auth("viewer")).status_code == 403
+
+
+def test_open_transaction_requires_operator() -> None:
+    body = {"listing_key": "L1", "contract_date": "2026-06-01", "close_date": "2026-07-01"}
+    # viewer is blocked at the gate before any handler work.
+    assert client.post("/transactions", json=body, headers=_auth("viewer")).status_code == 403
 
 
 def test_reads_open_to_viewer() -> None:

@@ -8,6 +8,7 @@ from brokerops_adk.workflows.transaction_coordination import build_transaction_c
 from brokerops_core.models.approval import ApprovalDecision, ApprovalStatus
 from brokerops_core.models.milestone import Milestone, MilestoneType
 from brokerops_core.models.transaction import Transaction, TransactionStage
+from brokerops_core.services.milestone_schedule import generate_milestones
 from brokerops_core.services.workflow_runs import TRANSACTION_COORDINATION
 
 TODAY = date.today()
@@ -113,3 +114,22 @@ async def test_unknown_transaction_ends_not_found() -> None:
     engine, _ = make_engine(build_transaction_coordination(store, GraphFakeCRM()))
     run = await engine.start(TRANSACTION_COORDINATION, {"transaction_id": "TXN-9999"})
     assert run.status == "not_found"
+
+
+async def test_transaction_opened_via_new_path_is_assessed() -> None:
+    # BOP-004 step 4: same proof as the LangGraph suite, on ADK — a transaction
+    # opened through the new write path + template timeline is assessed unchanged.
+    txn = Transaction(
+        id="TXN-NEW",
+        listing_key="RM-NEW",
+        stage=TransactionStage.UNDER_CONTRACT,
+        contract_date=TODAY - timedelta(days=8),
+        close_date=TODAY + timedelta(days=30),
+    )
+    store = FakeTransactionStore([], [])
+    await store.create_transaction(txn, generate_milestones(txn))
+    engine, _ = make_engine(build_transaction_coordination(store, GraphFakeCRM()))
+    run = await engine.start(TRANSACTION_COORDINATION, {"transaction_id": "TXN-NEW"})
+    assert run.status == "completed"
+    assert run.output is not None and run.output["outcome"] == "reminders_sent"
+    assert len(run.output["reminder_task_ids"]) == 1
