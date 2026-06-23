@@ -23,12 +23,15 @@ same end-to-end demo script on every push.
 
 ## Try it (zero credentials)
 
+The only prerequisite is Docker (with Compose). No language toolchain, no API keys.
+
 ```bash
 git clone https://github.com/joeygartin/brokerops && cd brokerops
 make demo
 ```
 
-Then open <http://localhost:5173> and follow **[docs/DEMO.md](docs/DEMO.md)** — a
+`make demo` builds the stack, starts it detached, and seeds demo data. Then open
+<http://localhost:5173> and follow **[docs/DEMO.md](docs/DEMO.md)** — a
 scripted 5-minute path through all three workflows. The MLS (a genuine RESO Web API
 OData subset), the CRM, and the voice platform are bundled stubs that speak the real
 APIs' shapes; the same path is asserted in CI by `scripts/e2e_demo_check.sh`.
@@ -61,6 +64,10 @@ See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the full picture and
 
 ## Development
 
+Working on the code (rather than just running it) needs [uv](https://docs.astral.sh/uv/)
+and Python 3.12+; tests that exercise restart-survival also need a local Postgres
+(the compose stack provides one).
+
 ```bash
 uv sync --all-packages   # install workspace deps
 make test                # ~220 tests (contract, workflow x2 engines, API flow,
@@ -69,24 +76,120 @@ ORCHESTRATOR=adk make demo   # the same demo on the ADK engine
 make lint                # ruff + mypy strict
 ```
 
-## Deploying a client to GCP
+## Deploying to GCP
+
+Each deploy is a self-contained per-client stack: two Cloud Run services (api +
+frontend), a Cloud SQL Postgres instance, Secret Manager shells (keys pushed
+interactively, never through the repo or tfstate), and the daily milestone Cloud
+Scheduler job. Everything is Terraform; the only state lives in a GCS bucket. The
+fastest first deploy is the bundled `demo` client — it runs all three integrations
+as in-process stubs, so it reaches the cloud with **zero external credentials**.
+
+### Prerequisites
+
+- The [`gcloud` CLI](https://cloud.google.com/sdk/docs/install), authenticated:
+  `gcloud auth login` (and `gcloud auth application-default login`).
+- [Terraform](https://developer.hashicorp.com/terraform/install) ≥ 1.5.
+- Docker (to build and push the images), plus `make`.
+- A GCP project with billing linked, and a billing-enabled account:
+  ```bash
+  gcloud projects create <project-id>
+  gcloud billing projects link <project-id> --billing-account=<ACCOUNT_ID>
+  ```
+
+### 1. Bootstrap the project (once per GCP project)
+
+Enables the required APIs (Cloud Run, Cloud SQL, Secret Manager, Scheduler,
+Artifact Registry, IAM), creates the `brokerops` Artifact Registry repo, the
+Terraform state bucket (versioned), and configures Docker auth:
 
 ```bash
-# one-time per GCP project
-make gcp-bootstrap GCP_PROJECT=<id> GCP_REGION=us-west1 TF_STATE_BUCKET=<bucket>
-
-# per client
-cp infra/clients/_template.tfvars infra/clients/acme.tfvars   # edit (no secrets)
-make gcp-images CLIENT=acme                                   # build + push images
-TF_STATE_BUCKET=<bucket> make deploy CLIENT=acme              # terraform apply
-make secrets CLIENT=acme                                      # push real API keys
+make gcp-bootstrap GCP_PROJECT=<project-id> GCP_REGION=us-west1 TF_STATE_BUCKET=<bucket>
 ```
 
-Each client gets two Cloud Run services, a Cloud SQL database, Secret Manager
-shells (keys pushed interactively, never through the repo or tfstate), and the
-milestone Scheduler job. `infra/clients/demo.tfvars` deploys a fully self-contained
-demo — the integrations run their stubs in-process, so it needs zero secrets even
-in the cloud.
+### 2. Describe the client (committed, no secrets)
+
+```bash
+cp infra/clients/_template.tfvars infra/clients/acme.tfvars
+```
+
+Edit `acme.tfvars`: set `client_name`, `project_id`, and the `api_image` /
+`frontend_image` registry paths (just substitute your `project_id`). These files
+are committed — **never put secrets here**; secrets go to Secret Manager in step 5.
+Real integrations, the workflow engine, auth, and RBAC are all configured here too
+(see [Configuration reference](#configuration-reference)).
+
+### 3. Build & push images
+
+```bash
+make gcp-images CLIENT=acme
+```
+
+Builds and pushes `api:latest` and `frontend:latest` to Artifact Registry
+(`linux/amd64`). The frontend is served same-origin and proxies `/api` to the api
+service at runtime (ADR-0003), so one image works across clients.
+
+### 4. Deploy
+
+```bash
+TF_STATE_BUCKET=<bucket> make deploy CLIENT=acme
+```
+
+Runs `terraform init` (pointing at the client's state prefix) then `apply` with
+`infra/clients/acme.tfvars`. On success Terraform prints the Cloud Run URLs.
+
+> **Note on `:latest` images.** Terraform pins images by the `:latest` tag, so a
+> later same-tag re-push does **not** roll a new revision on its own. After
+> rebuilding images for an existing client, force a new revision:
+> `gcloud run deploy brokerops-acme-api --image <registry>/api:latest --region us-west1 --project <project-id>` (and likewise `…-frontend`).
+
+### 5. Push real integration keys (only if flipping integrations live)
+
+```bash
+make secrets CLIENT=acme
+```
+
+Prompts for each key and writes it straight to Secret Manager — values never touch
+the repo or tfstate. Press Enter to skip any you don't need (the stubs need none).
+Then redeploy (step 4) so the new revision picks them up.
+
+### Configuration reference
+
+**`<client>.tfvars` (committed — non-secret config):**
+
+| Variable | Purpose |
+|---|---|
+| `client_name`, `project_id`, `region` | Identity + GCP target (`region` default `us-west1`). |
+| `api_image`, `frontend_image` | Artifact Registry image paths. |
+| `orchestrator` | `langgraph` (default) or `adk` (ADR-0004). |
+| `reso_base_url`, `fub_base_url`, `vapi_base_url` | `internal` (default) runs the bundled stub; set a real base URL to go live. |
+| `vapi_assistant_id` | Vapi assistant for outbound calls (ADR-0005). |
+| `enable_llm_extraction`, `llm_model` | Flip feedback extraction to Claude (ADR-0006); needs the `llm-api-key` secret. |
+| `enable_auth`, `auth_methods` | Turn on operator login; `auth_methods` is `google`, `magic`, or both (ADR-0007/0008). |
+| `auth_allowed_domain`, `auth_allowed_emails` | Who may sign in (shared by both methods). |
+| `auth_admin_emails/domain`, `auth_viewer_emails/domain` | RBAC roles (ADR-0009). None set → every operator is admin. |
+| `google_oidc_client_id` | Google OAuth **web** client id (public, not a secret). |
+| `public_base_url`, `smtp_host`, `smtp_port`, `smtp_from`, `smtp_username` | Magic-link delivery; no `smtp_host` → the link is logged to the api console. |
+| `enable_langsmith` | Optional LangSmith tracing. |
+| `cron_schedule` | Daily milestone job cron (default `0 13 * * *`). |
+
+**Secrets (pushed via `make secrets`, never committed):** `fub-api-key`,
+`vapi-api-key`, `vapi-webhook-secret`, `reso-auth-token`, `llm-api-key`,
+`smtp-password`, `langsmith-api-key`. Each is a no-op for the bundled stubs.
+
+### Self-contained demo deploy
+
+`infra/clients/demo.tfvars` deploys the whole stack with every integration on its
+in-process stub — zero secrets, even in the cloud:
+
+```bash
+make gcp-images CLIENT=demo
+TF_STATE_BUCKET=<bucket> make deploy CLIENT=demo
+```
+
+To layer operator auth onto the demo, set the `enable_auth` / `auth_methods` /
+allowlist / RBAC values in `demo.tfvars` (or pass them as `-var` overrides) and add
+the `smtp-password` secret for magic-link email.
 
 ## Layout
 
