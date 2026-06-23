@@ -63,8 +63,8 @@ See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the full picture and
 
 ```bash
 uv sync --all-packages   # install workspace deps
-make test                # ~120 tests (contract, workflow x2 engines, API flow,
-                         # restart-survival per engine)
+make test                # ~220 tests (contract, workflow x2 engines, API flow,
+                         # auth, audit ledger, idempotency, restart-survival per engine)
 ORCHESTRATOR=adk make demo   # the same demo on the ADK engine
 make lint                # ruff + mypy strict
 ```
