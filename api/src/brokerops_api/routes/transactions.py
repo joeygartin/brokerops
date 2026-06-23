@@ -6,11 +6,11 @@ from pydantic import BaseModel, Field
 
 from brokerops_api.deps import get_transaction_store, require_role
 from brokerops_core.models.milestone import Milestone, MilestoneStatus
-from brokerops_core.models.transaction import Transaction, TransactionParty, TransactionStage
+from brokerops_core.models.transaction import Transaction, TransactionParty
 from brokerops_core.ports.identity import Principal, Role
-from brokerops_core.ports.transactions import TransactionStore
+from brokerops_core.ports.transactions import TransactionAlreadyExists, TransactionStore
 from brokerops_core.services.milestone_engine import assess_milestone
-from brokerops_core.services.milestone_schedule import generate_milestones
+from brokerops_core.services.transaction_open import build_open_transaction
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -57,36 +57,60 @@ class OpenTransaction(BaseModel):
     parties: list[TransactionParty] = Field(default_factory=list)
 
 
+def _same_terms(existing: Transaction, requested: Transaction) -> bool:
+    return (
+        existing.contract_date == requested.contract_date
+        and existing.close_date == requested.close_date
+        and existing.parties == requested.parties
+    )
+
+
+async def _replay_or_conflict(
+    existing: Transaction, requested: Transaction, store: TransactionStore, response: Response
+) -> TransactionDetail:
+    """An existing transaction for this listing: a same-terms repeat is an
+    idempotent replay (200); different terms is a conflict (409), never silent."""
+    if not _same_terms(existing, requested):
+        raise HTTPException(
+            status_code=409,
+            detail=f"a transaction for listing {existing.listing_key!r} already exists "
+            "with different terms",
+        )
+    response.status_code = 200
+    return await _detail(store, existing)
+
+
 @router.post("", status_code=201)
 async def open_transaction(
     body: OpenTransaction, store: StoreDep, principal: OperatorDep, response: Response
 ) -> TransactionDetail:
     """Open an escrow for a listing and generate its milestone timeline.
 
-    Idempotent: the transaction id is derived from the listing key, so a retry
-    finds the existing transaction and returns it (200) rather than opening a
-    second one (201). V1 assumes one transaction per listing.
+    Idempotent per listing: the id is derived from the listing key, so a repeat
+    with the same terms returns the existing transaction (200) instead of opening
+    a second (201); a repeat with different terms is a 409. Invalid escrow dates
+    are rejected (422) before anything is persisted. V1 assumes one transaction
+    per listing.
     """
-    transaction_id = f"TXN-{body.listing_key}"
-    existing = await store.get_transaction(transaction_id)
-    if existing is not None:
-        response.status_code = 200
-        return await _detail(store, existing)
-
-    transaction = Transaction(
-        id=transaction_id,
-        listing_key=body.listing_key,
-        stage=TransactionStage.UNDER_CONTRACT,
-        parties=body.parties,
-        contract_date=body.contract_date,
-        close_date=body.close_date,
-    )
     try:
-        milestones = generate_milestones(transaction)
+        transaction, milestones = build_open_transaction(
+            body.listing_key, body.contract_date, body.close_date, body.parties
+        )
     except ValueError as exc:
-        # e.g. the timeline anchors a milestone before close but no close_date given.
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    await store.create_transaction(transaction, milestones)
+
+    existing = await store.get_transaction(transaction.id)
+    if existing is not None:
+        return await _replay_or_conflict(existing, transaction, store, response)
+
+    try:
+        await store.create_transaction(transaction, milestones)
+    except TransactionAlreadyExists:
+        # Lost a concurrent open for the same listing — return the winner.
+        existing = await store.get_transaction(transaction.id)
+        if existing is None:  # pragma: no cover - the row must exist after a PK conflict
+            raise
+        return await _replay_or_conflict(existing, transaction, store, response)
     return await _detail(store, transaction)
 
 

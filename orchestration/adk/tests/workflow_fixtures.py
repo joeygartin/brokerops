@@ -23,6 +23,7 @@ from brokerops_core.models.feedback import ShowingFeedback
 from brokerops_core.models.listing import Listing, ListingMedia, ListingQuery, ListingStatus
 from brokerops_core.models.milestone import Milestone
 from brokerops_core.models.transaction import Transaction
+from brokerops_core.ports.transactions import TransactionAlreadyExists
 
 LISTINGS = {
     "RM1001": Listing(
@@ -148,6 +149,8 @@ class FakeTransactionStore:
     async def create_transaction(
         self, transaction: Transaction, milestones: list[Milestone]
     ) -> None:
+        if transaction.id in self._transactions:
+            raise TransactionAlreadyExists(transaction.id)
         self._transactions[transaction.id] = transaction
         for milestone in milestones:
             self.milestones[milestone.id] = milestone

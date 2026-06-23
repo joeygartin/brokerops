@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from brokerops_api.db import InMemoryTransactionStore, SqlTransactionStore, metadata
 from brokerops_core.models.milestone import Milestone, MilestoneType
 from brokerops_core.models.transaction import Transaction, TransactionParty, TransactionStage
-from brokerops_core.ports.transactions import TransactionStore
+from brokerops_core.ports.transactions import TransactionAlreadyExists, TransactionStore
 
 
 def _sample() -> tuple[Transaction, list[Milestone]]:
@@ -70,3 +70,12 @@ async def test_create_transaction_is_visible_through_reads(store: TransactionSto
     # Both stores return milestones ordered by due_date.
     stored = await store.list_milestones(txn.id)
     assert [m.id for m in stored] == ["MS-9001-INS", "MS-9001-CLO"]
+
+
+async def test_create_transaction_duplicate_id_raises(store: TransactionStore) -> None:
+    # The atomic claim behind idempotent open: a second create with the same id is
+    # rejected (SQLite enforces the primary key) — the route catches this on a race.
+    txn, milestones = _sample()
+    await store.create_transaction(txn, milestones)
+    with pytest.raises(TransactionAlreadyExists):
+        await store.create_transaction(txn, milestones)

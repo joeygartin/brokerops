@@ -23,6 +23,7 @@ from brokerops_core.models.idempotency import ClaimStatus, IdempotencyClaim
 from brokerops_core.models.milestone import Milestone
 from brokerops_core.models.mutation import MutationRecord
 from brokerops_core.models.transaction import ACTIVE_STAGES, Transaction
+from brokerops_core.ports.transactions import TransactionAlreadyExists
 
 metadata = sa.MetaData()
 
@@ -262,10 +263,14 @@ class SqlTransactionStore:
     async def create_transaction(
         self, transaction: Transaction, txn_milestones: list[Milestone]
     ) -> None:
-        async with self._engine.begin() as conn:
-            await conn.execute(transactions.insert().values(**_txn_to_row(transaction)))
-            for milestone in txn_milestones:
-                await conn.execute(milestones.insert().values(**_milestone_to_row(milestone)))
+        try:
+            async with self._engine.begin() as conn:
+                await conn.execute(transactions.insert().values(**_txn_to_row(transaction)))
+                for milestone in txn_milestones:
+                    await conn.execute(milestones.insert().values(**_milestone_to_row(milestone)))
+        except IntegrityError as exc:
+            # Primary-key conflict: another writer already opened this transaction.
+            raise TransactionAlreadyExists(transaction.id) from exc
 
     async def clear(self) -> None:
         async with self._engine.begin() as conn:
@@ -298,6 +303,8 @@ class InMemoryTransactionStore:
     async def create_transaction(
         self, transaction: Transaction, txn_milestones: list[Milestone]
     ) -> None:
+        if transaction.id in self._transactions:
+            raise TransactionAlreadyExists(transaction.id)
         self._transactions[transaction.id] = transaction
         for milestone in txn_milestones:
             self._milestones[milestone.id] = milestone

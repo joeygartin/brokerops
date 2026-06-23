@@ -4,6 +4,14 @@ from brokerops_core.models.milestone import Milestone
 from brokerops_core.models.transaction import Transaction
 
 
+class TransactionAlreadyExists(Exception):
+    """Raised by `create_transaction` when a transaction with that id already exists.
+
+    Lets a caller make "open" idempotent under a concurrent retry: catch this,
+    re-read, and return the winner instead of surfacing a 500.
+    """
+
+
 class TransactionStore(Protocol):
     """Domain persistence boundary for transactions and milestones.
 
@@ -15,6 +23,9 @@ class TransactionStore(Protocol):
         self, transaction: Transaction, milestones: list[Milestone], /
     ) -> None:
         """Persist a new transaction and its milestone timeline together.
+
+        Raises `TransactionAlreadyExists` if the transaction id is already present
+        (the atomic claim that makes opening idempotent under a race).
 
         Positional-only: implementations use their own parameter names (the SQL
         store's `milestones` table would otherwise shadow the argument).

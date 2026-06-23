@@ -90,30 +90,36 @@ These are the questions most likely to be unbuilt for a given client:
 
 1. **Where do listings come from?** The MLS feed (RESO) — confirmed path. Which
    listings are "theirs" (agent/office filter)?
-2. **What signals a listing has gone _under contract_?** MLS status flip
-   (Active → Pending)? A FUB deal stage? An agent action in the app? **[unbuilt]**
-   — see §6. There is no automatic listing→transaction trigger today.
-3. **Where does transaction/escrow data originate?** Today transactions exist only
-   via demo seed. For a real client: created from the under-contract trigger, or
-   entered manually, or synced from FUB/escrow software? **[unbuilt]**
+2. **What signals a listing has gone _under contract_?** Today this is a **manual
+   operator action** — `POST /transactions` opens the escrow. An *automatic*
+   trigger (MLS status flip Active → Pending, or a FUB deal stage) is **[unbuilt]**
+   and is the main follow-up — see §6.
+3. **Where does transaction/escrow data originate?** From the operator-triggered
+   open endpoint (§6), which generates the milestone timeline and persists it.
+   Auto-sync from FUB/escrow software is **[unbuilt]**.
 4. **Voice follow-up:** which calls, to whom, with what assistant script
    (ADR-0005)? Drives `vapi_followup`.
 
-## 6. Known gap to build for the first real client
+## 6. Listing → transaction handoff (BOP-004 — built; follow-ups noted)
 
-The **listing → transaction handoff and milestone generation do not exist yet.**
-`listing_to_contract` stops after publishing marketing tasks; it never creates a
-`Transaction` or any `Milestone`. `transaction_coordination` only *reads* an
-existing timeline. The bridge that must be built (scoped in the onboarding work):
+The bridge from a listing going under contract to a tracked escrow **now exists**:
 
-- a **trigger** for "this listing is now under contract" (§5.2),
-- a core **milestone-template service** that turns a contract/close date + the
-  client's §4 timeline into `Milestone` rows,
-- a **write path** to persist the new transaction + milestones (today only a
-  demo-only admin insert exists).
+- **Write path** — `TransactionStore.create_transaction` persists a transaction +
+  its milestones through the domain port (no longer demo-only).
+- **Milestone-template service** — `core/services/milestone_schedule.py`
+  `generate_milestones()` turns a contract/close date + the client's §4 timeline
+  into `Milestone` rows; `DEFAULT_TIMELINE` is the hand-coded V1 timeline.
+- **Operator trigger** — `POST /transactions` (operator role) validates the escrow
+  dates, generates the timeline, and persists it. Idempotent per listing (a
+  same-terms repeat returns the existing transaction; different terms → 409). The
+  existing `transaction_coordination` cron then drives it on either engine.
 
-See the engineering write-up accompanying this intake for the detailed handoff
-analysis.
+**Follow-ups (not yet built):**
+
+- an **automatic** under-contract trigger (MLS status / FUB deal stage) to replace
+  the manual `POST /transactions` (§5.2),
+- lifting the §3–§4 hand-coded rules (timeline, task list, marketing) into
+  **per-client config** — the #2 onboarding model, after the first deployment.
 
 ## 7. Deployment, in order
 

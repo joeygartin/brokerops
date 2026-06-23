@@ -40,3 +40,6 @@ frontend/dist/
 
 # Internal task backlog — system of record is GitHub Issues
 docs/tasks/
+
+# Internal review-gate artifacts (never committed to the public repo)
+docs/findings/
