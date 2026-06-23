@@ -9,11 +9,13 @@ from brokerops_api.db import (
     InMemoryApprovalRepo,
     InMemoryAuditLog,
     InMemoryFeedbackStore,
+    InMemoryIdempotencyStore,
     InMemoryMagicTokenStore,
     InMemoryTransactionStore,
     SqlApprovalRepo,
     SqlAuditLog,
     SqlFeedbackStore,
+    SqlIdempotencyStore,
     SqlMagicTokenStore,
     SqlTransactionStore,
     create_engine,
@@ -40,6 +42,7 @@ from brokerops_api.routes.webhooks import router as webhooks_router
 from brokerops_api.routes.workflows import router as workflows_router
 from brokerops_core.ports.auth import MagicTokenStore
 from brokerops_core.services.audit import RecordingCRM, RecordingVoice
+from brokerops_core.services.idempotency import IdempotentCRM, IdempotentVoice
 from brokerops_adk.engine import build_engine as build_adk_engine
 from brokerops_langgraph.engine import build_engine as build_langgraph_engine
 
@@ -75,6 +78,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.transaction_store = SqlTransactionStore(engine)
         app.state.feedback_store = SqlFeedbackStore(engine)
         app.state.audit_log = SqlAuditLog(engine)
+        app.state.idempotency_store = SqlIdempotencyStore(engine)
         magic_store = SqlMagicTokenStore(engine)
     else:
         # Database-less local dev: everything in memory, nothing survives.
@@ -82,20 +86,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.transaction_store = InMemoryTransactionStore()
         app.state.feedback_store = InMemoryFeedbackStore()
         app.state.audit_log = InMemoryAuditLog()
+        app.state.idempotency_store = InMemoryIdempotencyStore()
         magic_store = InMemoryMagicTokenStore()
     # Magic-link service is None unless the "magic" method is enabled; routes
     # that need it 404 otherwise.
     app.state.magic_link_service = build_magic_link_service(magic_store)
-    # The single audit seam: both engines reach the CRM and voice platform through
-    # these recording decorators, so every external write is logged in one place,
-    # identically under either orchestrator (architecture rule #5). The raw adapters
-    # stay on app.state for the operator-driven direct routes.
-    recording_crm = RecordingCRM(crm, app.state.audit_log)
-    recording_voice = RecordingVoice(voice, app.state.audit_log)
+    # The single write-boundary seam, two decorators deep: every external write the
+    # engine performs is first deduped (IdempotentCRM/Voice — at most once per
+    # workflow run, ADR-0011) and then recorded (RecordingCRM/Voice — the audit
+    # ledger, ADR-0010). Idempotency wraps recording, so a deduped replay performs no
+    # side effect and writes no second mutation record. Both engines inherit this
+    # identically (architecture rule #5). The raw adapters stay on app.state for the
+    # operator-driven direct routes, which are not workflow writes.
+    engine_crm = IdempotentCRM(RecordingCRM(crm, app.state.audit_log), app.state.idempotency_store)
+    engine_voice = IdempotentVoice(
+        RecordingVoice(voice, app.state.audit_log), app.state.idempotency_store
+    )
     async with build_engine(
         mls=mls,
-        crm=recording_crm,
-        voice=recording_voice,
+        crm=engine_crm,
+        voice=engine_voice,
         extraction=extraction,
         transaction_store=app.state.transaction_store,
         feedback_store=app.state.feedback_store,

@@ -184,13 +184,33 @@ publishes at its run boundary. `GET /audit?workflow_run_id=` reads the trail and
 React Audit-trail tab browses it. Demo mode still produces records against the stub
 integrations with zero credentials, and the trail survives a mid-run restart.
 
+## Idempotent writes
+
+Agents retry and an orchestrator can re-run a node on resume, so the same write must
+not produce a duplicate side effect — a second CRM task, or worst of all a second
+outbound call. A second decorator on the same write-boundary seam makes every external
+write idempotent (ADR-0011). The wiring is `Idempotent(Recording(adapter))`: the
+idempotency wrapper is *outermost*, so a deduped replay short-circuits before the audit
+ledger — it performs no side effect and writes no second `MutationRecord`.
+
+The key convention is a `core` service: a stable SHA-256 over
+`(workflow_run_id, tool, semantic-args)`, where the run id comes from the same
+`audit_scope` ContextVar the ledger uses, so the two seams agree on what "this run" is.
+The `IdempotencyStore` is a `core/ports/` Protocol; the API supplies
+`SqlIdempotencyStore` (an `idempotency_keys` table, alembic `0006`, whose primary-key
+insert is the atomic claim) and an in-memory twin. A write claims its key before the
+side effect and records the original result on success; a completed-key replay returns
+that result without re-executing — at most once. The narrow mid-write-crash window
+(claimed but not yet recorded) refuses to repeat rather than risk a duplicate. Both
+engines inherit this identically, demo stubs included.
+
 ## Data
 
 Cloud SQL Postgres (one small instance per client — cheap isolation; consolidation
 to a shared instance is a DSN change). Alembic migrations run on container start.
 Domain tables: approval_requests, transactions, milestones, call_records,
-showing_feedback, magic_login_tokens, mutation_records. Each engine manages its own
-state tables alongside (LangGraph's checkpointer; ADK's session service).
+showing_feedback, magic_login_tokens, mutation_records, idempotency_keys. Each engine
+manages its own state tables alongside (LangGraph's checkpointer; ADK's session service).
 
 Contacts are deliberately **not** a domain table: the CRM is the source of truth and
 contacts are read-through DTOs via `CRMPort`. Caching policy is ADR-0001: a thin
@@ -212,12 +232,14 @@ external health checks on `/readyz` because Google's frontend reserves `/healthz
 
 ## Verification
 
-~200 tests: OData contract tests pinning the RESO subset, adapter tests against the
+~220 tests: OData contract tests pinning the RESO subset, adapter tests against the
 stubs (the same shapes the real APIs return), workflow tests for every branch of all
 three workflows on **both engines**, API-level flow tests, auth tests (allowlist,
 magic-link lifecycle, session-JWT round-trip, role resolution, and `require_role`
 enforcement), audit-ledger tests (deep secret redaction, success-and-failure
-recording, engine parity, restart survival), a Postgres restart-survival proof per
+recording, engine parity, restart survival), idempotency tests (replay performs the
+side effect at most once and returns the original result, atomic claim, restart
+survival), a Postgres restart-survival proof per
 engine (runs in CI against a service container), and a scripted e2e demo check that CI runs against the full
 compose stack under both `ORCHESTRATOR` values. Ruff + mypy strict across the
 workspace; gitleaks on every commit and in CI.

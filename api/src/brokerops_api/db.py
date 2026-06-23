@@ -9,6 +9,7 @@ from typing import Any, Protocol
 
 import sqlalchemy as sa
 from sqlalchemy.engine import Row
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from brokerops_core.models.approval import ApprovalRequest, ApprovalStatus
@@ -16,7 +17,9 @@ from brokerops_core.models.call import CallRecord
 from brokerops_core.ports.approvals import ApprovalRepo as ApprovalRepo
 from brokerops_core.ports.audit import AuditLog as AuditLog
 from brokerops_core.ports.auth import ConsumedToken
+from brokerops_core.ports.idempotency import IdempotencyStore as IdempotencyStore
 from brokerops_core.models.feedback import ShowingFeedback
+from brokerops_core.models.idempotency import ClaimStatus, IdempotencyClaim
 from brokerops_core.models.milestone import Milestone
 from brokerops_core.models.mutation import MutationRecord
 from brokerops_core.models.transaction import ACTIVE_STAGES, Transaction
@@ -117,6 +120,22 @@ mutation_records = sa.Table(
     sa.Column("external_id", sa.String(120)),
     sa.Column("error", sa.Text()),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+)
+
+
+idempotency_keys = sa.Table(
+    "idempotency_keys",
+    metadata,
+    # One row per logical write. The key (SHA-256 of run+tool+args) is the primary
+    # key, so a duplicate claim is rejected atomically by the DB. result holds the
+    # original return value so a completed-key replay can answer without re-executing.
+    sa.Column("key", sa.String(64), primary_key=True),
+    sa.Column("workflow_run_id", sa.String(64), nullable=False, server_default="", index=True),
+    sa.Column("tool", sa.String(64), nullable=False),
+    sa.Column("status", sa.String(16), nullable=False, server_default="pending"),
+    sa.Column("result", sa.Text()),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("completed_at", sa.DateTime(timezone=True)),
 )
 
 
@@ -445,6 +464,69 @@ class InMemoryAuditLog:
         if workflow_run_id is not None:
             items = [r for r in items if r.workflow_run_id == workflow_run_id]
         return items[:limit]
+
+
+class SqlIdempotencyStore:
+    """Durable write-tool dedupe. The primary-key insert is the atomic claim: the
+    first writer inserts a pending row; a concurrent or replayed claim hits the
+    uniqueness constraint, reads the existing row, and learns whether the original
+    completed (return its result) or is still pending (a mid-write crash).
+    """
+
+    def __init__(self, engine: AsyncEngine) -> None:
+        self._engine = engine
+
+    async def begin(self, key: str, *, workflow_run_id: str, tool: str) -> IdempotencyClaim:
+        try:
+            async with self._engine.begin() as conn:
+                await conn.execute(
+                    idempotency_keys.insert().values(
+                        key=key,
+                        workflow_run_id=workflow_run_id,
+                        tool=tool,
+                        status=ClaimStatus.PENDING.value,
+                        created_at=datetime.now(UTC),
+                    )
+                )
+            return IdempotencyClaim(status=ClaimStatus.NEW)
+        except IntegrityError:
+            # Key already claimed — read where the prior attempt got to.
+            async with self._engine.connect() as conn:
+                result = await conn.execute(
+                    idempotency_keys.select().where(idempotency_keys.c.key == key)
+                )
+                row = result.first()
+        mapping = row._mapping  # type: ignore[union-attr]  # row exists: the insert conflicted
+        return IdempotencyClaim(status=ClaimStatus(mapping["status"]), result=mapping["result"])
+
+    async def complete(self, key: str, result: str) -> None:
+        async with self._engine.begin() as conn:
+            await conn.execute(
+                idempotency_keys.update()
+                .where(idempotency_keys.c.key == key)
+                .values(
+                    status=ClaimStatus.COMPLETED.value,
+                    result=result,
+                    completed_at=datetime.now(UTC),
+                )
+            )
+
+
+class InMemoryIdempotencyStore:
+    def __init__(self) -> None:
+        # key -> (status, result)
+        self._rows: dict[str, tuple[ClaimStatus, str | None]] = {}
+
+    async def begin(self, key: str, *, workflow_run_id: str, tool: str) -> IdempotencyClaim:
+        existing = self._rows.get(key)
+        if existing is None:
+            self._rows[key] = (ClaimStatus.PENDING, None)
+            return IdempotencyClaim(status=ClaimStatus.NEW)
+        status, result = existing
+        return IdempotencyClaim(status=status, result=result)
+
+    async def complete(self, key: str, result: str) -> None:
+        self._rows[key] = (ClaimStatus.COMPLETED, result)
 
 
 class InMemoryMagicTokenStore:

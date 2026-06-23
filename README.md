@@ -126,7 +126,10 @@ React app hides controls a role can't use — opt-in, so a deploy without role c
 keeps a flat operator list. An action audit ledger records every write that crosses the
 MCP boundary as a durable, secret-redacted `MutationRecord` (success or failure) at a
 single port-decorator seam both engines share, linked to its approval when gated and
-browsable per workflow run (ADR-0010).
+browsable per workflow run (ADR-0010). Those same writes are idempotent (ADR-0011): a
+second decorator on the seam dedupes by `(workflow run, tool, args)`, so a retried or
+resumed workflow performs each external side effect — a CRM task, an outbound call — at
+most once and returns the original result.
 
 **Next, in rough order — each lands when a demo- or client-path justifies it,
 never speculatively:**
