@@ -70,8 +70,8 @@ and Python 3.12+; tests that exercise restart-survival also need a local Postgre
 
 ```bash
 uv sync --all-packages   # install workspace deps
-make test                # ~220 tests (contract, workflow x2 engines, API flow,
-                         # auth, audit ledger, idempotency, restart-survival per engine)
+make test                # ~248 tests (contract, workflow x2 engines, API flow, auth,
+                         # audit ledger, idempotency, transaction open, restart-survival)
 ORCHESTRATOR=adk make demo   # the same demo on the ADK engine
 make lint                # ruff + mypy strict
 ```
@@ -201,7 +201,7 @@ orchestration/           # the three workflows, twice: langgraph/ (V1) + adk/ (V
 api/                     # FastAPI: routes, webhooks, cron, workflow engine, Alembic
 frontend/                # React + Vite: Listings, Transactions, Approval Inbox
 infra/                   # Terraform per-client module + bootstrap
-docs/                    # ARCHITECTURE.md · DEMO.md · ADRs/
+docs/                    # ARCHITECTURE.md · DEMO.md · CLIENT_ONBOARDING.md · ADRs/
 ```
 
 ## Status & roadmap
@@ -232,7 +232,11 @@ single port-decorator seam both engines share, linked to its approval when gated
 browsable per workflow run (ADR-0010). Those same writes are idempotent (ADR-0011): a
 second decorator on the seam dedupes by `(workflow run, tool, args)`, so a retried or
 resumed workflow performs each external side effect — a CRM task, an outbound call — at
-most once and returns the original result.
+most once and returns the original result. The listing→transaction handoff is built:
+an operator opens an escrow via `POST /transactions`, which validates the dates and
+generates a milestone timeline from a per-client template before persisting it, and the
+`transaction_coordination` cron then drives it on either engine. Opening is idempotent
+per listing (a same-terms repeat returns the existing transaction; different terms 409).
 
 **Next, in rough order — each lands when a demo- or client-path justifies it,
 never speculatively:**

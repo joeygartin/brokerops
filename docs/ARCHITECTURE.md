@@ -235,14 +235,16 @@ external health checks on `/readyz` because Google's frontend reserves `/healthz
 
 ## Verification
 
-~220 tests: OData contract tests pinning the RESO subset, adapter tests against the
+~248 tests: OData contract tests pinning the RESO subset, adapter tests against the
 stubs (the same shapes the real APIs return), workflow tests for every branch of all
 three workflows on **both engines**, API-level flow tests, auth tests (allowlist,
 magic-link lifecycle, session-JWT round-trip, role resolution, and `require_role`
 enforcement), audit-ledger tests (deep secret redaction, success-and-failure
 recording, engine parity, restart survival), idempotency tests (replay performs the
 side effect at most once and returns the original result, atomic claim, restart
-survival), a Postgres restart-survival proof per
+survival), transaction-open tests (deterministic bounded id, idempotent open with
+conflict and race handling, escrow-date validation, engine wire-through), a Postgres
+restart-survival proof per
 engine (runs in CI against a service container), and a scripted e2e demo check that CI runs against the full
 compose stack under both `ORCHESTRATOR` values. Ruff + mypy strict across the
 workspace; gitleaks on every commit and in CI.
