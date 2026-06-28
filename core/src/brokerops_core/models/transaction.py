@@ -26,6 +26,10 @@ class TransactionParty(BaseModel):
 
 
 class Transaction(BaseModel):
+    # Stamped by the scoped data layer (BOP-006); "" means "use the ambient bound
+    # tenant". A node may populate it, but a value disagreeing with the bound tenant
+    # is rejected as a cross-tenant attempt before any write.
+    tenant_id: str = ""
     id: str
     listing_key: str
     stage: TransactionStage

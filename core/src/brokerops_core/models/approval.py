@@ -14,6 +14,8 @@ class ApprovalStatus(StrEnum):
 class ApprovalRequest(BaseModel):
     """The HITL spine — every human gate in any workflow passes through one of these."""
 
+    # Stamped by the scoped data layer (BOP-006).
+    tenant_id: str = ""
     id: str
     workflow: str
     graph_thread_id: str

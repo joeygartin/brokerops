@@ -40,6 +40,14 @@ resource "google_cloud_run_v2_service" "api" {
         name  = "ORCHESTRATOR"
         value = var.orchestrator
       }
+      # The deploy's tenant identity (BOP-006). Each client deploy binds its own
+      # client_name as the tenant below the agent, so a turned agent's blast radius
+      # is this one client — never the fleet. Without this a client deploy would run
+      # as the "demo" default.
+      env {
+        name  = "TENANT_ID"
+        value = var.client_name
+      }
       env {
         name  = "RESO_BASE_URL"
         value = var.reso_base_url

@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field
 class CallRecord(BaseModel):
     """A voice call, raw and extracted layers kept separate."""
 
+    # Stamped by the scoped data layer (BOP-006).
+    tenant_id: str = ""
     vapi_call_id: str
     contact_id: str = ""
     listing_key: str = ""

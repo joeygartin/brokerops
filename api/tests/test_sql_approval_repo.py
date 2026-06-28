@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from brokerops_api.db import SqlApprovalRepo, metadata
 from brokerops_core.models.approval import ApprovalRequest, ApprovalStatus
+from brokerops_core.services.tenancy import tenant_scope
 
 
 @pytest.fixture
@@ -46,8 +47,12 @@ async def test_list_filters_by_status_and_decide_updates(engine: AsyncEngine) ->
     await repo.create(second)
     assert len(await repo.list(ApprovalStatus.PENDING)) == 2
 
+    # mark_decided is a tenant-scoped, fail-closed mutation (BOP-006): bind a tenant as
+    # the real app does at the request boundary. The rows are unstamped (""), which the
+    # ownership predicate treats as owned.
     decided_at = datetime.now(UTC)
-    await repo.mark_decided(first.id, ApprovalStatus.APPROVED, "demo-operator", decided_at)
+    with tenant_scope("demo"):
+        await repo.mark_decided(first.id, ApprovalStatus.APPROVED, "demo-operator", decided_at)
     pending = await repo.list(ApprovalStatus.PENDING)
     assert [a.id for a in pending] == [second.id]
     decided = await repo.get(first.id)

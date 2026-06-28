@@ -4,13 +4,17 @@
 `InMemory*` twins back tests and database-less local dev.
 """
 
+from contextlib import AbstractAsyncContextManager
 from datetime import UTC, datetime
+from types import TracebackType
 from typing import Any, Protocol
 
 import sqlalchemy as sa
 from sqlalchemy.engine import Row
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
+
+from brokerops_core.services.tenancy import require_tenant
 
 from brokerops_core.models.approval import ApprovalRequest, ApprovalStatus
 from brokerops_core.models.call import CallRecord
@@ -27,10 +31,16 @@ from brokerops_core.ports.transactions import TransactionAlreadyExists
 
 metadata = sa.MetaData()
 
+# Every agent-reachable table carries tenant_id (BOP-006). The authoritative column
+# DDL — the GUC-derived default and the row-level-security policy — lives in migration
+# 0007; the server_default="" on the Table objects below only keeps them valid for
+# query building (db.py does not run DDL itself).
+
 approval_requests = sa.Table(
     "approval_requests",
     metadata,
     sa.Column("id", sa.String(36), primary_key=True),
+    sa.Column("tenant_id", sa.String(64), nullable=False, server_default="", index=True),
     sa.Column("workflow", sa.String(64), nullable=False),
     sa.Column("graph_thread_id", sa.String(64), nullable=False, index=True),
     sa.Column("kind", sa.String(64), nullable=False),
@@ -46,6 +56,7 @@ transactions = sa.Table(
     "transactions",
     metadata,
     sa.Column("id", sa.String(36), primary_key=True),
+    sa.Column("tenant_id", sa.String(64), nullable=False, server_default="", index=True),
     sa.Column("listing_key", sa.String(36), nullable=False, index=True),
     sa.Column("stage", sa.String(32), nullable=False, index=True),
     sa.Column("parties", sa.JSON(), nullable=False),
@@ -57,6 +68,7 @@ milestones = sa.Table(
     "milestones",
     metadata,
     sa.Column("id", sa.String(36), primary_key=True),
+    sa.Column("tenant_id", sa.String(64), nullable=False, server_default="", index=True),
     sa.Column("transaction_id", sa.String(36), nullable=False, index=True),
     sa.Column("type", sa.String(32), nullable=False),
     sa.Column("title", sa.String(200), nullable=False),
@@ -72,6 +84,7 @@ call_records = sa.Table(
     "call_records",
     metadata,
     sa.Column("vapi_call_id", sa.String(64), primary_key=True),
+    sa.Column("tenant_id", sa.String(64), nullable=False, server_default="", index=True),
     sa.Column("contact_id", sa.String(36), nullable=False, server_default=""),
     sa.Column("listing_key", sa.String(36), nullable=False, server_default="", index=True),
     sa.Column("transcript", sa.Text(), nullable=False, server_default=""),
@@ -84,6 +97,7 @@ showing_feedback = sa.Table(
     "showing_feedback",
     metadata,
     sa.Column("id", sa.String(80), primary_key=True),
+    sa.Column("tenant_id", sa.String(64), nullable=False, server_default="", index=True),
     sa.Column("listing_key", sa.String(36), nullable=False, index=True),
     sa.Column("contact_id", sa.String(36), nullable=False),
     sa.Column("call_id", sa.String(64)),
@@ -110,6 +124,9 @@ mutation_records = sa.Table(
     metadata,
     # The business audit trail: one row per external write across the MCP boundary.
     sa.Column("id", sa.String(36), primary_key=True),
+    # MutationRecord has no tenant_id field; the column is stamped by the DB from the
+    # connection's tenant GUC (migration 0007), so the ledger is tenant-scoped too.
+    sa.Column("tenant_id", sa.String(64), nullable=False, server_default="", index=True),
     sa.Column("workflow_run_id", sa.String(64), nullable=False, server_default="", index=True),
     sa.Column("workflow", sa.String(64), nullable=False, server_default=""),
     sa.Column("tool", sa.String(64), nullable=False),
@@ -151,12 +168,78 @@ def create_engine(database_url: str) -> AsyncEngine:
     return create_async_engine(sqlalchemy_url(database_url))
 
 
+class TenantAwareEngine(Protocol):
+    """The slice of AsyncEngine the Sql stores use — satisfied by a raw AsyncEngine
+    and by TenantScopedEngine, so a store takes either."""
+
+    def begin(self) -> AbstractAsyncContextManager[AsyncConnection]: ...
+
+    def connect(self) -> AbstractAsyncContextManager[AsyncConnection]: ...
+
+
+class _ScopedTransaction:
+    """Opens a transaction and binds the tenant GUC before any statement runs.
+
+    `set_config(..., is_local => true)` scopes the value to this transaction, so it
+    never leaks across pooled connections. Reads use a transaction too so the LOCAL
+    setting takes effect. ``require_tenant`` fails closed when no tenant is bound.
+    """
+
+    def __init__(self, engine: AsyncEngine) -> None:
+        self._engine = engine
+        self._cm: AbstractAsyncContextManager[AsyncConnection] | None = None
+
+    async def __aenter__(self) -> AsyncConnection:
+        tenant = require_tenant()
+        self._cm = self._engine.begin()
+        conn = await self._cm.__aenter__()
+        await conn.execute(
+            sa.text("SELECT set_config('app.brokerops_tenant', :tenant, true)"),
+            {"tenant": tenant},
+        )
+        return conn
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> bool | None:
+        assert self._cm is not None
+        return await self._cm.__aexit__(exc_type, exc, tb)
+
+
+class TenantScopedEngine:
+    """Wraps an AsyncEngine so every unit of work first binds the tenant GUC the
+    Postgres row-level-security policy reads (migration 0007). This is the DB belt:
+    a query that skips the app-layer scope is still confined at the database."""
+
+    def __init__(self, engine: AsyncEngine) -> None:
+        self._engine = engine
+
+    def begin(self) -> _ScopedTransaction:
+        return _ScopedTransaction(self._engine)
+
+    def connect(self) -> _ScopedTransaction:
+        return _ScopedTransaction(self._engine)
+
+
+def _owned(table: sa.Table) -> sa.ColumnElement[bool]:
+    """Row-ownership predicate for the bound tenant (BOP-006): the row's tenant matches
+    the bound one, or is unstamped ("" — legacy/raw rows treated as owned, matching the
+    scoped wrappers' `_is_foreign`). Used on count/clear/by-id mutations so they confine
+    to one tenant at the app-query layer even where the Postgres RLS belt is bypassed
+    (superuser). Fails closed: `require_tenant` raises if no tenant is bound."""
+    tenant = require_tenant()
+    return sa.or_(table.c.tenant_id == tenant, table.c.tenant_id == "")
+
+
 def _row_to_model(row: Row[tuple[object, ...]]) -> ApprovalRequest:
     return ApprovalRequest.model_validate(dict(row._mapping))
 
 
 class SqlApprovalRepo:
-    def __init__(self, engine: AsyncEngine) -> None:
+    def __init__(self, engine: TenantAwareEngine) -> None:
         self._engine = engine
 
     async def create(self, approval: ApprovalRequest) -> None:
@@ -183,12 +266,16 @@ class SqlApprovalRepo:
     async def mark_decided(
         self, approval_id: str, status: ApprovalStatus, decided_by: str, decided_at: datetime
     ) -> None:
+        # Tenant-qualified + fail-loud on zero rows (BOP-006 r2): deciding a foreign or
+        # missing approval must not silently succeed.
         async with self._engine.begin() as conn:
-            await conn.execute(
+            result = await conn.execute(
                 approval_requests.update()
-                .where(approval_requests.c.id == approval_id)
+                .where(approval_requests.c.id == approval_id, _owned(approval_requests))
                 .values(status=status.value, decided_by=decided_by, decided_at=decided_at)
             )
+        if result.rowcount == 0:
+            raise KeyError(approval_id)
 
 
 class TransactionStoreAdmin(Protocol):
@@ -217,7 +304,7 @@ def _milestone_to_row(milestone: Milestone) -> dict[str, Any]:
 
 
 class SqlTransactionStore:
-    def __init__(self, engine: AsyncEngine) -> None:
+    def __init__(self, engine: TenantAwareEngine) -> None:
         self._engine = engine
 
     async def get_transaction(self, transaction_id: str) -> Transaction | None:
@@ -227,6 +314,12 @@ class SqlTransactionStore:
             )
             row = result.first()
         return Transaction.model_validate(dict(row._mapping)) if row is not None else None
+
+    async def get_milestone(self, milestone_id: str) -> Milestone | None:
+        async with self._engine.connect() as conn:
+            result = await conn.execute(milestones.select().where(milestones.c.id == milestone_id))
+            row = result.first()
+        return Milestone.model_validate(dict(row._mapping)) if row is not None else None
 
     async def list_active_transactions(self) -> list[Transaction]:
         stages = [stage.value for stage in ACTIVE_STAGES]
@@ -248,16 +341,24 @@ class SqlTransactionStore:
         return [Milestone.model_validate(dict(row._mapping)) for row in rows]
 
     async def set_escalation_level(self, milestone_id: str, level: int) -> None:
+        # Tenant-qualify the UPDATE (belt for the superuser path where RLS is inert) and
+        # fail loud on a zero-row update: a foreign or missing id must not be a silent
+        # no-op (BOP-006 review round 2). Under a hardened role RLS also hides the row,
+        # so this raise is the loud signal there.
         async with self._engine.begin() as conn:
-            await conn.execute(
+            result = await conn.execute(
                 milestones.update()
-                .where(milestones.c.id == milestone_id)
+                .where(milestones.c.id == milestone_id, _owned(milestones))
                 .values(escalation_level=level)
             )
+        if result.rowcount == 0:
+            raise KeyError(milestone_id)
 
     async def count_transactions(self) -> int:
         async with self._engine.connect() as conn:
-            result = await conn.execute(sa.select(sa.func.count()).select_from(transactions))
+            result = await conn.execute(
+                sa.select(sa.func.count()).select_from(transactions).where(_owned(transactions))
+            )
         return int(result.scalar_one())
 
     async def create_transaction(
@@ -273,9 +374,11 @@ class SqlTransactionStore:
             raise TransactionAlreadyExists(transaction.id) from exc
 
     async def clear(self) -> None:
+        # Scoped deletion: only this tenant's rows, so the demo reset can never widen
+        # its blast radius to another tenant even on the superuser path (BOP-006 r2).
         async with self._engine.begin() as conn:
-            await conn.execute(milestones.delete())
-            await conn.execute(transactions.delete())
+            await conn.execute(milestones.delete().where(_owned(milestones)))
+            await conn.execute(transactions.delete().where(_owned(transactions)))
 
 
 class InMemoryTransactionStore:
@@ -289,6 +392,9 @@ class InMemoryTransactionStore:
     async def list_active_transactions(self) -> list[Transaction]:
         return [t for t in self._transactions.values() if t.is_active]
 
+    async def get_milestone(self, milestone_id: str) -> Milestone | None:
+        return self._milestones.get(milestone_id)
+
     async def list_milestones(self, transaction_id: str) -> list[Milestone]:
         found = [m for m in self._milestones.values() if m.transaction_id == transaction_id]
         return sorted(found, key=lambda m: m.due_date)
@@ -298,7 +404,8 @@ class InMemoryTransactionStore:
         self._milestones[milestone_id] = existing.model_copy(update={"escalation_level": level})
 
     async def count_transactions(self) -> int:
-        return len(self._transactions)
+        owned = (require_tenant(), "")
+        return sum(1 for t in self._transactions.values() if t.tenant_id in owned)
 
     async def create_transaction(
         self, transaction: Transaction, txn_milestones: list[Milestone]
@@ -310,12 +417,16 @@ class InMemoryTransactionStore:
             self._milestones[milestone.id] = milestone
 
     async def clear(self) -> None:
-        self._transactions.clear()
-        self._milestones.clear()
+        # Delete only this tenant's (or unstamped) rows; another tenant's survive.
+        owned = (require_tenant(), "")
+        self._transactions = {
+            k: v for k, v in self._transactions.items() if v.tenant_id not in owned
+        }
+        self._milestones = {k: v for k, v in self._milestones.items() if v.tenant_id not in owned}
 
 
 class SqlFeedbackStore:
-    def __init__(self, engine: AsyncEngine) -> None:
+    def __init__(self, engine: TenantAwareEngine) -> None:
         self._engine = engine
 
     async def save_call_record(self, record: CallRecord) -> None:
@@ -359,6 +470,14 @@ class SqlFeedbackStore:
                 )
         return feedback.id
 
+    async def get_feedback(self, feedback_id: str) -> ShowingFeedback | None:
+        async with self._engine.connect() as conn:
+            result = await conn.execute(
+                showing_feedback.select().where(showing_feedback.c.id == feedback_id)
+            )
+            row = result.first()
+        return ShowingFeedback.model_validate(dict(row._mapping)) if row is not None else None
+
     async def list_feedback(self, listing_key: str) -> list[ShowingFeedback]:
         async with self._engine.connect() as conn:
             result = await conn.execute(
@@ -382,6 +501,9 @@ class InMemoryFeedbackStore:
     async def upsert_feedback(self, feedback: ShowingFeedback) -> str:
         self._feedback[feedback.id] = feedback
         return feedback.id
+
+    async def get_feedback(self, feedback_id: str) -> ShowingFeedback | None:
+        return self._feedback.get(feedback_id)
 
     async def list_feedback(self, listing_key: str) -> list[ShowingFeedback]:
         return [f for f in self._feedback.values() if f.listing_key == listing_key]
@@ -440,7 +562,7 @@ class SqlMagicTokenStore:
 
 
 class SqlAuditLog:
-    def __init__(self, engine: AsyncEngine) -> None:
+    def __init__(self, engine: TenantAwareEngine) -> None:
         self._engine = engine
 
     async def record(self, record: MutationRecord) -> None:

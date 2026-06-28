@@ -121,6 +121,9 @@ class FakeFeedbackStore:
         self.feedback[feedback.id] = feedback
         return feedback.id
 
+    async def get_feedback(self, feedback_id: str) -> ShowingFeedback | None:
+        return self.feedback.get(feedback_id)
+
     async def list_feedback(self, listing_key: str) -> list[ShowingFeedback]:
         return [f for f in self.feedback.values() if f.listing_key == listing_key]
 
@@ -141,6 +144,9 @@ class FakeTransactionStore:
 
     async def get_transaction(self, transaction_id: str) -> Transaction | None:
         return self._transactions.get(transaction_id)
+
+    async def get_milestone(self, milestone_id: str) -> Milestone | None:
+        return self.milestones.get(milestone_id)
 
     async def list_active_transactions(self) -> list[Transaction]:
         return [t for t in self._transactions.values() if t.is_active]

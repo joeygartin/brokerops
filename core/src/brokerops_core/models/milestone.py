@@ -19,6 +19,8 @@ class MilestoneStatus(StrEnum):
 
 
 class Milestone(BaseModel):
+    # Stamped by the scoped data layer alongside its transaction (BOP-006).
+    tenant_id: str = ""
     id: str
     transaction_id: str
     type: MilestoneType

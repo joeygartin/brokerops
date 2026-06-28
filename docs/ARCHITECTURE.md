@@ -207,6 +207,23 @@ that result without re-executing — at most once. The narrow mid-write-crash wi
 (claimed but not yet recorded) refuses to repeat rather than risk a duplicate. Both
 engines inherit this identically, demo stubs included.
 
+## Tenant isolation
+
+One compromised or prompt-injected agent must never reach another brokerage's data, and
+that guarantee can't live in the prompt — it lives below the agent (ADR-0012). The tenant
+is bound from deploy config (`TENANT_ID`, the client identity) around every request by a
+pure-ASGI middleware, carried on a `ContextVar` like the audit seam, and read by the data
+layer — no core service or MCP tool takes a tenant parameter, so the agent has no "which
+brokerage" knob. Scoped store wrappers (`core/services/scoped_stores.py`) stamp the bound
+tenant on writes, deny by-id access to another tenant's rows, and record a denied attempt
+in the audit ledger as a `security` event. A forced Postgres row-level-security policy
+keyed on a per-transaction GUC (alembic `0007`) is the database belt under the app layer —
+it engages under a least-privilege (non-superuser) DB role; under the demo's superuser role
+RLS is inert and the app-layer wrapper is the always-on guarantee. brokerops is
+single-tenant *per deploy* today, so the wrapper makes that boundary explicit and a future
+shared-database migration mechanical. This is increment 1; uniform tool authorization,
+egress filtering, and per-agent least-privilege accounts are follow-ons.
+
 ## Data
 
 Cloud SQL Postgres (one small instance per client — cheap isolation; consolidation

@@ -23,6 +23,8 @@ class PriceOpinion(StrEnum):
 
 
 class ShowingFeedback(BaseModel):
+    # Stamped by the scoped data layer (BOP-006).
+    tenant_id: str = ""
     id: str
     listing_key: str
     contact_id: str

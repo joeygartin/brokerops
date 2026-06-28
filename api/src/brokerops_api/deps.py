@@ -46,6 +46,17 @@ def reso_base_url() -> str:
     return os.environ.get("RESO_BASE_URL", "http://localhost:8001/odata")
 
 
+def deploy_tenant() -> str:
+    """This deploy's tenant id (BOP-006).
+
+    brokerops is single-tenant per deploy, so the tenant is a deploy constant from
+    config — never model-supplied. ``TenantScopeMiddleware`` binds it around every
+    request so the data layer can read it from the request boundary; default "demo"
+    keeps the zero-credential demo working.
+    """
+    return os.environ.get("TENANT_ID", "demo")
+
+
 def build_mls_adapter() -> ResoMLSAdapter:
     base_url = reso_base_url()
     if base_url == INTERNAL:
