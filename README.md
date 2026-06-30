@@ -70,8 +70,9 @@ and Python 3.12+; tests that exercise restart-survival also need a local Postgre
 
 ```bash
 uv sync --all-packages   # install workspace deps
-make test                # ~248 tests (contract, workflow x2 engines, API flow, auth,
-                         # audit ledger, idempotency, transaction open, restart-survival)
+make test                # ~280 tests (contract, workflow x2 engines, API flow, auth,
+                         # audit ledger, idempotency, transaction open, tenant scoping,
+                         # restart-survival)
 ORCHESTRATOR=adk make demo   # the same demo on the ADK engine
 make lint                # ruff + mypy strict
 ```
