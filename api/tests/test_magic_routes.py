@@ -5,11 +5,15 @@ from collections.abc import Iterator
 import pytest
 from fastapi.testclient import TestClient
 
-from brokerops_api.auth.session import SessionTokenService, SessionTokenVerifier
+from brokerops_api.auth.session import (
+    SessionRefresher,
+    SessionTokenService,
+    SessionTokenVerifier,
+)
 from brokerops_api.db import InMemoryMagicTokenStore
 from brokerops_api.main import app
 from brokerops_api.routes import auth as auth_route
-from brokerops_core.services.identity import EmailAllowlist
+from brokerops_core.services.identity import EmailAllowlist, RoleResolver
 from brokerops_core.services.magic_link import MagicLinkService
 
 KEY = "magic-test-key"
@@ -33,18 +37,27 @@ def _wire_magic() -> Iterator[None]:
     auth_route._recent_requests.clear()  # reset the per-email throttle between tests
     original_verifier = app.state.identity_verifier
     original_magic = app.state.magic_link_service
+    original_refresher = app.state.session_refresher
+    allowlist = EmailAllowlist(allowed_emails=frozenset({"op@acme.com"}))
     # Session JWTs are the accepted bearer; magic service issues them.
     app.state.identity_verifier = SessionTokenVerifier(KEY)
     app.state.magic_link_service = MagicLinkService(
         store=InMemoryMagicTokenStore(),
         email=EMAIL,
         session_issuer=SessionTokenService(KEY),
-        allowlist=EmailAllowlist(allowed_emails=frozenset({"op@acme.com"})),
+        allowlist=allowlist,
         public_base_url="http://localhost:5173",
+    )
+    app.state.session_refresher = SessionRefresher(
+        signing_key=KEY,
+        allowlist=allowlist,
+        roles=RoleResolver(),
+        service=SessionTokenService(KEY),
     )
     yield
     app.state.identity_verifier = original_verifier
     app.state.magic_link_service = original_magic
+    app.state.session_refresher = original_refresher
 
 
 def _request(email: str) -> int:
@@ -70,11 +83,44 @@ def test_redeem_yields_a_working_bearer() -> None:
     token = _link_token()
     redeemed = client.post("/auth/magic/redeem", json={"token": token})
     assert redeemed.status_code == 200
-    session = redeemed.json()["session_token"]
+    body = redeemed.json()
+    session = body["session_token"]
+    assert body["refresh_token"]  # a refresh token is issued alongside the access token
     # The session JWT is accepted on a protected route.
     me = client.get("/auth/me", headers={"Authorization": f"Bearer {session}"})
     assert me.status_code == 200
     assert me.json()["email"] == "op@acme.com"
+
+
+def test_refresh_renews_the_bearer() -> None:
+    _request("op@acme.com")
+    refresh = client.post("/auth/magic/redeem", json={"token": _link_token()}).json()[
+        "refresh_token"
+    ]
+    refreshed = client.post("/auth/refresh", json={"refresh_token": refresh})
+    assert refreshed.status_code == 200
+    new_access = refreshed.json()["session_token"]
+    me = client.get("/auth/me", headers={"Authorization": f"Bearer {new_access}"})
+    assert me.status_code == 200
+    assert me.json()["email"] == "op@acme.com"
+
+
+def test_refresh_rejects_the_access_token() -> None:
+    # The access token is not a refresh credential — replaying it at /auth/refresh 401s.
+    _request("op@acme.com")
+    access = client.post("/auth/magic/redeem", json={"token": _link_token()}).json()[
+        "session_token"
+    ]
+    assert client.post("/auth/refresh", json={"refresh_token": access}).status_code == 401
+
+
+def test_refresh_rejects_garbage() -> None:
+    assert client.post("/auth/refresh", json={"refresh_token": "nope"}).status_code == 401
+
+
+def test_refresh_404_when_disabled() -> None:
+    app.state.session_refresher = None
+    assert client.post("/auth/refresh", json={"refresh_token": "x"}).status_code == 404
 
 
 def test_redeem_is_single_use() -> None:

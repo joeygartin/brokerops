@@ -13,12 +13,14 @@ from collections import defaultdict
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
+from brokerops_api.auth.session import SessionRefresher
 from brokerops_api.deps import (
     PrincipalDep,
     configured_auth_methods,
     get_magic_link_service,
+    get_session_refresher,
 )
 from brokerops_core.ports.identity import AuthError
 from brokerops_core.services.magic_link import MagicLinkService
@@ -26,6 +28,7 @@ from brokerops_core.services.magic_link import MagicLinkService
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 MagicServiceDep = Annotated[MagicLinkService, Depends(get_magic_link_service)]
+RefresherDep = Annotated[SessionRefresher, Depends(get_session_refresher)]
 
 # Coarse in-memory throttle on link requests, per email — enough to blunt abuse
 # of a single instance; a shared limiter is a future upgrade (ADR-0008).
@@ -43,7 +46,25 @@ class MagicRedeem(BaseModel):
 
 
 class SessionResponse(BaseModel):
-    # The SPA stores this bearer, then calls /auth/me for the principal.
+    # The SPA stores the access token as its bearer and the refresh token to renew
+    # it silently on expiry, then calls /auth/me for the principal.
+    model_config = ConfigDict(extra="forbid")
+
+    session_token: str
+    refresh_token: str
+
+
+class RefreshRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    refresh_token: str
+
+
+class RefreshResponse(BaseModel):
+    # Refresh yields only a new access token — the refresh token's own TTL is the
+    # absolute session cap and is never extended (ADR-0013).
+    model_config = ConfigDict(extra="forbid")
+
     session_token: str
 
 
@@ -75,10 +96,22 @@ async def request_magic_link(body: MagicRequest, service: MagicServiceDep) -> di
 @router.post("/magic/redeem")
 async def redeem_magic_link(body: MagicRedeem, service: MagicServiceDep) -> SessionResponse:
     try:
-        session_token = await service.redeem(body.token)
+        tokens = await service.redeem(body.token)
     except AuthError as exc:
         raise HTTPException(status_code=403 if exc.forbidden else 401, detail=str(exc)) from exc
-    return SessionResponse(session_token=session_token)
+    return SessionResponse(session_token=tokens.access, refresh_token=tokens.refresh)
+
+
+@router.post("/refresh")
+async def refresh_session(body: RefreshRequest, refresher: RefresherDep) -> RefreshResponse:
+    # Open (no bearer required): the refresh token is the credential. It is
+    # re-validated and the email re-authorized on every call, so an expired access
+    # token can be renewed without a fresh login while a revoked operator cannot.
+    try:
+        access = refresher.refresh(body.refresh_token)
+    except AuthError as exc:
+        raise HTTPException(status_code=403 if exc.forbidden else 401, detail=str(exc)) from exc
+    return RefreshResponse(session_token=access)
 
 
 @router.get("/me")

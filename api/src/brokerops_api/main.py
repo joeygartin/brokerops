@@ -27,6 +27,7 @@ from brokerops_api.deps import (
     build_identity_verifier,
     build_magic_link_service,
     build_mls_adapter,
+    build_session_refresher,
     build_voice_adapter,
     demo_routes_enabled,
     deploy_tenant,
@@ -115,6 +116,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Magic-link service is None unless the "magic" method is enabled; routes
     # that need it 404 otherwise.
     app.state.magic_link_service = build_magic_link_service(magic_store)
+    # Token refresh, present only when session tokens are issued (magic); /auth/refresh
+    # 404s otherwise (ADR-0013).
+    app.state.session_refresher = build_session_refresher()
     # The single write-boundary seam, two decorators deep: every external write the
     # engine performs is first deduped (IdempotentCRM/Voice — at most once per
     # workflow run, ADR-0011) and then recorded (RecordingCRM/Voice — the audit
@@ -150,6 +154,7 @@ app = FastAPI(title="brokerops api", lifespan=lifespan)
 # service defaults to None here (no store yet); lifespan builds the real one.
 app.state.identity_verifier = build_identity_verifier()
 app.state.magic_link_service = None
+app.state.session_refresher = None
 
 app.add_middleware(
     CORSMiddleware,

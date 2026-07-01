@@ -39,6 +39,9 @@ class StubIssuer:
     def issue(self, principal: Principal) -> str:
         return f"session-for-{principal.email}"
 
+    def issue_refresh(self, principal: Principal) -> str:
+        return f"refresh-for-{principal.email}"
+
 
 def _service(
     *,
@@ -83,7 +86,9 @@ async def test_redeem_round_trip_issues_session() -> None:
     svc, _store, email = _service(allowlist=EmailAllowlist())
     await svc.request("user@any.com")
     token = _link_token(email.sent[0][2])
-    assert await svc.redeem(token) == "session-for-user@any.com"
+    tokens = await svc.redeem(token)
+    assert tokens.access == "session-for-user@any.com"
+    assert tokens.refresh == "refresh-for-user@any.com"
 
 
 async def test_redeem_is_single_use() -> None:
@@ -137,6 +142,10 @@ class CapturingIssuer:
     def issue(self, principal: Principal) -> str:
         self.principal = principal
         return "session"
+
+    def issue_refresh(self, principal: Principal) -> str:
+        self.principal = principal
+        return "refresh"
 
 
 async def test_redeem_stamps_resolved_role() -> None:

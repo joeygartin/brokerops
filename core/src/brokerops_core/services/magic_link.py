@@ -11,7 +11,7 @@ import hashlib
 import secrets
 from datetime import UTC, datetime, timedelta
 
-from brokerops_core.ports.auth import MagicTokenStore, SessionIssuer
+from brokerops_core.ports.auth import MagicTokenStore, SessionIssuer, SessionTokens
 from brokerops_core.ports.email import EmailSender
 from brokerops_core.ports.identity import AuthError, Principal
 from brokerops_core.services.identity import EmailAllowlist, RoleResolver
@@ -59,9 +59,10 @@ class MagicLinkService:
         )
         await self._email.send(email, "Your brokerops sign-in link", text)
 
-    async def redeem(self, token: str) -> str:
-        """Validate a token and return a session bearer. Raises AuthError on a
-        missing/used/expired token (401) or a now-disallowed email (403)."""
+    async def redeem(self, token: str) -> SessionTokens:
+        """Validate a token and return the session credential pair. Raises
+        AuthError on a missing/used/expired token (401) or a now-disallowed email
+        (403)."""
         record = await self._store.consume(_hash(token))
         if record is None:
             raise AuthError("invalid or already-used sign-in link")
@@ -76,4 +77,7 @@ class MagicLinkService:
             verified=True,
             role=self._roles.role_for(record.email),
         )
-        return self._issuer.issue(principal)
+        return SessionTokens(
+            access=self._issuer.issue(principal),
+            refresh=self._issuer.issue_refresh(principal),
+        )

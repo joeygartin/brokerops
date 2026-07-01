@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Protocol
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from brokerops_core.ports.identity import Principal
 
@@ -27,12 +27,30 @@ class MagicTokenStore(Protocol):
     async def consume(self, token_hash: str) -> ConsumedToken | None: ...
 
 
-class SessionIssuer(Protocol):
-    """Mints the bearer credential a client carries after login.
+class SessionTokens(BaseModel):
+    """The credential pair a client receives at login.
 
-    Magic-link redemption authenticates once, then hands back a session token
-    the browser sends on every subsequent request. The concrete issuer (a signed
-    JWT) lives in the api layer; core only needs to call it.
+    ``access`` is the short-lived bearer sent on every request; ``refresh`` is a
+    longer-lived token the client exchanges (without re-login) for a fresh access
+    token once the access token expires. Both are opaque to core — the api layer
+    mints them as signed JWTs.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    access: str
+    refresh: str
+
+
+class SessionIssuer(Protocol):
+    """Mints the bearer credentials a client carries after login.
+
+    Magic-link redemption authenticates once, then hands back an access token the
+    browser sends on every subsequent request plus a refresh token it exchanges
+    for a new access token on expiry. The concrete issuer (signed JWTs) lives in
+    the api layer; core only needs to call it.
     """
 
     def issue(self, principal: Principal) -> str: ...
+
+    def issue_refresh(self, principal: Principal) -> str: ...

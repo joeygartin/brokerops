@@ -11,10 +11,12 @@ import {
 import { API_BASE, roleAtLeast, type Role } from "./types";
 import {
   apiFetch,
+  clearSession,
   loadAuthConfig,
   redeemMagicLink,
   requestMagicLink,
-  setToken,
+  setAccessOnlySession,
+  setSession,
   setUnauthorizedHandler,
   type AuthConfig,
 } from "./auth";
@@ -97,7 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(() => {
-    setToken(null);
+    clearSession();
     setEmail(null);
     setRole(null);
     window.google?.accounts.id.disableAutoSelect();
@@ -123,7 +125,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const token = new URL(window.location.href).searchParams.get("token");
         if (token) {
           try {
-            setToken(await redeemMagicLink(token));
+            const { access, refresh } = await redeemMagicLink(token);
+            setSession(access, refresh);
             window.history.replaceState({}, "", "/");
             if (await loadMe()) {
               setPhase("ready");
@@ -165,7 +168,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         window.google.accounts.id.initialize({
           client_id: config.client_id!,
           callback: (response) => {
-            setToken(response.credential);
+            setAccessOnlySession(response.credential);
             loadMe().then((ok) => setPhase(ok ? "ready" : "login"));
           },
         });

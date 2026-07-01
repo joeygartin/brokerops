@@ -1,10 +1,13 @@
 import os
 from collections.abc import Callable
 from functools import lru_cache
-from typing import Annotated, cast
+from typing import TYPE_CHECKING, Annotated, cast
 
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
+
+if TYPE_CHECKING:
+    from brokerops_api.auth.session import SessionRefresher
 
 from brokerops_api.db import ApprovalRepo, TransactionStoreAdmin
 from brokerops_api.workflows import WorkflowEngine
@@ -248,8 +251,35 @@ def build_magic_link_service(store: MagicTokenStore) -> MagicLinkService | None:
     )
 
 
+def build_session_refresher() -> "SessionRefresher | None":
+    """The refresh service, present only when session tokens are issued (magic).
+
+    Refresh applies to the api-issued session JWT; a Google ID token is Google's
+    to renew, so this is None unless the magic method is on. Re-uses the same
+    allowlist + role resolver as login so refresh re-authorizes on every call.
+    """
+    if "magic" not in configured_auth_methods():
+        return None
+    from brokerops_api.auth.session import SessionRefresher, SessionTokenService
+
+    key = _session_signing_key()
+    return SessionRefresher(
+        signing_key=key,
+        allowlist=_build_allowlist(),
+        roles=_build_role_resolver(),
+        service=SessionTokenService(key),
+    )
+
+
 def get_identity_verifier(request: Request) -> IdentityVerifier:
     return cast(IdentityVerifier, request.app.state.identity_verifier)
+
+
+def get_session_refresher(request: Request) -> "SessionRefresher":
+    refresher = request.app.state.session_refresher
+    if refresher is None:
+        raise HTTPException(status_code=404, detail="token refresh is not enabled")
+    return cast("SessionRefresher", refresher)
 
 
 def get_magic_link_service(request: Request) -> MagicLinkService:

@@ -245,12 +245,14 @@ an operator opens an escrow via `POST /transactions`, which validates the dates 
 generates a milestone timeline from a per-client template before persisting it, and the
 `transaction_coordination` cron then drives it on either engine. Opening is idempotent
 per listing (a same-terms repeat returns the existing transaction; different terms 409).
+Operator sessions refresh without re-login (ADR-0013): the request bearer is a
+short-lived access JWT (1h) and login also issues a refresh token (24h) the SPA
+exchanges silently on expiry, re-checking the allowlist and role each time — so a
+revoked operator loses access within the hour and a leaked token stays bounded.
 
 **Next, in rough order — each lands when a demo- or client-path justifies it,
 never speculatively:**
 
-- **Session longevity:** session JWTs (8h) and Google ID tokens just re-prompt on
-  expiry; a refresh flow lands when an operator path needs longer sessions.
 - **Demo recording:** a 60–90s screen capture of the docs/DEMO.md path.
 - **Loosen the `google-adk` pin** once its invocation-resumability API leaves
   experimental status (tracked in ADR-0004).

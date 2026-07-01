@@ -164,6 +164,15 @@ a fixed operator so `docker compose up` stays login-free.
   authority: a route a role can't reach returns 403 regardless of the UI. A bearer
   whose role claim is missing or unrecognized resolves to `viewer` (least privilege),
   so a stale pre-RBAC token can never imply write access.
+- **Token refresh (ADR-0013).** The session bearer is a short-lived **access** JWT
+  (1h); login also mints a longer-lived **refresh** JWT (24h) the SPA exchanges at
+  `POST /auth/refresh` for a new access token, so an operator isn't bounced
+  mid-session. Refresh is stateless and never extends the refresh token's own TTL, so
+  a leaked credential is bounded and can't be renewed indefinitely; every refresh
+  re-checks the allowlist and re-resolves the role, so a revoked or demoted operator
+  loses access within one access lifetime. A refresh token is rejected as a request
+  bearer (a distinct `typ` claim), and Google logins — whose ID token is Google's to
+  renew — simply re-prompt on expiry.
 
 Secrets stay out of the repo as everywhere else: the session signing key is
 Terraform-generated, OIDC client ids are public env, and any SMTP password is pushed
