@@ -25,12 +25,35 @@ resource "google_secret_manager_secret" "client" {
 }
 
 resource "google_secret_manager_secret_version" "client_placeholder" {
-  for_each    = google_secret_manager_secret.client
+  # The Vapi webhook secret is seeded with a generated value below, not the
+  # repo-known "unset" placeholder — the fail-closed webhook must never accept a
+  # value anyone can read from the repo. Every other client secret keeps the
+  # placeholder until `make secrets` pushes the real value.
+  for_each    = { for name, secret in google_secret_manager_secret.client : name => secret if name != "vapi-webhook-secret" }
   secret      = each.value.id
   secret_data = "unset"
 
   lifecycle {
     # `make secrets` adds real versions; never let terraform revert them.
+    ignore_changes = [secret_data]
+  }
+}
+
+# The Vapi webhook shared secret. Terraform seeds a generated value (never the
+# repo-known "unset") so the in-process demo stub authenticates against the
+# fail-closed webhook with zero manual push. A real Vapi client overwrites it via
+# `make secrets` with the value configured in the Vapi dashboard — a newer version
+# wins, and ignore_changes stops terraform reverting it.
+resource "random_password" "vapi_webhook_secret" {
+  length  = 32
+  special = false
+}
+
+resource "google_secret_manager_secret_version" "vapi_webhook_secret" {
+  secret      = google_secret_manager_secret.client["vapi-webhook-secret"].id
+  secret_data = random_password.vapi_webhook_secret.result
+
+  lifecycle {
     ignore_changes = [secret_data]
   }
 }

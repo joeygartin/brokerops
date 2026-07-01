@@ -41,7 +41,10 @@ class Principal(BaseModel):
     email: str
     name: str = ""
     verified: bool = True
-    role: Role = Role.OPERATOR
+    # Least privilege: an identity constructed without an explicit role is read-only.
+    # Every real verifier sets the role from the deployment's RoleResolver; this default
+    # only catches a Principal built with no role, which must never imply write access.
+    role: Role = Role.VIEWER
 
 
 class AuthError(Exception):

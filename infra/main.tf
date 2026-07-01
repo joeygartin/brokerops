@@ -42,6 +42,7 @@ module "client" {
   fub_base_url          = var.fub_base_url
   vapi_base_url         = var.vapi_base_url
   public                = var.public
+  enable_demo_routes    = var.enable_demo_routes
   enable_auth           = var.enable_auth
   google_oidc_client_id = var.google_oidc_client_id
   auth_allowed_domain   = var.auth_allowed_domain

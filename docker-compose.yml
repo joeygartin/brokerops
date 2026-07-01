@@ -65,6 +65,10 @@ services:
       # real key flips to the Claude adapter (ADR-0006).
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-claude-sonnet-4-6}
+      # Demo seed/reset routes (/demo/*): on for the local demo so the "Seed demo
+      # transactions" button works; off by default everywhere else (the route can wipe
+      # tenant data). Real client deploys never set this.
+      ENABLE_DEMO_ROUTES: ${ENABLE_DEMO_ROUTES:-true}
       # Operator auth: no methods = demo operator, no login (ADR-0007/0008).
       # AUTH_METHODS picks google and/or magic; magic needs a session key + the
       # public frontend URL, and logs links to this console without SMTP.

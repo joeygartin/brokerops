@@ -60,12 +60,14 @@ class SessionTokenVerifier:
             )
         except jwt.PyJWTError as exc:  # bad signature, expiry, issuer, or shape
             raise AuthError(f"invalid session token: {exc}") from exc
-        # A token issued before RBAC (or with a stale value) has no usable role
-        # claim; default to OPERATOR so an unknown bearer can never self-elevate.
+        # A token issued before RBAC (or with a stale/unknown value) has no usable
+        # role claim; default to VIEWER (least privilege) so a missing claim grants
+        # read-only access, never a write-capable role. A live login always stamps a
+        # real role, so only stale pre-RBAC tokens hit this — they re-prompt to upgrade.
         try:
-            role = Role(claims["role"]) if claims.get("role") else Role.OPERATOR
+            role = Role(claims["role"]) if claims.get("role") else Role.VIEWER
         except ValueError:
-            role = Role.OPERATOR
+            role = Role.VIEWER
         return Principal(
             subject=str(claims["sub"]),
             email=str(claims.get("email", "")),

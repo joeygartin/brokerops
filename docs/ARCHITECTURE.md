@@ -161,11 +161,23 @@ a fixed operator so `docker compose up` stays login-free.
   and place calls, viewers read. Like the allowlist it is opt-in — no role config
   means every signed-in operator is an admin (pre-RBAC behavior). The frontend reads
   the role from `/auth/me` to hide controls it can't use, but the API is the
-  authority: a route a role can't reach returns 403 regardless of the UI.
+  authority: a route a role can't reach returns 403 regardless of the UI. A bearer
+  whose role claim is missing or unrecognized resolves to `viewer` (least privilege),
+  so a stale pre-RBAC token can never imply write access.
 
 Secrets stay out of the repo as everywhere else: the session signing key is
 Terraform-generated, OIDC client ids are public env, and any SMTP password is pushed
 to Secret Manager out-of-band.
+
+The machine and demo edges fail closed rather than open. The Vapi webhook — which can
+start a workflow run — rejects any request unless a real `VAPI_WEBHOOK_SECRET` is
+configured; an empty value or the repo-known `"unset"` Terraform placeholder is treated
+as unconfigured (500), so a misconfigured deploy can't be driven with a secret anyone
+could read from the repo (Terraform seeds a generated value, never `"unset"`). The
+`/demo/*` seed/reset surface can drop a tenant's transactions, so it is mounted **only**
+when `ENABLE_DEMO_ROUTES` is set (the bundled demo opts in; a real client deploy never
+does) — when off the routes are absent entirely: no OpenAPI entry and any method returns
+`404`, indistinguishable from a route that never existed.
 
 ## Action audit ledger
 

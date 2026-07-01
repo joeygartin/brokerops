@@ -24,8 +24,16 @@ async def vapi_webhook(
     engine: EngineDep,
     x_vapi_secret: Annotated[str | None, Header()] = None,
 ) -> dict[str, Any]:
-    secret = os.environ.get("VAPI_WEBHOOK_SECRET")
-    if secret and x_vapi_secret != secret:
+    # Fail closed: this webhook starts a workflow run, so it must never accept an
+    # unauthenticated POST. An empty secret — or the Terraform "unset" placeholder, which
+    # is repo-known and so worthless as a shared secret — means the deploy is
+    # misconfigured, not that auth is "off". Every supported path supplies a real value
+    # (compose sets a demo secret; TF generates one that the in-process stub and real Vapi
+    # both send), so a 500 surfaces the misconfiguration instead of opening the endpoint.
+    secret = os.environ.get("VAPI_WEBHOOK_SECRET", "")
+    if not secret or secret == "unset":
+        raise HTTPException(status_code=500, detail="VAPI_WEBHOOK_SECRET is not configured")
+    if x_vapi_secret != secret:
         raise HTTPException(status_code=401, detail="bad or missing x-vapi-secret")
 
     body = await request.json()

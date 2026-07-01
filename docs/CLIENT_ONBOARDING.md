@@ -137,3 +137,4 @@ The bridge from a listing going under contract to a tracked escrow **now exists*
 - [ ] Escrow timeline (§4) + handoff (§6) implemented and unit-tested
 - [ ] Integrations smoke-tested live (MLS, CRM, voice as applicable)
 - [ ] Auth + roles verified with the client's real operators
+- [ ] Demo seed/reset disabled — `POST /demo/seed` returns 404 (leave `enable_demo_routes` unset; it can wipe transaction data)

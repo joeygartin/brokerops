@@ -46,6 +46,12 @@ variable "enable_llm_extraction" {
   default     = false
 }
 
+variable "enable_demo_routes" {
+  description = "Mount the /demo/* seed/reset routes (can wipe tenant data). Demo only; never for a real client."
+  type        = bool
+  default     = false
+}
+
 variable "llm_model" {
   description = "Claude model id for feedback extraction when enable_llm_extraction is true."
   type        = string

@@ -28,6 +28,7 @@ from brokerops_api.deps import (
     build_magic_link_service,
     build_mls_adapter,
     build_voice_adapter,
+    demo_routes_enabled,
     deploy_tenant,
     get_current_principal,
 )
@@ -177,7 +178,14 @@ app.include_router(calls_router, dependencies=operator_auth)
 # provider signature, cron its X-Cron-Key, and /auth bootstraps the SPA.
 app.include_router(webhooks_router)
 app.include_router(cron_router)
-app.include_router(demo_router)
+# The demo seed/reset surface can wipe tenant data, so it is mounted ONLY when
+# ENABLE_DEMO_ROUTES is set (the demo opts in; clients never do). Gating at mount time —
+# not per-request — means a client deploy has no /demo/* route at all: it's absent from
+# the OpenAPI schema and any method returns 404, leaking no hint the surface exists.
+# Env is fixed for the process lifetime, so reading it here (like the identity verifier
+# above) is correct.
+if demo_routes_enabled():
+    app.include_router(demo_router)
 app.include_router(auth_router)
 
 

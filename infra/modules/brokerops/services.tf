@@ -92,6 +92,12 @@ resource "google_cloud_run_v2_service" "api" {
         name  = "LANGCHAIN_TRACING_V2"
         value = var.enable_langsmith ? "true" : "false"
       }
+      # Demo seed/reset routes are off unless this deploy is the demo (the route can
+      # wipe tenant data). Absent → the /demo/* routes 404.
+      env {
+        name  = "ENABLE_DEMO_ROUTES"
+        value = var.enable_demo_routes ? "true" : "false"
+      }
 
       # Operator auth (ADR-0007). Off → no auth env is set, so the api falls
       # back to the demo verifier and the deploy stays login-free. The client
@@ -306,6 +312,7 @@ resource "google_cloud_run_v2_service" "api" {
 
   depends_on = [
     google_secret_manager_secret_version.client_placeholder,
+    google_secret_manager_secret_version.vapi_webhook_secret,
     google_secret_manager_secret_version.database_url,
     google_secret_manager_secret_version.cron_secret,
     google_secret_manager_secret_version.session_signing_key,

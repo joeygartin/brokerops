@@ -10,6 +10,7 @@ security event in the same audit ledger the operator can query.
 import asyncio
 from datetime import date
 
+import pytest
 from fastapi.testclient import TestClient
 
 from brokerops_api.db import InMemoryTransactionStore
@@ -76,7 +77,7 @@ def test_admin_count_and_clear_cannot_reach_another_tenant() -> None:
 def test_demo_seed_through_real_scoped_wiring() -> None:
     # The /demo/seed route reaches count_transactions/clear/create_transaction via the
     # ScopedTransactionStore the lifespan installs (no dependency override), proving the
-    # admin surface works through the real wiring — the zero-credential demo still seeds.
+    # admin surface works through the real wiring. conftest enables the demo routes.
     with TestClient(app) as client:
         first = client.post("/demo/seed")
         assert first.status_code == 200
@@ -86,6 +87,22 @@ def test_demo_seed_through_real_scoped_wiring() -> None:
         assert client.post("/demo/seed").json()["seeded"] is False
         # reset re-seeds (exercises clear())
         assert client.post("/demo/seed", json={"reset": True}).json()["seeded"] is True
+
+
+def test_demo_routes_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The gate main.py reads at mount time: with no ENABLE_DEMO_ROUTES the router is never
+    # mounted, so the data-wiping /demo/* surface is absent (not merely 404-on-POST) on a
+    # real client deploy. Truthy spellings enable it; everything else stays off.
+    from brokerops_api.deps import demo_routes_enabled
+
+    monkeypatch.delenv("ENABLE_DEMO_ROUTES", raising=False)
+    assert demo_routes_enabled() is False
+    for off in ("false", "0", "no", ""):
+        monkeypatch.setenv("ENABLE_DEMO_ROUTES", off)
+        assert demo_routes_enabled() is False
+    for on in ("true", "1", "YES"):
+        monkeypatch.setenv("ENABLE_DEMO_ROUTES", on)
+        assert demo_routes_enabled() is True
 
 
 def test_cross_tenant_write_through_wired_store_is_audited() -> None:

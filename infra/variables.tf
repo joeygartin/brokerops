@@ -76,6 +76,12 @@ variable "public" {
   default = true
 }
 
+variable "enable_demo_routes" {
+  description = "Mount the /demo/* seed/reset routes (can wipe tenant data). Demo only; never for a real client."
+  type        = bool
+  default     = false
+}
+
 variable "enable_auth" {
   type    = bool
   default = false

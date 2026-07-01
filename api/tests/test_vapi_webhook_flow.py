@@ -51,9 +51,15 @@ engine = LangGraphWorkflowEngine(
 )
 client = TestClient(app)
 
+# The webhook fails closed without a configured secret, so the flow tests run with one
+# set and send the matching header on every signed POST.
+WEBHOOK_SECRET = "test-secret"
+SIGNED = {"x-vapi-secret": WEBHOOK_SECRET}
+
 
 @pytest.fixture(autouse=True)
-def _wire_overrides() -> Iterator[None]:
+def _wire_overrides(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    monkeypatch.setenv("VAPI_WEBHOOK_SECRET", WEBHOOK_SECRET)
     app.dependency_overrides[get_workflow_engine] = lambda: engine
     app.dependency_overrides[get_approval_repo] = lambda: repo
     app.dependency_overrides[get_feedback_store] = lambda: feedback_store
@@ -77,7 +83,9 @@ def _end_of_call(call_id: str, transcript: str) -> dict[str, Any]:
 
 def test_gate_cool_call_to_feedback_and_fub_note() -> None:
     response = client.post(
-        "/webhooks/vapi", json=_end_of_call("call-cool-1", RECORDED_TRANSCRIPTS["cool"])
+        "/webhooks/vapi",
+        json=_end_of_call("call-cool-1", RECORDED_TRANSCRIPTS["cool"]),
+        headers=SIGNED,
     )
     assert response.status_code == 200
     body = response.json()
@@ -96,7 +104,9 @@ def test_gate_cool_call_to_feedback_and_fub_note() -> None:
 
 def test_gate_hot_call_pauses_then_creates_hot_task() -> None:
     response = client.post(
-        "/webhooks/vapi", json=_end_of_call("call-hot-1", RECORDED_TRANSCRIPTS["hot"])
+        "/webhooks/vapi",
+        json=_end_of_call("call-hot-1", RECORDED_TRANSCRIPTS["hot"]),
+        headers=SIGNED,
     ).json()
     assert response["status"] == "awaiting_approval"
     approval_id = response["approval_id"]
@@ -122,7 +132,9 @@ def test_gate_hot_call_pauses_then_creates_hot_task() -> None:
 
 def test_non_end_of_call_messages_are_ignored() -> None:
     response = client.post(
-        "/webhooks/vapi", json={"message": {"type": "status-update", "call": {"id": "x"}}}
+        "/webhooks/vapi",
+        json={"message": {"type": "status-update", "call": {"id": "x"}}},
+        headers=SIGNED,
     )
     assert response.json() == {"ignored": True, "type": "status-update"}
 
@@ -137,3 +149,22 @@ def test_webhook_secret_enforced_when_set(monkeypatch: pytest.MonkeyPatch) -> No
         headers={"x-vapi-secret": "hush"},
     )
     assert good.status_code == 200
+
+
+def test_webhook_fails_closed_without_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    # An unset secret is a misconfigured deploy, not "auth off": the webhook must refuse
+    # to start a workflow run rather than accept an unauthenticated POST.
+    monkeypatch.delenv("VAPI_WEBHOOK_SECRET", raising=False)
+    blocked = client.post("/webhooks/vapi", json=_end_of_call("c", "t"))
+    assert blocked.status_code == 500
+
+
+def test_webhook_rejects_repo_known_placeholder(monkeypatch: pytest.MonkeyPatch) -> None:
+    # "unset" is the repo-known Terraform placeholder — worthless as a shared secret. A
+    # deploy that never got a real secret must fail closed (500), never accept x-vapi-secret
+    # "unset" from an attacker who read the placeholder value out of the repo.
+    monkeypatch.setenv("VAPI_WEBHOOK_SECRET", "unset")
+    blocked = client.post(
+        "/webhooks/vapi", json=_end_of_call("c", "t"), headers={"x-vapi-secret": "unset"}
+    )
+    assert blocked.status_code == 500

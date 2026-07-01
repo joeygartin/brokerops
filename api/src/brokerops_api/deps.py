@@ -46,6 +46,18 @@ def reso_base_url() -> str:
     return os.environ.get("RESO_BASE_URL", "http://localhost:8001/odata")
 
 
+def demo_routes_enabled() -> bool:
+    """Whether the demo seed/reset routes are mounted (default OFF).
+
+    `/demo/seed` with ``{"reset": true}`` drops the tenant's transactions and
+    milestones, so it must never be reachable on a real client deploy. main.py mounts the
+    demo router only when this is true — so a client deploy has no such route at all. It is
+    enabled only for the bundled demo: ``docker compose up`` sets ENABLE_DEMO_ROUTES=true
+    and the GCP demo sets ``enable_demo_routes=true``.
+    """
+    return os.environ.get("ENABLE_DEMO_ROUTES", "false").strip().lower() in {"1", "true", "yes"}
+
+
 def deploy_tenant() -> str:
     """This deploy's tenant id (BOP-006).
 

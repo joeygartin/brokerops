@@ -27,8 +27,9 @@ async def test_session_round_trips_role() -> None:
     assert (await SessionTokenVerifier(KEY).verify(token)).role is Role.ADMIN
 
 
-async def test_session_defaults_missing_role_to_operator() -> None:
-    # A pre-RBAC token (no role claim) must never resolve as admin.
+async def test_session_defaults_missing_role_to_viewer() -> None:
+    # A pre-RBAC token (no role claim) resolves to the lowest privilege (read-only),
+    # never a write-capable role — least privilege when the claim is absent.
     import jwt
 
     from brokerops_api.auth.session import ISSUER
@@ -38,7 +39,7 @@ async def test_session_defaults_missing_role_to_operator() -> None:
         KEY,
         algorithm="HS256",
     )
-    assert (await SessionTokenVerifier(KEY).verify(legacy)).role is Role.OPERATOR
+    assert (await SessionTokenVerifier(KEY).verify(legacy)).role is Role.VIEWER
 
 
 async def test_session_rejects_wrong_key() -> None:

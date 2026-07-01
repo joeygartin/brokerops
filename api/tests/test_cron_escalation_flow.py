@@ -45,6 +45,7 @@ client = TestClient(app)
 
 @pytest.fixture(autouse=True)
 def _wire_overrides() -> Iterator[None]:
+    # This suite drives the demo seed route; conftest enables it before app import.
     app.dependency_overrides[get_workflow_engine] = lambda: engine
     app.dependency_overrides[get_approval_repo] = lambda: repo
     app.dependency_overrides[get_transaction_store] = lambda: store

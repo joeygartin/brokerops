@@ -19,6 +19,11 @@ extend-exclude = ["api/alembic"]
 
 [tool.mypy]
 strict = true
+# api/tests and orchestration/langgraph/tests each ship a conftest.py; mypy's rootless
+# module resolution would otherwise see them as one duplicate "conftest" module. The api
+# one is a few lines of env setup with nothing to type-check, so exclude it from mypy
+# (pytest still imports it); the langgraph conftest stays checked.
+exclude = ['api/tests/conftest\.py$']
 
 [tool.pytest.ini_options]
 testpaths = [

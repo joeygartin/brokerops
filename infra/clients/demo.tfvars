@@ -11,3 +11,8 @@ frontend_image = "us-west1-docker.pkg.dev/brokerops-demo/brokerops/frontend:late
 reso_base_url = "internal"
 fub_base_url  = "internal"
 vapi_base_url = "internal"
+
+# The public demo showcases the seed/reset button; a real client deploy leaves this
+# unset so the data-wiping /demo/* routes stay absent (BOP-007). Not sensitive, so it
+# lives in the committed tfvars rather than a -var override.
+enable_demo_routes = true
