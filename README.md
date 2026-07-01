@@ -154,6 +154,12 @@ Prompts for each key and writes it straight to Secret Manager — values never t
 the repo or tfstate. Press Enter to skip any you don't need (the stubs need none).
 Then redeploy (step 4) so the new revision picks them up.
 
+For magic-link email over **AWS SES**, `scripts/setup_ses.sh <client> <domain>`
+automates the SES side: it creates the domain identity (EasyDKIM) and a send-only
+IAM user, derives the SES SMTP password and pushes it to Secret Manager, then
+prints the DKIM/DMARC DNS records to add and the `smtp_*` deploy `-var`s. Adding
+those DNS records and running the deploy stay manual.
+
 ### Configuration reference
 
 **`<client>.tfvars` (committed — non-secret config):**

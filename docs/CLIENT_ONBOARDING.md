@@ -38,7 +38,7 @@ mechanism yet, must be built for this client.
 | **CRM (FollowUpBoss)** | API key + base URL | `fub_base_url` **[config]** + `fub-api-key` secret |
 | **Voice (Vapi)** | API key, assistant id, phone-number id, webhook secret | `vapi_*` vars **[config]** + `vapi-api-key`/`vapi-webhook-secret` secrets |
 | **LLM feedback extraction** (optional) | Use Claude vs. deterministic? model id? | `enable_llm_extraction`, `llm_model` **[config]** + `llm-api-key` secret |
-| **Email delivery** (for magic-link) | SMTP host/port/from/username | `smtp_*` **[config]** + `smtp-password` secret |
+| **Email delivery** (for magic-link) | SMTP host/port/from/username | `smtp_*` **[config]** + `smtp-password` secret — for AWS SES, `scripts/setup_ses.sh <client> <domain>` automates the identity + IAM user + password push (prints the DKIM records and deploy `-var`s) |
 
 If a system isn't ready, leave it on the bundled stub (`*_base_url = "internal"`)
 and turn it on later.
