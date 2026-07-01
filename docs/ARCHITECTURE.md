@@ -264,7 +264,7 @@ external health checks on `/readyz` because Google's frontend reserves `/healthz
 
 ## Verification
 
-~280 tests: OData contract tests pinning the RESO subset, adapter tests against the
+~283 tests: OData contract tests pinning the RESO subset, adapter tests against the
 stubs (the same shapes the real APIs return), workflow tests for every branch of all
 three workflows on **both engines**, API-level flow tests, auth tests (allowlist,
 magic-link lifecycle, session-JWT round-trip, role resolution, and `require_role`
