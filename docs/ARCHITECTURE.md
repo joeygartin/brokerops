@@ -277,5 +277,7 @@ tests (cross-tenant by-id denial, write stamping, denied-attempt audit events, R
 a Postgres
 restart-survival proof per
 engine (runs in CI against a service container), and a scripted e2e demo check that CI runs against the full
-compose stack under both `ORCHESTRATOR` values. Ruff + mypy strict across the
-workspace; gitleaks on every commit and in CI.
+compose stack under both `ORCHESTRATOR` values. The frontend has its own vitest
+suite (role-gating on the Approvals inbox and Listings board, `apiFetch` bearer/401
+handling, and the `AuthProvider` bootstrap phases), type-checked and run as a separate
+CI job. Ruff + mypy strict across the workspace; gitleaks on every commit and in CI.

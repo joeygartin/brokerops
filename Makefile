@@ -1,4 +1,4 @@
-.PHONY: dev test lint demo migrate gcp-bootstrap gcp-images deploy secrets
+.PHONY: dev test frontend-test lint demo migrate gcp-bootstrap gcp-images deploy secrets
 
 TF := terraform -chdir=infra
 
@@ -7,6 +7,9 @@ dev:
 
 test:
 	uv run pytest
+
+frontend-test:
+	cd frontend && npm ci && npm run test
 
 lint:
 	uv run ruff check .

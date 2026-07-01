@@ -73,6 +73,7 @@ uv sync --all-packages   # install workspace deps
 make test                # ~283 tests (contract, workflow x2 engines, API flow, auth,
                          # audit ledger, idempotency, transaction open, tenant scoping,
                          # fail-closed defaults, restart-survival)
+make frontend-test       # vitest: role gating, apiFetch bearer/401, auth bootstrap
 ORCHESTRATOR=adk make demo   # the same demo on the ADK engine
 make lint                # ruff + mypy strict
 ```
