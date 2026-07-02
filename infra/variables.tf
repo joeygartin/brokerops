@@ -30,15 +30,21 @@ variable "enable_langsmith" {
 }
 
 variable "enable_llm_extraction" {
-  description = "Use the Claude feedback extractor (ADR-0006) instead of the deterministic default. Push the real key with `make secrets`."
+  description = "Use an LLM feedback extractor (ADR-0006/0014) instead of the deterministic default. Push the real key with `make secrets`."
   type        = bool
   default     = false
 }
 
-variable "llm_model" {
-  description = "Claude model id for feedback extraction when enable_llm_extraction is true."
+variable "extraction_backend" {
+  description = "Which LLM extraction backend when enable_llm_extraction is true: \"llm\" (raw-SDK Claude, ADR-0006) or \"pydantic_ai\" (PydanticAI agent, ADR-0014)."
   type        = string
-  default     = "claude-sonnet-4-6"
+  default     = "llm"
+}
+
+variable "llm_model" {
+  description = "Claude model id override for feedback extraction. Empty = the selected backend's own default."
+  type        = string
+  default     = ""
 }
 
 variable "enable_redis" {

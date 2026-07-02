@@ -13,6 +13,7 @@ dependencies = [
     "brokerops-langgraph",
     "brokerops-llm-extraction",
     "brokerops-mls-reso",
+    "brokerops-pydantic-ai-extraction",
     "brokerops-vapi",
     "fastapi>=0.115",
     "psycopg[binary]>=3.2",
@@ -40,6 +41,7 @@ brokerops-google-oidc = { workspace = true }
 brokerops-langgraph = { workspace = true }
 brokerops-llm-extraction = { workspace = true }
 brokerops-mls-reso = { workspace = true }
+brokerops-pydantic-ai-extraction = { workspace = true }
 brokerops-vapi = { workspace = true }
 
 [build-system]

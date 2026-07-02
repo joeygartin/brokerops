@@ -286,8 +286,17 @@ resource "google_cloud_run_v2_service" "api" {
         }
       }
 
-      # LLM feedback extraction (ADR-0006). Off → the deterministic extractor
-      # runs and no LLM secret is referenced, so a key-less deploy stays clean.
+      # LLM feedback extraction (ADR-0006/0014). Off → no EXTRACTION_BACKEND and
+      # no LLM secret referenced, so a key-less deploy runs the deterministic
+      # extractor. On → the backend is named explicitly (the app never infers it
+      # from key presence) and the key secret is injected alongside.
+      dynamic "env" {
+        for_each = var.enable_llm_extraction ? [1] : []
+        content {
+          name  = "EXTRACTION_BACKEND"
+          value = var.extraction_backend
+        }
+      }
       dynamic "env" {
         for_each = var.enable_llm_extraction ? [1] : []
         content {
@@ -301,7 +310,7 @@ resource "google_cloud_run_v2_service" "api" {
         }
       }
       dynamic "env" {
-        for_each = var.enable_llm_extraction ? [1] : []
+        for_each = var.enable_llm_extraction && var.llm_model != "" ? [1] : []
         content {
           name  = "LLM_MODEL"
           value = var.llm_model

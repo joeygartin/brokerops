@@ -116,18 +116,50 @@ def build_voice_adapter() -> VapiVoiceAdapter:
     )
 
 
-def build_extraction_port() -> ExtractionPort:
-    # Zero-credential default: feedback extraction is keyword/pattern based and
-    # demo mode runs with no LLM key. A real key flips to the Claude adapter
-    # (ADR-0006). "unset" is the Terraform secret placeholder — treat it as no
-    # key so a not-yet-pushed secret can't select the LLM path with a bad key.
+EXTRACTION_BACKENDS = ("deterministic", "llm", "pydantic_ai")
+
+
+def _require_llm_api_key(backend: str) -> str:
+    # Fail loud, never downgrade (ADR-0014): an explicitly selected LLM backend
+    # with no usable key is a deploy misconfiguration, not a reason to silently
+    # run the deterministic extractor. "unset" is the Terraform placeholder for
+    # a secret that was never pushed — same misconfiguration.
     api_key = os.environ.get("LLM_API_KEY", "")
     if not api_key or api_key == "unset":
-        return DeterministicExtractor()
-    from brokerops_llm_extraction.adapter import DEFAULT_MODEL, ClaudeExtractionAdapter
+        raise RuntimeError(
+            f"EXTRACTION_BACKEND={backend!r} requires LLM_API_KEY to be set to a real key"
+        )
+    return api_key
 
-    return ClaudeExtractionAdapter(
-        api_key=api_key, model=os.environ.get("LLM_MODEL", DEFAULT_MODEL)
+
+def build_extraction_port() -> ExtractionPort:
+    # Closed, explicit selector (ADR-0014): backend choice is deploy config,
+    # never key-presence inference. Unset → the deterministic default, so demo
+    # mode stays zero-credential; an explicit LLM backend that is misconfigured
+    # raises at startup; an unknown value raises (mirrors the ORCHESTRATOR
+    # unknown-value guard).
+    backend = os.environ.get("EXTRACTION_BACKEND", "").strip().lower()
+    if not backend or backend == "deterministic":
+        return DeterministicExtractor()
+    if backend == "llm":
+        from brokerops_llm_extraction.adapter import DEFAULT_MODEL, ClaudeExtractionAdapter
+
+        return ClaudeExtractionAdapter(
+            api_key=_require_llm_api_key(backend),
+            model=os.environ.get("LLM_MODEL") or DEFAULT_MODEL,
+        )
+    if backend == "pydantic_ai":
+        from brokerops_pydantic_ai_extraction.adapter import (
+            DEFAULT_MODEL as PYDANTIC_AI_DEFAULT_MODEL,
+        )
+        from brokerops_pydantic_ai_extraction.adapter import PydanticAIExtractionAdapter
+
+        return PydanticAIExtractionAdapter(
+            api_key=_require_llm_api_key(backend),
+            model=os.environ.get("LLM_MODEL") or PYDANTIC_AI_DEFAULT_MODEL,
+        )
+    raise RuntimeError(
+        f"unknown EXTRACTION_BACKEND {backend!r}; expected one of {sorted(EXTRACTION_BACKENDS)}"
     )
 
 

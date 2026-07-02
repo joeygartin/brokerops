@@ -34,6 +34,7 @@ module "client" {
   frontend_image        = var.frontend_image
   enable_langsmith      = var.enable_langsmith
   enable_llm_extraction = var.enable_llm_extraction
+  extraction_backend    = var.extraction_backend
   llm_model             = var.llm_model
   enable_redis          = var.enable_redis
   orchestrator          = var.orchestrator

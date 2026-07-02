@@ -172,7 +172,7 @@ those DNS records and running the deploy stay manual.
 | `orchestrator` | `langgraph` (default) or `adk` (ADR-0004). |
 | `reso_base_url`, `fub_base_url`, `vapi_base_url` | `internal` (default) runs the bundled stub; set a real base URL to go live. |
 | `vapi_assistant_id` | Vapi assistant for outbound calls (ADR-0005). |
-| `enable_llm_extraction`, `llm_model` | Flip feedback extraction to Claude (ADR-0006); needs the `llm-api-key` secret. |
+| `enable_llm_extraction`, `extraction_backend`, `llm_model` | Flip feedback extraction to an LLM backend — `llm` (ADR-0006) or `pydantic_ai` (ADR-0014); needs the `llm-api-key` secret. |
 | `enable_auth`, `auth_methods` | Turn on operator login; `auth_methods` is `google`, `magic`, or both (ADR-0007/0008). |
 | `auth_allowed_domain`, `auth_allowed_emails` | Who may sign in (shared by both methods). |
 | `auth_admin_emails/domain`, `auth_viewer_emails/domain` | RBAC roles (ADR-0009). None set → every operator is admin. |
@@ -204,7 +204,7 @@ the `smtp-password` secret for magic-link email.
 ```
 core/                    # framework-free domain: models, services, ports
 integrations/            # mls_reso · followupboss · vapi (adapter + stub + MCP server each)
-                         #   · llm_extraction (LLM adapter) · google_oidc · email_smtp (operator auth)
+                         #   · llm_extraction + pydantic_ai_extraction (LLM adapters) · google_oidc · email_smtp (operator auth)
 orchestration/           # the three workflows, twice: langgraph/ (V1) + adk/ (V2)
 api/                     # FastAPI: routes, webhooks, cron, workflow engine, Alembic
 frontend/                # React + Vite: Listings, Transactions, Approval Inbox
@@ -223,9 +223,10 @@ is proven end-to-end with real phone calls (assistant hardened over five live
 calls — ADR-0005); and the CRM adapter runs against a live FollowUpBoss account,
 which surfaced and fixed a real `POST /calls` incompatibility (phone + direction +
 a fixed outcome vocabulary the stub had accepted too loosely). LLM-backed feedback
-extraction shipped behind `ExtractionPort` — a Claude Sonnet 4.6 adapter selected
-per-client, deterministic default otherwise (ADR-0006), validated against the five
-real call transcripts. Operator authentication shipped behind an `IdentityVerifier`
+extraction shipped behind `ExtractionPort` — two LLM backends (a raw-SDK Claude
+adapter, ADR-0006, and a PydanticAI agent adapter, ADR-0014) behind an explicit
+`EXTRACTION_BACKEND` selector, deterministic default otherwise, validated against
+the five real call transcripts. Operator authentication shipped behind an `IdentityVerifier`
 port — a deployment offers Google OIDC and/or magic-link email login (selectable per
 client), gated by a shared email allowlist, with a demo operator default so demo mode
 stays login-free (ADR-0007, ADR-0008); magic-link delivery goes through any SMTP

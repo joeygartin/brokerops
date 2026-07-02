@@ -41,9 +41,19 @@ variable "enable_langsmith" {
 }
 
 variable "enable_llm_extraction" {
-  description = "Inject the LLM extraction key (ADR-0006); otherwise the deterministic extractor runs."
+  description = "Select an LLM extraction backend and inject its key (ADR-0006/0014); otherwise the deterministic extractor runs."
   type        = bool
   default     = false
+}
+
+variable "extraction_backend" {
+  description = "Which LLM extraction backend to select when enable_llm_extraction is true (ADR-0014). The app requires this to be explicit — a key alone selects nothing."
+  type        = string
+  default     = "llm"
+  validation {
+    condition     = contains(["llm", "pydantic_ai"], var.extraction_backend)
+    error_message = "extraction_backend must be \"llm\" or \"pydantic_ai\"."
+  }
 }
 
 variable "enable_demo_routes" {
@@ -53,9 +63,9 @@ variable "enable_demo_routes" {
 }
 
 variable "llm_model" {
-  description = "Claude model id for feedback extraction when enable_llm_extraction is true."
+  description = "Claude model id override for feedback extraction. Empty = the selected backend's own default (llm → claude-sonnet-4-6, pydantic_ai → claude-sonnet-5)."
   type        = string
-  default     = "claude-sonnet-4-6"
+  default     = ""
 }
 
 variable "enable_redis" {

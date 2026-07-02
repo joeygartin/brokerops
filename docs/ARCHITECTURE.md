@@ -63,8 +63,9 @@ port over the real API's shapes), a **stub** (recorded-shape double for demo mod
 contract tests), and an **MCP server** (the same operations as MCP tools). The sentinel
 base URL `internal` mounts the stub in-process over an ASGI transport — which is how the
 demo client deploys to Cloud Run as a single container with zero secrets. (The
-`llm_extraction` integration is the exception: an extraction adapter selected by config
-behind `ExtractionPort`, with no stub or MCP server — see ADR-0006.)
+extraction integrations are the exception: `llm_extraction` and `pydantic_ai_extraction`
+are adapters behind `ExtractionPort` selected by the explicit `EXTRACTION_BACKEND`
+config, with no stub or MCP server — see ADR-0006/ADR-0014.)
 
 ## Monorepo layout
 
@@ -75,6 +76,7 @@ integrations/
   followupboss/          # FUB adapter (token-bucket rate limited) + stub + MCP server
   vapi/                  # voice adapter + webhook-firing stub + MCP server
   llm_extraction/        # Claude extraction adapter behind ExtractionPort (ADR-0006)
+  pydantic_ai_extraction/  # PydanticAI extraction adapter, same port (ADR-0014)
   google_oidc/           # Google ID-token verifier behind IdentityVerifier (ADR-0007)
   email_smtp/            # SMTP EmailSender adapter for magic-link delivery (ADR-0008)
 orchestration/
@@ -110,9 +112,11 @@ drives ingest → structured extraction → persisted feedback → CRM sync (not
 log). Offer-intent signals pause at a notify-agent gate that creates a hot-lead task
 on approval. Extraction sits behind `ExtractionPort` (ADR-0006): a deterministic
 keyword/parser default (zero-credential, including a spoken price-range parser,
-"four fifty" → $450,000) and a Claude Sonnet 4.6 adapter selected per-client when an
-LLM key is configured. The `ExtractedFeedback` Pydantic schema is the contract for
-both (ADR-0002).
+"four fifty" → $450,000) and two LLM backends — a raw-SDK Claude adapter (ADR-0006)
+and a PydanticAI agent adapter with validation self-correction and per-run usage
+limits (ADR-0014) — selected per-client by the explicit, fail-loud
+`EXTRACTION_BACKEND` config. The `ExtractedFeedback` Pydantic schema is the contract
+for all of them (ADR-0002), phrased once as a shared prompt in core (ADR-0005).
 
 ## The HITL contract
 
@@ -283,6 +287,9 @@ side effect at most once and returns the original result, atomic claim, restart
 survival), transaction-open tests (deterministic bounded id, idempotent open with
 conflict and race handling, escrow-date validation, engine wire-through), tenant-scoping
 tests (cross-tenant by-id denial, write stamping, denied-attempt audit events, RLS belt),
+extraction-selector tests (deterministic default, fail-loud on an explicitly selected
+LLM backend with no key, fail-closed on unknown values) plus an offline PydanticAI
+adapter suite (TestModel, no credentials),
 a Postgres
 restart-survival proof per
 engine (runs in CI against a service container), and a scripted e2e demo check that CI runs against the full

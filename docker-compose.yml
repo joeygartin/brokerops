@@ -61,10 +61,13 @@ services:
       VAPI_ASSISTANT_ID: ${VAPI_ASSISTANT_ID:-demo-assistant}
       VAPI_PHONE_NUMBER_ID: ${VAPI_PHONE_NUMBER_ID:-}
       VAPI_WEBHOOK_SECRET: ${VAPI_WEBHOOK_SECRET:-demo-webhook-secret}
-      # Feedback extraction: unset = deterministic (zero-credential demo); a
-      # real key flips to the Claude adapter (ADR-0006).
+      # Feedback extraction: explicit closed selector (ADR-0014). Unset =
+      # deterministic (zero-credential demo); set EXTRACTION_BACKEND to llm or
+      # pydantic_ai plus a real LLM_API_KEY to flip backends. LLM_MODEL unset
+      # falls back to the selected backend's default.
+      EXTRACTION_BACKEND: ${EXTRACTION_BACKEND:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
-      LLM_MODEL: ${LLM_MODEL:-claude-sonnet-4-6}
+      LLM_MODEL: ${LLM_MODEL:-}
       # Demo seed/reset routes (/demo/*): on for the local demo so the "Seed demo
       # transactions" button works; off by default everywhere else (the route can wipe
       # tenant data). Real client deploys never set this.
