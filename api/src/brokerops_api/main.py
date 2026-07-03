@@ -53,6 +53,7 @@ from brokerops_core.services.scoped_stores import (
     ScopedFeedbackStore,
     ScopedTransactionStore,
 )
+from brokerops_core.services.tool_authz import authorize_tool_ports
 from brokerops_adk.engine import build_engine as build_adk_engine
 from brokerops_langgraph.engine import build_engine as build_langgraph_engine
 
@@ -90,14 +91,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # keep the raw engine (internal infra / pre-auth — not under tenant RLS).
         scoped_engine = TenantScopedEngine(engine)
         app.state.audit_log = SqlAuditLog(scoped_engine)
-        app.state.approval_repo = ScopedApprovalRepo(
-            SqlApprovalRepo(scoped_engine), app.state.audit_log
+        # BOP-011: authorize_tool_ports wraps each tenant-bearing store as the OUTERMOST
+        # layer, so a tool call carrying a foreign tenant_id is rejected before the scoped
+        # store (BOP-006) or the database (RLS) is reached. It gates entry only — the write
+        # still flows through the same scoped/approval/idempotency/audit chain underneath.
+        app.state.approval_repo = authorize_tool_ports(
+            ScopedApprovalRepo(SqlApprovalRepo(scoped_engine), app.state.audit_log),
+            audit=app.state.audit_log,
         )
-        app.state.transaction_store = ScopedTransactionStore(
-            SqlTransactionStore(scoped_engine), app.state.audit_log
+        app.state.transaction_store = authorize_tool_ports(
+            ScopedTransactionStore(SqlTransactionStore(scoped_engine), app.state.audit_log),
+            audit=app.state.audit_log,
         )
-        app.state.feedback_store = ScopedFeedbackStore(
-            SqlFeedbackStore(scoped_engine), app.state.audit_log
+        app.state.feedback_store = authorize_tool_ports(
+            ScopedFeedbackStore(SqlFeedbackStore(scoped_engine), app.state.audit_log),
+            audit=app.state.audit_log,
         )
         app.state.idempotency_store = SqlIdempotencyStore(engine)
         magic_store = SqlMagicTokenStore(engine)
@@ -106,11 +114,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # scoped wrappers enforce tenant confinement in-process, so demo and tests get
         # identical isolation without RLS.
         app.state.audit_log = InMemoryAuditLog()
-        app.state.approval_repo = ScopedApprovalRepo(InMemoryApprovalRepo(), app.state.audit_log)
-        app.state.transaction_store = ScopedTransactionStore(
-            InMemoryTransactionStore(), app.state.audit_log
+        # Same BOP-011 authorization layer over the in-memory scoped stores, so demo/tests
+        # get identical tool-input confinement without a database.
+        app.state.approval_repo = authorize_tool_ports(
+            ScopedApprovalRepo(InMemoryApprovalRepo(), app.state.audit_log),
+            audit=app.state.audit_log,
         )
-        app.state.feedback_store = ScopedFeedbackStore(InMemoryFeedbackStore(), app.state.audit_log)
+        app.state.transaction_store = authorize_tool_ports(
+            ScopedTransactionStore(InMemoryTransactionStore(), app.state.audit_log),
+            audit=app.state.audit_log,
+        )
+        app.state.feedback_store = authorize_tool_ports(
+            ScopedFeedbackStore(InMemoryFeedbackStore(), app.state.audit_log),
+            audit=app.state.audit_log,
+        )
         app.state.idempotency_store = InMemoryIdempotencyStore()
         magic_store = InMemoryMagicTokenStore()
     # Magic-link service is None unless the "magic" method is enabled; routes
