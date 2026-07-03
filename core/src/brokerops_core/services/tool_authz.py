@@ -20,12 +20,31 @@ returns the same instance, so the scoped-store wiring (and its ``isinstance`` ch
 preserved and the guard sits *outside* the store. An enumeration test asserts that no tool
 port accepting a tenant-bearing parameter is left unwrapped, so a new tool entry point
 cannot be added without the guard.
+
+**Tenant-bearing surface (explicit bound).** By convention (ADR-0012) a tenant identifier
+rides on a persisted Pydantic model's ``tenant_id`` field — no tool accepts a tenant as a
+bare argument. This module treats a parameter as tenant-bearing when it is:
+
+1. a Pydantic model exposing a ``tenant_id`` field (the real, intended shape), or a
+   list/tuple of them (e.g. the milestone batch on ``create_transaction``);
+2. defensively, a bare argument *named* ``tenant_id`` / ``*_tenant_id`` (a scalar tenant
+   arg the convention forbids — never rely on absence); or
+3. defensively, a mapping carrying a ``tenant_id`` key.
+
+Runtime enforcement (``_tenant_values``) covers all three, so there is no runtime hole.
+Static detection (``accepts_tenant_bearing_param``, used by the enumeration test) covers
+(1) and (2) — the statically-knowable shapes; an opaque mapping is a runtime-only backstop
+by design, since ``authorize_tool_ports`` wraps *every* method wholesale so enforcement is
+uniform regardless of static shape. **The empty case is not a bypass:** a model whose
+``tenant_id`` is ``""`` ("use the ambient tenant") is still tenant-bearing and still runs
+``enforce_tenant("")`` — which calls ``require_tenant()`` — so an empty-stamped model can
+never reach a store with no ``TenantContext`` bound (fail-closed).
 """
 
 import functools
 import inspect
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Any, TypeVar, get_args
 
 from pydantic import BaseModel
@@ -39,8 +58,7 @@ from brokerops_core.services.tenancy import (
 
 logger = logging.getLogger(__name__)
 
-# The field a Pydantic model uses to carry its tenant identity (BOP-006). A parameter is
-# "tenant-bearing" when it is such a model (or a sequence/optional of one).
+# The field a Pydantic model uses to carry its tenant identity (BOP-006).
 TENANT_FIELD = "tenant_id"
 # Marker set on an authorized callable / port so the enumeration test can prove coverage.
 AUTHORIZED_MARKER = "__tenant_authorized__"
@@ -48,22 +66,36 @@ AUTHORIZED_MARKER = "__tenant_authorized__"
 T = TypeVar("T")
 
 
-def _tenant_values(value: Any) -> list[str]:
-    """The non-empty tenant ids carried by one argument value.
+def _is_tenant_param_name(name: str) -> bool:
+    """Whether a parameter name denotes a bare tenant identifier (ADR-0012 forbids these,
+    so this is a defensive belt, not the intended shape)."""
+    return name == TENANT_FIELD or name.endswith(f"_{TENANT_FIELD}")
 
-    A tenant-bearing argument is a Pydantic model exposing ``tenant_id`` — or a
-    list/tuple of them (e.g. the milestone batch on ``create_transaction``). An empty id
-    means "use the ambient tenant" (the normal, in-scope path), so it is never treated as
-    a cross-tenant attempt and is not returned here.
+
+def _tenant_values(param_name: str, value: Any) -> list[str]:
+    """The tenant ids an argument commits the call to, each of which must be authorized.
+
+    Includes empty ids: a model whose ``tenant_id`` is ``""`` still commits the call to the
+    *ambient* tenant, so it must run ``enforce_tenant("")`` (which asserts a tenant is
+    bound) — dropping it would let an empty-stamped model reach a store fail-open. Covers
+    the intended model shape plus the two defensive non-model shapes (a bare ``tenant_id``
+    argument, a mapping with a ``tenant_id`` key). See the module docstring for the bound.
     """
     if isinstance(value, BaseModel):
-        tenant = getattr(value, TENANT_FIELD, "")
-        return [tenant] if isinstance(tenant, str) and tenant else []
+        if TENANT_FIELD in type(value).model_fields:
+            tenant = getattr(value, TENANT_FIELD, "")
+            return [tenant if isinstance(tenant, str) else ""]
+        return []
+    if isinstance(value, Mapping):
+        tenant = value.get(TENANT_FIELD)
+        return [tenant] if isinstance(tenant, str) else []
     if isinstance(value, (list, tuple)):
         found: list[str] = []
         for item in value:
-            found.extend(_tenant_values(item))
+            found.extend(_tenant_values(param_name, item))
         return found
+    if _is_tenant_param_name(param_name) and isinstance(value, str):
+        return [value]
     return []
 
 
@@ -109,7 +141,7 @@ def authorize_tenant_params(
     tool_name: str = tool or str(getattr(func, "__name__", "tool"))
 
     async def _authorize(param: str, value: Any) -> None:
-        for tenant in _tenant_values(value):
+        for tenant in _tenant_values(param, value):
             try:
                 enforce_tenant(tenant)
             except CrossTenantError as err:
@@ -140,9 +172,10 @@ def authorize_tool_ports(port: T, *, audit: AuditLog | None = None) -> T:
 
     Wraps in place and returns the *same* instance, so the port keeps its identity and
     type — the scoped-store wiring and the ``isinstance`` checks that assert it stay valid,
-    and the guard sits outside the (scoped) store rather than replacing it. Read/no-model
-    methods are wrapped too but are a pass-through; only a call carrying a tenant-bearing
-    model is ever gated. A supplied ``audit`` log routes a denial to the security ledger.
+    and the guard sits outside the (scoped) store rather than replacing it. Methods with no
+    tenant-bearing argument are wrapped too but pass straight through; a call carrying a
+    tenant-bearing argument runs ``enforce_tenant`` first (fail-closed even for an empty
+    ambient tenant). A supplied ``audit`` log routes a denial to the security ledger.
     Idempotent: re-wrapping an already-authorized port is a no-op.
     """
     if getattr(port, AUTHORIZED_MARKER, False):
@@ -173,16 +206,19 @@ def annotation_is_tenant_bearing(annotation: Any) -> bool:
 
 
 def accepts_tenant_bearing_param(func: Callable[..., Any]) -> bool:
-    """Whether ``func`` declares a parameter annotated as a tenant-bearing model.
+    """Whether ``func`` declares a statically tenant-bearing parameter.
 
-    The enumeration test uses this to decide which methods *must* be authorized: a method
-    that can be handed a model carrying a ``tenant_id`` is a tool entry point that can
-    carry a foreign tenant.
+    The enumeration test uses this to decide which methods *must* be authorized. It covers
+    the statically-knowable shapes (module docstring bound): a parameter annotated as a
+    tenant-bearing model (or a container of one), or a bare parameter *named* ``tenant_id``
+    / ``*_tenant_id``. An opaque mapping is intentionally not flagged here — it is a
+    runtime-only backstop, and ``authorize_tool_ports`` wraps every method regardless.
     """
     try:
         signature = inspect.signature(func)
     except (TypeError, ValueError):
         return False
     return any(
-        annotation_is_tenant_bearing(param.annotation) for param in signature.parameters.values()
+        _is_tenant_param_name(name) or annotation_is_tenant_bearing(param.annotation)
+        for name, param in signature.parameters.items()
     )

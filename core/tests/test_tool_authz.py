@@ -104,6 +104,56 @@ async def test_no_bound_tenant_fails_closed_on_a_tenant_bearing_call() -> None:
     assert store.reached == []
 
 
+async def test_default_empty_tenant_model_still_requires_a_bound_scope() -> None:
+    # Finding 1 regression: the common "stamped-later" shape (tenant_id="") must still run
+    # require_tenant() before the store body, so it can never reach a store fail-open.
+    store = authorize_tool_ports(_SpyStore())
+    with pytest.raises(TenantContextMissing):
+        await store.create_transaction(_txn(""), [])
+    assert store.reached == []
+
+
+async def test_bare_tenant_id_scalar_param_is_rejected_before_the_body() -> None:
+    # Defensive belt: a scalar arg named tenant_id (a shape ADR-0012 forbids) is still
+    # authorized at runtime rather than silently ignored.
+    reached: list[str] = []
+
+    async def tool(tenant_id: str) -> None:
+        reached.append(tenant_id)
+
+    guarded = authorize_tenant_params(tool)
+    with tenant_scope("demo"):
+        with pytest.raises(CrossTenantError):
+            await guarded("other-brokerage")
+    assert reached == []
+
+
+async def test_dict_payload_carrying_a_foreign_tenant_is_rejected() -> None:
+    # Defensive belt: a mapping smuggling a tenant_id key is caught at runtime.
+    reached: list[dict[str, str]] = []
+
+    async def tool(payload: dict[str, str]) -> None:
+        reached.append(payload)
+
+    guarded = authorize_tenant_params(tool)
+    with tenant_scope("demo"):
+        with pytest.raises(CrossTenantError):
+            await guarded({"tenant_id": "other-brokerage"})
+    assert reached == []
+
+
+async def test_dict_without_a_tenant_id_key_passes_through() -> None:
+    reached: list[dict[str, str]] = []
+
+    async def tool(payload: dict[str, str]) -> None:
+        reached.append(payload)
+
+    guarded = authorize_tenant_params(tool)
+    with tenant_scope("demo"):
+        await guarded({"listing_key": "L1"})
+    assert reached == [{"listing_key": "L1"}]
+
+
 async def test_rejection_logs_tool_and_param_but_not_the_payload(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -145,3 +195,22 @@ def test_annotation_detection_covers_models_and_containers() -> None:
 def test_accepts_tenant_bearing_param_reads_signatures() -> None:
     assert accepts_tenant_bearing_param(_SpyStore.create_transaction) is True
     assert accepts_tenant_bearing_param(_SpyStore.get_transaction) is False
+
+
+def test_static_detection_bound_is_explicit() -> None:
+    # The enumeration test's static detection covers models and bare tenant_id-named args
+    # (the statically-knowable tenant-bearing shapes). An opaque dict or a non-tenant
+    # scalar is deliberately NOT statically flagged — the bound is intentional (dicts are
+    # a runtime-only backstop; every wired port is wrapped wholesale anyway).
+    async def model_tool(transaction: Transaction) -> None: ...
+
+    async def named_tool(tenant_id: str) -> None: ...
+
+    async def dict_tool(payload: dict[str, str]) -> None: ...
+
+    async def scalar_tool(contact_id: str) -> None: ...
+
+    assert accepts_tenant_bearing_param(model_tool) is True
+    assert accepts_tenant_bearing_param(named_tool) is True
+    assert accepts_tenant_bearing_param(dict_tool) is False
+    assert accepts_tenant_bearing_param(scalar_tool) is False
