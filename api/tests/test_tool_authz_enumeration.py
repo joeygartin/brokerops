@@ -20,7 +20,11 @@ from fastapi.testclient import TestClient
 from brokerops_api.main import app
 from brokerops_core.models.transaction import Transaction, TransactionStage
 from brokerops_core.services.tenancy import CrossTenantError, tenant_scope
-from brokerops_core.services.tool_authz import AUTHORIZED_MARKER, accepts_tenant_bearing_param
+from brokerops_core.services.tool_authz import (
+    AUTHORIZED_MARKER,
+    accepts_tenant_bearing_param,
+    authorize_tool_ports,
+)
 
 
 def _has_tenant_bearing_method(port: Any) -> bool:
@@ -53,9 +57,26 @@ def test_no_tenant_bearing_tool_port_is_unwrapped() -> None:
                     f"authorization-wrapped (BOP-011)"
                 )
                 wrapped_ports.append(name)
-    # Positive control: the three tenant-bearing stores were actually discovered, so the
-    # assertion above is not vacuously satisfied.
-    assert {"transaction_store", "feedback_store", "approval_repo"} <= set(wrapped_ports)
+    # Positive control: the tenant-bearing stores AND the voice port (its `context: dict`
+    # is a mapping tenant channel) were actually discovered, so the assertion above is not
+    # vacuously satisfied.
+    assert {"transaction_store", "feedback_store", "approval_repo", "voice"} <= set(wrapped_ports)
+
+
+def test_enumeration_discovers_an_unwrapped_dict_tenant_port() -> None:
+    # Negative control (Finding 1): a port whose only tenant channel is a `payload: dict`
+    # is discovered by the same detector the enumeration relies on and, left unwrapped,
+    # lacks the marker — so the enumeration WOULD fail for it. This closes the gap where a
+    # runtime-enforced Mapping shape was invisible to the static gate.
+    class _LeakyPort:
+        async def act(self, payload: dict[str, str]) -> None: ...
+
+    leaky = _LeakyPort()
+    assert _has_tenant_bearing_method(leaky) is True
+    assert getattr(leaky, AUTHORIZED_MARKER, False) is False
+    # Wrapping it restores the guarantee.
+    authorize_tool_ports(leaky)
+    assert getattr(leaky, AUTHORIZED_MARKER, False) is True
 
 
 def test_cross_tenant_write_is_rejected_before_persistence() -> None:

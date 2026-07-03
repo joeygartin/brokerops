@@ -8,8 +8,10 @@ engine-agnostic: the guard is a decorator over the Pydantic tool-input boundary.
 
 import logging
 from datetime import date
+from typing import Any
 
 import pytest
+from pydantic import BaseModel
 
 from brokerops_core.models.milestone import Milestone, MilestoneType
 from brokerops_core.models.transaction import Transaction, TransactionStage
@@ -21,6 +23,31 @@ from brokerops_core.services.tool_authz import (
     authorize_tenant_params,
     authorize_tool_ports,
 )
+
+
+class _Nested(BaseModel):
+    """A tool-input model that only *nests* a tenant-bearing model (no top-level tenant)."""
+
+    label: str = ""
+    inner: Transaction
+
+
+class _FakeRecord(BaseModel):
+    """A non-tenant model with a dict field (shaped like MutationRecord) — must NOT be
+    treated as tenant-bearing, so wrapping the audit ledger is never forced (no cascade)."""
+
+    name: str
+    args: dict[str, Any]
+
+
+class _Cyclic(BaseModel):
+    """A self-referential model, to prove cycle protection terminates."""
+
+    tenant_id: str = ""
+    child: "_Cyclic | None" = None
+
+
+_Cyclic.model_rebuild()
 
 
 def _txn(tenant_id: str) -> Transaction:
@@ -197,12 +224,14 @@ def test_accepts_tenant_bearing_param_reads_signatures() -> None:
     assert accepts_tenant_bearing_param(_SpyStore.get_transaction) is False
 
 
-def test_static_detection_bound_is_explicit() -> None:
-    # The enumeration test's static detection covers models and bare tenant_id-named args
-    # (the statically-knowable tenant-bearing shapes). An opaque dict or a non-tenant
-    # scalar is deliberately NOT statically flagged — the bound is intentional (dicts are
-    # a runtime-only backstop; every wired port is wrapped wholesale anyway).
+def test_static_detection_matches_the_runtime_surface() -> None:
+    # Static detection covers the SAME surface _tenant_values enforces at runtime: models
+    # (incl. nested), a bare tenant_id-named arg, and a top-level mapping/dict. A non-tenant
+    # scalar and a non-tenant model with only a dict field are deliberately NOT flagged, so
+    # the audit ledger (MutationRecord-shaped) is never dragged in (no cascade).
     async def model_tool(transaction: Transaction) -> None: ...
+
+    async def nested_tool(wrapper: _Nested) -> None: ...
 
     async def named_tool(tenant_id: str) -> None: ...
 
@@ -210,7 +239,61 @@ def test_static_detection_bound_is_explicit() -> None:
 
     async def scalar_tool(contact_id: str) -> None: ...
 
+    async def fake_record_tool(record: _FakeRecord) -> None: ...
+
     assert accepts_tenant_bearing_param(model_tool) is True
+    assert accepts_tenant_bearing_param(nested_tool) is True
     assert accepts_tenant_bearing_param(named_tool) is True
-    assert accepts_tenant_bearing_param(dict_tool) is False
+    assert accepts_tenant_bearing_param(dict_tool) is True
     assert accepts_tenant_bearing_param(scalar_tool) is False
+    assert accepts_tenant_bearing_param(fake_record_tool) is False
+
+
+async def test_nested_tenant_model_foreign_is_rejected_before_the_body() -> None:
+    # Finding 2: a foreign tenant hiding in a NESTED model (the wrapper has no top-level
+    # tenant_id) is still caught before the tool body.
+    reached: list[_Nested] = []
+
+    async def tool(wrapper: _Nested) -> None:
+        reached.append(wrapper)
+
+    guarded = authorize_tenant_params(tool)
+    with tenant_scope("demo"):
+        with pytest.raises(CrossTenantError):
+            await guarded(_Nested(inner=_txn("other-brokerage")))
+    assert reached == []
+
+
+async def test_nested_tenant_model_matching_passes_through() -> None:
+    reached: list[_Nested] = []
+
+    async def tool(wrapper: _Nested) -> None:
+        reached.append(wrapper)
+
+    guarded = authorize_tenant_params(tool)
+    with tenant_scope("demo"):
+        await guarded(_Nested(inner=_txn("demo")))
+    assert len(reached) == 1
+
+
+async def test_self_referential_model_terminates_and_authorizes() -> None:
+    # Cycle protection: a model that references itself must not recurse forever.
+    node = _Cyclic(tenant_id="demo")
+    node.child = node
+    reached: list[_Cyclic] = []
+
+    async def tool(node: _Cyclic) -> None:
+        reached.append(node)
+
+    guarded = authorize_tenant_params(tool)
+    with tenant_scope("demo"):
+        await guarded(node)  # matching tenant -> passes; terminates despite the cycle
+    assert len(reached) == 1
+    # A foreign self-referential model is still rejected.
+    foreign = _Cyclic(tenant_id="other-brokerage")
+    foreign.child = foreign
+    reached.clear()
+    with tenant_scope("demo"):
+        with pytest.raises(CrossTenantError):
+            await guarded(foreign)
+    assert reached == []

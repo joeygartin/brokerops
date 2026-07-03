@@ -23,29 +23,38 @@ cannot be added without the guard.
 
 **Tenant-bearing surface (explicit bound).** By convention (ADR-0012) a tenant identifier
 rides on a persisted Pydantic model's ``tenant_id`` field — no tool accepts a tenant as a
-bare argument. This module treats a parameter as tenant-bearing when it is:
+bare argument. This module treats an *argument* as tenant-bearing when it is:
 
-1. a Pydantic model exposing a ``tenant_id`` field (the real, intended shape), or a
-   list/tuple of them (e.g. the milestone batch on ``create_transaction``);
+1. a Pydantic model exposing a ``tenant_id`` field (the real, intended shape), a list/tuple
+   of them (e.g. the milestone batch on ``create_transaction``), or a model that *nests*
+   one of those (extraction recurses model fields, with cycle protection);
 2. defensively, a bare argument *named* ``tenant_id`` / ``*_tenant_id`` (a scalar tenant
    arg the convention forbids — never rely on absence); or
-3. defensively, a mapping carrying a ``tenant_id`` key.
+3. defensively, a mapping/dict argument carrying a ``tenant_id`` key (e.g. an opaque
+   ``payload: dict``).
 
-Runtime enforcement (``_tenant_values``) covers all three, so there is no runtime hole.
-Static detection (``accepts_tenant_bearing_param``, used by the enumeration test) covers
-(1) and (2) — the statically-knowable shapes; an opaque mapping is a runtime-only backstop
-by design, since ``authorize_tool_ports`` wraps *every* method wholesale so enforcement is
-uniform regardless of static shape. **The empty case is not a bypass:** a model whose
-``tenant_id`` is ``""`` ("use the ambient tenant") is still tenant-bearing and still runs
-``enforce_tenant("")`` — which calls ``require_tenant()`` — so an empty-stamped model can
-never reach a store with no ``TenantContext`` bound (fail-closed).
+Runtime enforcement (``_tenant_values``) and static detection
+(``accepts_tenant_bearing_param``, the enumeration test's gate) cover the **same** surface,
+so a shape enforced at runtime is also discovered statically — no divergence, no silent
+hole. One deliberate, documented bound keeps them honest and bounded: a mapping is a tenant
+channel only as a *top-level argument* (or a list of them), **not** as a field *inside* a
+model — a model's dict field is business data (e.g. ``MutationRecord.args``,
+``ShowingFeedback.structured_answers``), never a tenant channel, so descending it would
+both mis-flag infra ports and diverge from ADR-0012. Model recursion therefore follows
+nested models and their list/tuple containers but stops at a model's mapping fields, on
+both the runtime and static sides.
+
+**The empty case is not a bypass:** a model whose ``tenant_id`` is ``""`` ("use the ambient
+tenant") is still tenant-bearing and still runs ``enforce_tenant("")`` — which calls
+``require_tenant()`` — so an empty-stamped model can never reach a store with no
+``TenantContext`` bound (fail-closed).
 """
 
 import functools
 import inspect
 import logging
 from collections.abc import Awaitable, Callable, Mapping
-from typing import Any, TypeVar, get_args
+from typing import Any, TypeVar, get_args, get_origin
 
 from pydantic import BaseModel
 
@@ -72,27 +81,49 @@ def _is_tenant_param_name(name: str) -> bool:
     return name == TENANT_FIELD or name.endswith(f"_{TENANT_FIELD}")
 
 
-def _tenant_values(param_name: str, value: Any) -> list[str]:
+def _tenant_values(
+    param_name: str, value: Any, *, within_model: bool = False, seen: set[int] | None = None
+) -> list[str]:
     """The tenant ids an argument commits the call to, each of which must be authorized.
 
-    Includes empty ids: a model whose ``tenant_id`` is ``""`` still commits the call to the
-    *ambient* tenant, so it must run ``enforce_tenant("")`` (which asserts a tenant is
-    bound) — dropping it would let an empty-stamped model reach a store fail-open. Covers
-    the intended model shape plus the two defensive non-model shapes (a bare ``tenant_id``
-    argument, a mapping with a ``tenant_id`` key). See the module docstring for the bound.
+    Recurses models, their list/tuple fields, and list/tuple/mapping arguments; ``seen``
+    guards against a self-referential model looping forever. Includes empty ids: a model
+    whose ``tenant_id`` is ``""`` still commits the call to the *ambient* tenant, so it must
+    run ``enforce_tenant("")`` (which asserts a tenant is bound) — dropping it would let an
+    empty-stamped model reach a store fail-open.
+
+    ``within_model`` marks recursion *inside* a model: a mapping reached there is a business
+    field (``MutationRecord.args`` etc.), never a tenant channel, so it is not descended —
+    keeping this consistent with the static detector (see the module docstring).
     """
+    if seen is None:
+        seen = set()
+    if isinstance(value, (BaseModel, list, tuple)):
+        if id(value) in seen:  # cycle / repeat guard
+            return []
+        seen.add(id(value))
     if isinstance(value, BaseModel):
-        if TENANT_FIELD in type(value).model_fields:
+        fields = type(value).model_fields
+        found: list[str] = []
+        if TENANT_FIELD in fields:
             tenant = getattr(value, TENANT_FIELD, "")
-            return [tenant if isinstance(tenant, str) else ""]
-        return []
+            found.append(tenant if isinstance(tenant, str) else "")
+        for name in fields:
+            if name == TENANT_FIELD:
+                continue
+            field_value = getattr(value, name, None)
+            if isinstance(field_value, (BaseModel, list, tuple)):
+                found.extend(_tenant_values(name, field_value, within_model=True, seen=seen))
+        return found
     if isinstance(value, Mapping):
+        if within_model:
+            return []
         tenant = value.get(TENANT_FIELD)
         return [tenant] if isinstance(tenant, str) else []
     if isinstance(value, (list, tuple)):
-        found: list[str] = []
+        found = []
         for item in value:
-            found.extend(_tenant_values(param_name, item))
+            found.extend(_tenant_values(param_name, item, within_model=within_model, seen=seen))
         return found
     if _is_tenant_param_name(param_name) and isinstance(value, str):
         return [value]
@@ -193,26 +224,63 @@ def authorize_tool_ports(port: T, *, audit: AuditLog | None = None) -> T:
     return port
 
 
-def annotation_is_tenant_bearing(annotation: Any) -> bool:
-    """Whether a type annotation is (or wraps) a tenant-bearing Pydantic model.
-
-    Recurses through generic containers/unions (``list[Milestone]``, ``X | None``) so a
-    batched or optional tenant-bearing parameter is detected. A string (unresolved) or a
-    non-model annotation is not tenant-bearing.
-    """
+def _annotation_is_mapping(annotation: Any) -> bool:
+    """Whether an annotation is (or wraps, via a union/optional) a mapping/dict type — the
+    static mirror of the runtime "top-level mapping argument" tenant channel."""
     if isinstance(annotation, type):
-        return issubclass(annotation, BaseModel) and TENANT_FIELD in annotation.model_fields
-    return any(annotation_is_tenant_bearing(arg) for arg in get_args(annotation))
+        return issubclass(annotation, Mapping)
+    origin = get_origin(annotation)
+    if isinstance(origin, type) and issubclass(origin, Mapping):
+        return True
+    return any(_annotation_is_mapping(arg) for arg in get_args(annotation))
+
+
+def _annotation_nests_tenant_model(annotation: Any, seen: set[type] | None = None) -> bool:
+    """Whether an annotation is, contains, or nests a Pydantic model with a ``tenant_id``.
+
+    Recurses model fields and list/tuple/union containers (``seen`` guards a self-
+    referential model) but, mirroring the runtime rule, does **not** descend a model's
+    mapping field — a dict field is business data, not a tenant channel.
+    """
+    if seen is None:
+        seen = set()
+    if isinstance(annotation, type):
+        if not issubclass(annotation, BaseModel):
+            return False
+        if annotation in seen:
+            return False
+        seen.add(annotation)
+        if TENANT_FIELD in annotation.model_fields:
+            return True
+        return any(
+            _annotation_nests_tenant_model(field.annotation, seen)
+            for field in annotation.model_fields.values()
+        )
+    origin = get_origin(annotation)
+    if isinstance(origin, type) and issubclass(origin, Mapping):
+        return False  # a mapping field/annotation is not descended (matches runtime)
+    return any(_annotation_nests_tenant_model(arg, seen) for arg in get_args(annotation))
+
+
+def annotation_is_tenant_bearing(annotation: Any) -> bool:
+    """Whether a type annotation denotes a tenant-bearing argument.
+
+    True when it is/nests a ``tenant_id``-bearing model (``list[Milestone]``, ``X | None``,
+    a model nesting one) or is a top-level mapping/dict (which can smuggle a ``tenant_id``
+    key). This is the static mirror of ``_tenant_values``. A plain string or non-tenant
+    model annotation is not tenant-bearing.
+    """
+    return _annotation_nests_tenant_model(annotation) or _annotation_is_mapping(annotation)
 
 
 def accepts_tenant_bearing_param(func: Callable[..., Any]) -> bool:
     """Whether ``func`` declares a statically tenant-bearing parameter.
 
-    The enumeration test uses this to decide which methods *must* be authorized. It covers
-    the statically-knowable shapes (module docstring bound): a parameter annotated as a
-    tenant-bearing model (or a container of one), or a bare parameter *named* ``tenant_id``
-    / ``*_tenant_id``. An opaque mapping is intentionally not flagged here — it is a
-    runtime-only backstop, and ``authorize_tool_ports`` wraps every method regardless.
+    The enumeration test uses this to decide which methods *must* be authorized. It flags a
+    parameter *named* ``tenant_id`` / ``*_tenant_id``, one annotated as a tenant-bearing
+    model (or a container/nesting of one), or one annotated as a mapping/dict — the same
+    surface ``_tenant_values`` enforces at runtime, so the static gate is never blind to a
+    shape the runtime accepts.
     """
     try:
         signature = inspect.signature(func)

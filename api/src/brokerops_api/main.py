@@ -136,6 +136,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Token refresh, present only when session tokens are issued (magic); /auth/refresh
     # 404s otherwise (ADR-0013).
     app.state.session_refresher = build_session_refresher()
+    # BOP-011: the external-integration tool ports get the same tool-input authorization,
+    # so a tenant-bearing argument on any of them is gated too. Wrapped in place (identity
+    # preserved), so both the direct-route reference on app.state and the engine's
+    # Idempotent/Recording chain below see the authorized methods.
+    app.state.crm = authorize_tool_ports(crm, audit=app.state.audit_log)
+    app.state.voice = authorize_tool_ports(voice, audit=app.state.audit_log)
     # The single write-boundary seam, two decorators deep: every external write the
     # engine performs is first deduped (IdempotentCRM/Voice — at most once per
     # workflow run, ADR-0011) and then recorded (RecordingCRM/Voice — the audit
