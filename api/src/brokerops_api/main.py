@@ -136,12 +136,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Token refresh, present only when session tokens are issued (magic); /auth/refresh
     # 404s otherwise (ADR-0013).
     app.state.session_refresher = build_session_refresher()
-    # BOP-011: the external-integration tool ports get the same tool-input authorization,
-    # so a tenant-bearing argument on any of them is gated too. Wrapped in place (identity
-    # preserved), so both the direct-route reference on app.state and the engine's
-    # Idempotent/Recording chain below see the authorized methods.
-    app.state.crm = authorize_tool_ports(crm, audit=app.state.audit_log)
-    app.state.voice = authorize_tool_ports(voice, audit=app.state.audit_log)
     # The single write-boundary seam, two decorators deep: every external write the
     # engine performs is first deduped (IdempotentCRM/Voice — at most once per
     # workflow run, ADR-0011) and then recorded (RecordingCRM/Voice — the audit
@@ -149,12 +143,36 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # side effect and writes no second mutation record. Both engines inherit this
     # identically (architecture rule #5). The raw adapters stay on app.state for the
     # operator-driven direct routes, which are not workflow writes.
-    engine_crm = IdempotentCRM(RecordingCRM(crm, app.state.audit_log), app.state.idempotency_store)
-    engine_voice = IdempotentVoice(
-        RecordingVoice(voice, app.state.audit_log), app.state.idempotency_store
+    #
+    # BOP-011: tenant authorization is the OUTERMOST wrapper on every engine-reachable tool
+    # port — for the write ports it runs BEFORE the idempotency claim and the audit record,
+    # so a foreign tenant argument is rejected before ANY store/port side effect and never
+    # lands as a full-payload failure entry on the mutation ledger (only the intended
+    # security denial is recorded). The read-only MLS port is wrapped through the same seam
+    # for uniform coverage; the stores are already authorized outermost (above).
+    engine_mls = authorize_tool_ports(mls, audit=app.state.audit_log)
+    engine_crm = authorize_tool_ports(
+        IdempotentCRM(RecordingCRM(crm, app.state.audit_log), app.state.idempotency_store),
+        audit=app.state.audit_log,
     )
+    engine_voice = authorize_tool_ports(
+        IdempotentVoice(RecordingVoice(voice, app.state.audit_log), app.state.idempotency_store),
+        audit=app.state.audit_log,
+    )
+    # The single enumerable registry of engine-reachable tool ports; the enumeration test
+    # asserts every one is authorization-wrapped, so a new engine tool port cannot be added
+    # unwrapped. (Raw crm/voice stay on app.state for the RBAC-gated operator routes, which
+    # build their call context server-side and carry no tenant-bearing argument.)
+    app.state.engine_tool_ports = {
+        "mls": engine_mls,
+        "crm": engine_crm,
+        "voice": engine_voice,
+        "transaction_store": app.state.transaction_store,
+        "feedback_store": app.state.feedback_store,
+        "approval_repo": app.state.approval_repo,
+    }
     async with build_engine(
-        mls=mls,
+        mls=engine_mls,
         crm=engine_crm,
         voice=engine_voice,
         extraction=extraction,

@@ -13,8 +13,13 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
+from brokerops_core.models.call import CallRecord
+from brokerops_core.models.idempotency import ClaimStatus, IdempotencyClaim
 from brokerops_core.models.milestone import Milestone, MilestoneType
+from brokerops_core.models.mutation import MutationRecord
 from brokerops_core.models.transaction import Transaction, TransactionStage
+from brokerops_core.services.audit import AuditContext, RecordingVoice, audit_scope
+from brokerops_core.services.idempotency import IdempotentVoice
 from brokerops_core.services.tenancy import CrossTenantError, TenantContextMissing, tenant_scope
 from brokerops_core.services.tool_authz import (
     AUTHORIZED_MARKER,
@@ -297,3 +302,99 @@ async def test_self_referential_model_terminates_and_authorizes() -> None:
         with pytest.raises(CrossTenantError):
             await guarded(foreign)
     assert reached == []
+
+
+# --- Decorator ORDER on the engine-facing write path (review round 3, Finding 1) ---------
+# The engine write path is authorize_tool_ports(IdempotentVoice(RecordingVoice(raw))): tenant
+# authorization must be the OUTERMOST layer, so it runs before the idempotency claim and the
+# audit record. These spies prove the ordering.
+
+
+class _SpyVoice:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    async def start_outbound_call(
+        self, contact_id: str, assistant_id: str, context: dict[str, Any]
+    ) -> str:
+        self.calls.append(context)
+        return "call-1"
+
+    async def get_call(self, call_id: str) -> CallRecord | None:
+        return None
+
+
+class _SpyIdempotencyStore:
+    def __init__(self) -> None:
+        self.begins: list[str] = []
+
+    async def begin(self, key: str, *, workflow_run_id: str, tool: str) -> IdempotencyClaim:
+        self.begins.append(key)
+        return IdempotencyClaim(status=ClaimStatus.NEW)
+
+    async def complete(self, key: str, result: str) -> None:
+        return None
+
+
+class _CollectingAudit:
+    def __init__(self) -> None:
+        self.records: list[MutationRecord] = []
+
+    async def record(self, record: MutationRecord) -> None:
+        self.records.append(record)
+
+    async def list(
+        self, workflow_run_id: str | None = None, limit: int = 200
+    ) -> list[MutationRecord]:
+        return list(self.records)
+
+
+def _engine_voice(
+    voice: _SpyVoice, audit: _CollectingAudit, idem: _SpyIdempotencyStore
+) -> IdempotentVoice:
+    # Mirrors the api wiring: authorization is applied LAST (outermost).
+    return authorize_tool_ports(IdempotentVoice(RecordingVoice(voice, audit), idem), audit=audit)
+
+
+async def test_authorization_is_outermost_on_the_engine_write_path() -> None:
+    voice, audit, idem = _SpyVoice(), _CollectingAudit(), _SpyIdempotencyStore()
+    engine_voice = _engine_voice(voice, audit, idem)
+    with (
+        tenant_scope("demo"),
+        audit_scope(AuditContext(workflow_run_id="run-1", workflow="vapi_followup")),
+    ):
+        with pytest.raises(CrossTenantError):
+            await engine_voice.start_outbound_call(
+                "contact-1",
+                "assistant-1",
+                {"tenant_id": "other-brokerage", "listing_key": "L1"},
+            )
+    # (a) rejected before ANY store/port side effect on the write path:
+    assert idem.begins == []  # the idempotency claim never ran
+    assert voice.calls == []  # the raw voice adapter was never reached
+    # (b)+(c) ONLY the intended security denial is recorded — no full-payload failure entry
+    # from RecordingVoice landed on the normal mutation ledger:
+    assert [r.integration for r in audit.records] == ["security"]
+    only = audit.records[0]
+    assert only.args == {"attempted_tenant": "other-brokerage", "bound_tenant": "demo"}
+    # the call context (listing_key, and the tenant value beyond the tenant fields) never
+    # leaked into any audit entry:
+    assert "listing_key" not in str(only.args)
+
+
+async def test_engine_write_path_passes_a_clean_call_through() -> None:
+    # Authorization-outermost must not break the normal chain: a clean call still dedupes,
+    # records, and reaches the adapter.
+    voice, audit, idem = _SpyVoice(), _CollectingAudit(), _SpyIdempotencyStore()
+    engine_voice = _engine_voice(voice, audit, idem)
+    with (
+        tenant_scope("demo"),
+        audit_scope(AuditContext(workflow_run_id="run-1", workflow="vapi_followup")),
+    ):
+        call_id = await engine_voice.start_outbound_call(
+            "contact-1", "assistant-1", {"listing_key": "L1"}
+        )
+    assert call_id == "call-1"
+    assert voice.calls == [{"listing_key": "L1"}]  # reached the raw adapter
+    assert idem.begins != []  # the idempotency claim ran
+    assert any(r.integration == "vapi" for r in audit.records)  # recorded on the ledger
