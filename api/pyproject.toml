@@ -7,6 +7,7 @@ dependencies = [
     "alembic>=1.14",
     "brokerops-adk",
     "brokerops-core",
+    "brokerops-email-ses",
     "brokerops-email-smtp",
     "brokerops-email-stub",
     "brokerops-followupboss",
@@ -38,6 +39,7 @@ dev = [
 [tool.uv.sources]
 brokerops-adk = { workspace = true }
 brokerops-core = { workspace = true }
+brokerops-email-ses = { workspace = true }
 brokerops-email-smtp = { workspace = true }
 brokerops-email-stub = { workspace = true }
 brokerops-followupboss = { workspace = true }

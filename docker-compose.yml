@@ -92,6 +92,12 @@ services:
       # by api/tests/test_compose_selector_parity.py).
       EMAIL_PROVIDER: ${EMAIL_PROVIDER:-}
       EMAIL_BASE_URL: ${EMAIL_BASE_URL:-}
+      # SES companion config (BOP-016): only read when EMAIL_PROVIDER=ses.
+      SES_REGION: ${SES_REGION:-}
+      SES_ACCESS_KEY_ID: ${SES_ACCESS_KEY_ID:-}
+      SES_SECRET_ACCESS_KEY: ${SES_SECRET_ACCESS_KEY:-}
+      SES_FROM_ADDRESS: ${SES_FROM_ADDRESS:-}
+      SES_BASE_URL: ${SES_BASE_URL:-}
       # Demo seed/reset routes (/demo/*): on for the local demo so the "Seed demo
       # transactions" button works; off by default everywhere else (the route can wipe
       # tenant data). Real client deploys never set this.

@@ -40,6 +40,7 @@ mechanism yet, must be built for this client.
 | **Office files (Google Drive)** | Auth mode + folder convention — see §2a | `FILES_PROVIDER` **[config]** + drive-credentials secret |
 | **LLM feedback extraction** (optional) | Use Claude vs. deterministic? model id? | `enable_llm_extraction`, `llm_model` **[config]** + `llm-api-key` secret |
 | **Email delivery** (for magic-link) | SMTP host/port/from/username | `smtp_*` **[config]** + `smtp-password` secret — for AWS SES, `scripts/setup_ses.sh <client> <domain>` automates the identity + IAM user + password push (prints the DKIM records and deploy `-var`s) |
+| **Outbound business email** (client-facing comms, BOP-016) | Provider (`ses`) + the business-comms **sending identity** (from address) — see §2b | `EMAIL_PROVIDER`, `SES_REGION`, `SES_ACCESS_KEY_ID`, `SES_FROM_ADDRESS` **[config]** + `ses-secret-access-key` secret (pushed by `setup_ses.sh`) |
 
 If a system isn't ready, leave it on the bundled stub (`*_base_url = "internal"`)
 and turn it on later.
@@ -66,6 +67,23 @@ Capture at intake:
 
 Never put the service-account JSON in the repo or a tfvars file — Secret
 Manager only, like every other integration credential.
+
+### 2b. Outbound business email — the SES sending identity (BOP-016)
+
+Client-facing comms (showing follow-ups, milestone reminders) go out through
+the `EmailPort` channel (`EMAIL_PROVIDER=ses`), which is deliberately separate
+from magic-link delivery (ADR-0015): different blast radius, its own config.
+Unset, the zero-credential stub runs; `ses` with missing config **fails loud at
+startup** — never a silent downgrade to the stub.
+
+Capture at intake:
+
+| Capture | Lands in |
+|---|---|
+| **Sending identity** — the from address clients will see (e.g. `updates@brokerops.acme.com`). Recommended: the *same domain identity* as the auth-delivery (magic-link) one, with a different from-address — one `setup_ses.sh` run provisions both channels. If the brokerage wants a **different domain** for business comms, run `scripts/setup_ses.sh <client> <comms-domain>` again — IAM send policies are per-domain and accumulate, so the second run does not revoke the first. | `SES_FROM_ADDRESS` **[config]** |
+| **DKIM/SPF DNS records** for the sending domain — `setup_ses.sh` prints the EasyDKIM CNAMEs + DMARC TXT; for SPF alignment add the optional custom MAIL FROM records it prints (MX + SPF TXT on `mail.<domain>`). Records go in MANUALLY at the client's DNS provider. | client DNS **[manual]** |
+| **Region + credentials** — the script mints a send-only IAM key and pushes the secret access key to Secret Manager (`brokerops-<client>-ses-secret-access-key`); the key id and region are non-secret deploy vars. | `SES_REGION`, `SES_ACCESS_KEY_ID` **[config]** + `ses-secret-access-key` secret |
+| **Sandbox exit** — a fresh SES account only delivers to verified identities and has minimal quotas. Request production access (SES console → Account dashboard) *before* the first real client send; approval can take ~24h. | AWS account **[manual]** |
 
 ## 3. Listing intake checklist ("taking a listing")
 

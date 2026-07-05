@@ -6,6 +6,7 @@ COPY integrations/mls_reso/ ./integrations/mls_reso/
 COPY integrations/followupboss/ ./integrations/followupboss/
 COPY integrations/google_drive/ ./integrations/google_drive/
 COPY integrations/google_oidc/ ./integrations/google_oidc/
+COPY integrations/email_ses/ ./integrations/email_ses/
 COPY integrations/email_smtp/ ./integrations/email_smtp/
 COPY integrations/email_stub/ ./integrations/email_stub/
 COPY integrations/llm_extraction/ ./integrations/llm_extraction/
@@ -16,8 +17,8 @@ COPY orchestration/langgraph/ ./orchestration/langgraph/
 COPY orchestration/adk/ ./orchestration/adk/
 COPY api/ ./api/
 RUN pip install --no-cache-dir ./core ./integrations/mls_reso ./integrations/followupboss \
-    ./integrations/google_drive ./integrations/google_oidc ./integrations/email_smtp \
-    ./integrations/email_stub ./integrations/llm_extraction \
+    ./integrations/google_drive ./integrations/google_oidc ./integrations/email_ses \
+    ./integrations/email_smtp ./integrations/email_stub ./integrations/llm_extraction \
     ./integrations/pydantic_ai_extraction ./integrations/sierra_crm ./integrations/vapi \
     ./orchestration/langgraph ./orchestration/adk ./api
 

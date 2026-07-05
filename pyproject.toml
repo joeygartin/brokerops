@@ -2,6 +2,7 @@
 members = [
     "api",
     "core",
+    "integrations/email_ses",
     "integrations/email_smtp",
     "integrations/email_stub",
     "integrations/followupboss",
@@ -33,6 +34,7 @@ exclude = ['api/tests/conftest\.py$']
 testpaths = [
     "api/tests",
     "core/tests",
+    "integrations/email_ses/tests",
     "integrations/email_smtp/tests",
     "integrations/email_stub/tests",
     "integrations/followupboss/tests",

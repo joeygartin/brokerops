@@ -8,6 +8,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request
 
 if TYPE_CHECKING:
     from brokerops_api.auth.session import SessionRefresher
+    from brokerops_email_ses.adapter import SESEmailAdapter
     from brokerops_sierra_crm.adapter import SierraCRMAdapter
 
 from brokerops_api.db import ApprovalRepo, TransactionStoreAdmin
@@ -188,15 +189,43 @@ def build_voice_adapter() -> VapiVoiceAdapter:
 EMAIL_PROVIDERS = ("stub", "ses", "sendgrid")
 
 
+def _require_ses_env(name: str) -> str:
+    # Fail loud, never downgrade (ADR-0014/0015): EMAIL_PROVIDER=ses with
+    # missing SES config is a deploy misconfiguration, not a reason to run the
+    # stub. "unset" is the Terraform placeholder for a secret that was never
+    # pushed — same misconfiguration.
+    value = os.environ.get(name, "")
+    if not value or value == "unset":
+        raise RuntimeError(f"EMAIL_PROVIDER='ses' requires {name} to be set to a real value")
+    return value
+
+
+def _build_ses_email_adapter() -> "SESEmailAdapter":
+    from brokerops_email_ses.adapter import DEFAULT_REGION, SESEmailAdapter
+
+    # Credentials come from Secret Manager (scripts/setup_ses.sh pushes the
+    # secret access key; the id and from-address are non-secret deploy vars).
+    return SESEmailAdapter(
+        access_key_id=_require_ses_env("SES_ACCESS_KEY_ID"),
+        secret_access_key=_require_ses_env("SES_SECRET_ACCESS_KEY"),
+        from_address=_require_ses_env("SES_FROM_ADDRESS"),
+        region=os.environ.get("SES_REGION", DEFAULT_REGION),
+        # SES_BASE_URL points the adapter at an SES-shaped stub (tests/tooling);
+        # unset → the region's real endpoint.
+        base_url=os.environ.get("SES_BASE_URL") or None,
+    )
+
+
 def build_email_port() -> EmailPort:
     """The outbound business-email provider (EmailPort, ADR-0015) — NOT the
     magic-link EmailSender (ADR-0008), which keeps its own SMTP config.
 
     Closed, explicit selector in the ADR-0014 posture: EMAIL_PROVIDER names the
     provider; nothing is inferred from key presence. Unset → the stub, so demo
-    mode stays zero-credential; an unknown value raises at wiring; ses/sendgrid
-    are declared-but-unwired until BOP-016/017 land their adapters, and naming
-    them fails loud rather than silently downgrading to the stub.
+    mode stays zero-credential; an unknown value raises at wiring; `ses` with
+    missing config fails loud (BOP-016); `sendgrid` is declared-but-unwired
+    until BOP-017 lands its adapter, and naming it fails loud rather than
+    silently downgrading to the stub.
     """
     provider = os.environ.get("EMAIL_PROVIDER", "").strip().lower() or "stub"
     if provider == "stub":
@@ -211,10 +240,12 @@ def build_email_port() -> EmailPort:
                 base_url="http://stub.internal", client=_internal_client(create_stub_app())
             )
         return StubEmailAdapter(base_url=base_url)
-    if provider in ("ses", "sendgrid"):
+    if provider == "ses":
+        return _build_ses_email_adapter()
+    if provider == "sendgrid":
         raise RuntimeError(
-            f"EMAIL_PROVIDER={provider!r} is not yet wired (its adapter lands in "
-            "BOP-016/017); use EMAIL_PROVIDER=stub until then"
+            "EMAIL_PROVIDER='sendgrid' is not yet wired (its adapter lands in "
+            "BOP-017); use EMAIL_PROVIDER=stub until then"
         )
     raise RuntimeError(
         f"unknown EMAIL_PROVIDER {provider!r}; expected one of {sorted(EMAIL_PROVIDERS)}"

@@ -10,6 +10,7 @@ locals {
     "langsmith-api-key",
     "llm-api-key",
     "reso-auth-token",
+    "ses-secret-access-key",
     "smtp-password",
   ]
 }
