@@ -14,6 +14,7 @@ members = [
     "brokerops-api",
     "brokerops-core",
     "brokerops-email-sendgrid",
+    "brokerops-email-ses",
     "brokerops-email-smtp",
     "brokerops-email-stub",
     "brokerops-followupboss",
@@ -190,6 +191,7 @@ dependencies = [
     { name = "brokerops-adk" },
     { name = "brokerops-core" },
     { name = "brokerops-email-sendgrid" },
+    { name = "brokerops-email-ses" },
     { name = "brokerops-email-smtp" },
     { name = "brokerops-email-stub" },
     { name = "brokerops-followupboss" },
@@ -224,6 +226,7 @@ requires-dist = [
     { name = "brokerops-adk", editable = "orchestration/adk" },
     { name = "brokerops-core", editable = "core" },
     { name = "brokerops-email-sendgrid", editable = "integrations/email_sendgrid" },
+    { name = "brokerops-email-ses", editable = "integrations/email_ses" },
     { name = "brokerops-email-smtp", editable = "integrations/email_smtp" },
     { name = "brokerops-email-stub", editable = "integrations/email_stub" },
     { name = "brokerops-followupboss", editable = "integrations/followupboss" },
@@ -267,6 +270,27 @@ requires-dist = [{ name = "pydantic", specifier = ">=2.10" }]
 name = "brokerops-email-sendgrid"
 version = "0.1.0"
 source = { editable = "integrations/email_sendgrid" }
+dependencies = [
+    { name = "brokerops-core" },
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "mcp" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "brokerops-core", editable = "core" },
+    { name = "fastapi", specifier = ">=0.115" },
+    { name = "httpx", specifier = ">=0.28" },
+    { name = "mcp", specifier = ">=1.2" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
+]
+
+[[package]]
+name = "brokerops-email-ses"
+version = "0.1.0"
+source = { editable = "integrations/email_ses" }
 dependencies = [
     { name = "brokerops-core" },
     { name = "fastapi" },
