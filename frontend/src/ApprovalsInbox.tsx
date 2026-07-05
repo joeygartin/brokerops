@@ -97,11 +97,18 @@ function OutboundMessagePreview({
           padding: "0.5rem",
         }}
       />
-      <p style={{ color: "#57606a", fontSize: "0.8rem", margin: "0.3rem 0 0" }}>
-        {canEdit
-          ? "Edit the draft before approving — the text above is exactly what sends."
-          : "The draft text above is what an admin can approve and send."}
-      </p>
+      {canEdit && editedBody.trim() === "" ? (
+        <p style={{ color: "#cf222e", fontSize: "0.8rem", margin: "0.3rem 0 0" }}>
+          The draft body is empty — nothing would send. Restore some text to approve, or
+          Reject to discard the draft.
+        </p>
+      ) : (
+        <p style={{ color: "#57606a", fontSize: "0.8rem", margin: "0.3rem 0 0" }}>
+          {canEdit
+            ? "Edit the draft before approving — the text above is exactly what sends."
+            : "The draft text above is what an admin can approve and send."}
+        </p>
+      )}
     </div>
   );
 }
@@ -135,6 +142,9 @@ function ApprovalCard({
   // The editable draft body (approve_outbound_message): approving carries any
   // edits through as edited_payload, so the human decision includes the final text.
   const [editedBody, setEditedBody] = useState(approval.payload.body ?? "");
+  // An emptied draft can't be approved — the card promises the visible text is
+  // exactly what sends, and blank means "nothing would send". Reject instead.
+  const blankDraftBody = isOutboundMessage && editedBody.trim() === "";
   const subject = isEscalation
     ? `Escalate overdue milestones — ${approval.payload.transaction_id} (${approval.payload.listing_key})`
     : isHotLead
@@ -223,7 +233,7 @@ function ApprovalCard({
         <div style={{ display: "flex", gap: "0.6rem", marginTop: "0.6rem" }}>
           <button
             onClick={() => decide("approved")}
-            disabled={busy}
+            disabled={busy || blankDraftBody}
             style={{
               padding: "0.4rem 1.1rem",
               borderRadius: 6,

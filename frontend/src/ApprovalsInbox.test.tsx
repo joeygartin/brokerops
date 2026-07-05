@@ -144,6 +144,27 @@ describe("Outbound-message card (approve_outbound_message)", () => {
     });
   });
 
+  it("blocks approve while the draft body is emptied, with a hint", async () => {
+    mockInbox([OUTBOUND_MESSAGE_APPROVAL]);
+    render(<ApprovalsInbox />);
+
+    const body = await screen.findByLabelText("Draft body");
+    const approve = screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement;
+    expect(approve.disabled).toBe(false);
+
+    fireEvent.change(body, { target: { value: "   " } });
+    expect(approve.disabled).toBe(true);
+    expect(screen.getByText(/draft body is empty/)).toBeInTheDocument();
+    // Reject stays available — that's the right way to discard a draft.
+    expect((screen.getByRole("button", { name: "Reject" }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+
+    fireEvent.change(body, { target: { value: "Restored text." } });
+    expect(approve.disabled).toBe(false);
+    expect(screen.queryByText(/draft body is empty/)).not.toBeInTheDocument();
+  });
+
   it("renders the draft read-only for a non-admin", async () => {
     roleState.role = "operator";
     mockInbox([OUTBOUND_MESSAGE_APPROVAL]);

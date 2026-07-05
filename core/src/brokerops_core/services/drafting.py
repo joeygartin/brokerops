@@ -11,6 +11,9 @@ Returning None means "no recipient on file → no draft": the workflow keeps its
 existing CRM-task behavior and simply skips the tail.
 """
 
+from collections.abc import Mapping
+from typing import Any
+
 from brokerops_core.models.contact import Contact
 from brokerops_core.models.drafting import DraftContext, DraftedMessage
 from brokerops_core.models.message_templates import SHOWING_FOLLOWUP_V1, get_template
@@ -40,6 +43,28 @@ class DeterministicDrafter:
             listing_key=context.listing_key,
             transaction_id=context.transaction_id,
         )
+
+
+def edited_draft_fields(edited: Mapping[str, Any] | None) -> tuple[str, str]:
+    """Extract the approver's (subject, body) edits from a decision's edited_payload.
+
+    "" means "not edited — keep the draft". A present-but-blank body is refused
+    loudly: the inbox card promises the visible text is exactly what sends, so an
+    empty edit must never silently fall back to the original draft — the right
+    move for "don't send this" is rejecting the gate. Both engines' gate nodes
+    share this rule (rules in core, nodes thin).
+    """
+    if not edited:
+        return "", ""
+    subject = str(edited.get("subject") or "")
+    if "body" in edited and edited["body"] is not None:
+        body = str(edited["body"])
+        if not body.strip():
+            raise ValueError(
+                "edited draft body is blank — reject the draft instead of sending an empty message"
+            )
+        return subject, body
+    return subject, ""
 
 
 def plan_showing_followup_email(contact: Contact | None, listing_key: str) -> DraftContext | None:

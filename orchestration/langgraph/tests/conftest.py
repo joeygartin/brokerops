@@ -159,6 +159,12 @@ class DictMessageStore:
     async def get_message(self, message_id: str) -> Message | None:
         return self.rows.get(message_id)
 
+    async def get_message_by_provider_id(self, provider_message_id: str) -> Message | None:
+        for message in self.rows.values():
+            if provider_message_id and message.provider_message_id == provider_message_id:
+                return message
+        return None
+
     async def list_messages(self, contact_id: str | None = None, limit: int = 100) -> list[Message]:
         return list(self.rows.values())[:limit]
 

@@ -70,10 +70,20 @@ msg_id=$(echo "${pending}" | jget "[a['id'] for a in d if a['kind']=='approve_ou
 recipient=$(echo "${pending}" | jget "[a['payload']['recipient'] for a in d if a['id']=='${msg_id}'][0]")
 [ "${recipient}" = "dana.whitfield@example.test" ] || fail "reminder drafted to ${recipient}"
 
-say "cron dedup: pending gates are skipped on rerun (escalation + drafted email)"
-skipped=$(curl -sf -X POST "${API}/internal/cron/milestones" \
-  | jget "d['skipped_pending_escalation']")
-[ "${skipped}" -ge 2 ] || fail "expected both pending gates to be skipped, got ${skipped}"
+say "cron dedup is per gate kind: escalation skips its run, drafted email suppresses only the tail"
+rerun=$(curl -sf -X POST "${API}/internal/cron/milestones")
+skipped=$(echo "${rerun}" | jget "d['skipped_pending_escalation']")
+[ "${skipped}" -ge 1 ] || fail "expected pending escalation to skip its run, got ${skipped}"
+suppressed=$(echo "${rerun}" | jget "d['email_tail_suppressed']")
+[ "${suppressed}" -ge 1 ] || fail "expected drafted-email tail to be suppressed, got ${suppressed}"
+# The suppressed transaction still RAN and completed (safety net not muted)…
+rerun_status=$(echo "${rerun}" \
+  | jget "[r['status'] for r in d['results'] if r['transaction_id']=='TXN-1002'][0]")
+[ "${rerun_status}" = "completed" ] || fail "suppressed run status was ${rerun_status}"
+# …and no duplicate outbound-message gate stacked.
+gates=$(curl -sf "${API}/approvals" \
+  | jget "len([a for a in d if a['kind']=='approve_outbound_message'])")
+[ "${gates}" = "1" ] || fail "expected exactly 1 drafted-email gate, got ${gates}"
 
 say "approve escalation → URGENT task + level ratchet"
 outcome=$(curl -sf -X POST "${API}/approvals/${esc_id}/decide" \

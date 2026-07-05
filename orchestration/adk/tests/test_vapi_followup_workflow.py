@@ -177,6 +177,28 @@ async def test_rejected_followup_email_sends_nothing() -> None:
     assert len(crm.notes) == 1
 
 
+async def test_blank_edited_body_fails_loudly_instead_of_reverting() -> None:
+    # F4 on ADK: a present-but-blank edited body fails the resume loudly and
+    # nothing is sent — never a silent fallback to the original draft.
+    import pytest
+
+    crm, store = _crm_with_contact(), FakeFeedbackStore()
+    messages, email, message_store = make_message_service()
+    engine, _ = make_engine(_workflow(crm, store, messages=messages))
+
+    run = await engine.start(VAPI_FOLLOWUP, _input(COOL_TRANSCRIPT, "call-8"))
+    assert run.approval is not None
+    payload = run.approval.payload
+
+    with pytest.raises(ValueError, match="blank"):
+        await engine.decide(
+            run.approval,
+            _decision(ApprovalStatus.APPROVED, edited_payload={"body": "   "}),
+        )
+    assert email.sent == []
+    assert message_store.rows[payload["message_id"]].status is MessageStatus.PENDING_APPROVAL
+
+
 async def test_missing_transcript_falls_back_to_voice_port() -> None:
     crm, store = GraphFakeCRM(), FakeFeedbackStore()
     voice = FakeVoice(

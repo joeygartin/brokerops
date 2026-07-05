@@ -24,6 +24,7 @@ from brokerops_core.models.milestone import Milestone
 from brokerops_core.models.workflow_state import ApprovalOutcome, TransactionCoordinationState
 from brokerops_core.ports.crm import CRMPort
 from brokerops_core.ports.transactions import TransactionStore
+from brokerops_core.services.drafting import edited_draft_fields
 from brokerops_core.services.message_send import MessageSendService
 from brokerops_core.services.milestone_engine import (
     MilestoneClass,
@@ -97,11 +98,20 @@ def build_transaction_coordination(
         ctx.state["outcome"] = "reminders_sent"
 
     async def draft_reminder_email(
-        ctx: Context, transaction_id: str, assessments: list[dict[str, Any]]
+        ctx: Context,
+        transaction_id: str,
+        assessments: list[dict[str, Any]],
+        suppress_reminder_email: bool = False,
     ) -> None:
         # Additive tail on the due-soon path (BOP-019): the CRM tasks above are
         # unchanged; this drafts the reminder email when a reachable external
         # party exists (plan_reminder_email owns that rule), else skips.
+        if suppress_reminder_email:
+            # A pending outbound-message gate already exists for this
+            # transaction (cron sets the flag): skip only this tail so gates
+            # don't stack — everything before this node already ran.
+            ctx.route = STOP
+            return
         txn = await store.get_transaction(transaction_id)
         assert txn is not None
         due_soon = await _milestones_by_class(transaction_id, assessments, MilestoneClass.DUE_SOON)
@@ -139,11 +149,13 @@ def build_transaction_coordination(
             return
         outcome = ApprovalOutcome.model_validate(decision)
         ctx.state["reminder_approval"] = outcome.model_dump(mode="json")
-        edited = decision.get("edited_payload")
-        if edited and edited.get("subject"):
-            ctx.state["reminder_edited_subject"] = str(edited["subject"])
-        if edited and edited.get("body"):
-            ctx.state["reminder_edited_body"] = str(edited["body"])
+        # Raises on a present-but-blank body (never silently fall back to the
+        # original draft); the frontend card blocks this before it gets here.
+        subject_edit, body_edit = edited_draft_fields(decision.get("edited_payload"))
+        if subject_edit:
+            ctx.state["reminder_edited_subject"] = subject_edit
+        if body_edit:
+            ctx.state["reminder_edited_body"] = body_edit
         ctx.route = "approved" if outcome.decision.value == "approved" else "dismissed"
 
     async def send_reminder_email(ctx: Context, reminder_message_id: str) -> None:

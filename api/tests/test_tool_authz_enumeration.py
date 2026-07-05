@@ -37,6 +37,9 @@ EXPECTED_ENGINE_TOOL_PORTS = {
     "transaction_store",
     "feedback_store",
     "approval_repo",
+    # BOP-019: the workflows' send-on-approve nodes reach the email seam
+    # (its send(message) is tenant-bearing), so it must be wrapped + registered.
+    "email",
 }
 
 

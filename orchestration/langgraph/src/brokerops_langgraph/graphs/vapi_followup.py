@@ -23,7 +23,7 @@ from brokerops_core.ports.crm import CRMPort
 from brokerops_core.ports.extraction import ExtractionPort
 from brokerops_core.ports.feedback import FeedbackStore
 from brokerops_core.ports.voice import VoicePort
-from brokerops_core.services.drafting import plan_showing_followup_email
+from brokerops_core.services.drafting import edited_draft_fields, plan_showing_followup_email
 from brokerops_core.services.feedback_extraction import ExtractedFeedback
 from brokerops_core.services.message_send import MessageSendService
 from brokerops_langgraph.state import ApprovalOutcome, VapiFollowupState
@@ -168,11 +168,13 @@ def build_vapi_followup(
             }
         )
         updates: dict[str, Any] = {"followup_approval": ApprovalOutcome.model_validate(decision)}
-        edited = decision.get("edited_payload")
-        if edited and edited.get("subject"):
-            updates["followup_edited_subject"] = str(edited["subject"])
-        if edited and edited.get("body"):
-            updates["followup_edited_body"] = str(edited["body"])
+        # Raises on a present-but-blank body (never silently fall back to the
+        # original draft); the frontend card blocks this before it gets here.
+        subject_edit, body_edit = edited_draft_fields(decision.get("edited_payload"))
+        if subject_edit:
+            updates["followup_edited_subject"] = subject_edit
+        if body_edit:
+            updates["followup_edited_body"] = body_edit
         return updates
 
     async def send_followup_email(state: VapiFollowupState) -> dict[str, Any]:

@@ -5,6 +5,7 @@ reminder fan-out then a drafted email paused at the outbound-message gate) and
 pending-gate dedup."""
 
 from collections.abc import Iterator
+from datetime import date, timedelta
 from itertools import count
 
 import httpx
@@ -113,9 +114,16 @@ def test_gate_overdue_milestone_escalates_to_inbox_via_cron() -> None:
     assert message_gate["payload"]["recipient"] == "dana.whitfield@example.test"
     assert "Home inspection" in message_gate["payload"]["subject"]
 
-    # a second cron run must NOT stack duplicate gates (escalation or drafted email)
+    # a second cron run must NOT stack duplicate gates — and suppression is per
+    # gate kind: TXN-1001 (pending escalation) is skipped outright; TXN-1002
+    # (pending drafted email) still RUNS, only its drafted-email tail is
+    # suppressed, so its CRM-reminder outcome completes without a second gate
     rerun = client.post("/internal/cron/milestones").json()
-    assert rerun["skipped_pending_escalation"] == 2
+    assert rerun["skipped_pending_escalation"] == 1
+    assert rerun["email_tail_suppressed"] == 1
+    rerun_by_txn = {r["transaction_id"]: r for r in rerun["results"]}
+    assert rerun_by_txn["TXN-1002"]["outcome"] == "reminders_sent"
+    assert rerun_by_txn["TXN-1002"]["status"] == "completed"
     assert len(client.get("/approvals").json()) == 2
 
     # approve → URGENT CRM task + escalation level ratchet
@@ -170,3 +178,46 @@ def test_cron_secret_enforced_when_set(monkeypatch: pytest.MonkeyPatch) -> None:
     assert client.post("/internal/cron/milestones").status_code == 401
     ok = client.post("/internal/cron/milestones", headers={"X-Cron-Key": "topsecret"})
     assert ok.status_code == 200
+
+
+def test_pending_email_gate_does_not_mute_escalation() -> None:
+    # F1 (BOP-019 review): a pending approve_outbound_message gate suppresses
+    # ONLY the drafted-email tail. A milestone that goes overdue while the
+    # email draft sits undecided must still raise its escalation gate on the
+    # next cron run — the safety net is never muted by an undecided draft.
+    client.post("/demo/seed", json={"reset": True})
+    for stale in client.get("/approvals").json():  # module-shared repo: start clean
+        client.post(
+            f"/approvals/{stale['id']}/decide",
+            json={"decision": "rejected", "decided_by": "drain"},
+        )
+
+    first = client.post("/internal/cron/milestones").json()
+    by_txn = {r["transaction_id"]: r for r in first["results"]}
+    assert by_txn["TXN-1002"]["status"] == "awaiting_approval"  # the email gate
+    pending = client.get("/approvals").json()
+    email_gates = [a for a in pending if a["kind"] == "approve_outbound_message"]
+    assert [a["payload"]["transaction_id"] for a in email_gates] == ["TXN-1002"]
+
+    # Time passes: TXN-1002's appraisal goes overdue while the draft is undecided.
+    appraisal = store._milestones["MS-1002-APP"]
+    store._milestones["MS-1002-APP"] = appraisal.model_copy(
+        update={"due_date": date.today() - timedelta(days=1)}
+    )
+
+    rerun = client.post("/internal/cron/milestones").json()
+    rerun_by_txn = {r["transaction_id"]: r for r in rerun["results"]}
+    # TXN-1002 ran (not skipped) and paused at a NEW escalation gate.
+    assert rerun_by_txn["TXN-1002"]["status"] == "awaiting_approval"
+    escalations = [
+        a
+        for a in client.get("/approvals").json()
+        if a["kind"] == "approve_escalation" and a["payload"]["transaction_id"] == "TXN-1002"
+    ]
+    assert len(escalations) == 1
+    assert escalations[0]["payload"]["milestones"][0]["days_overdue"] == 1
+    # ...while the original email gate is still pending — exactly one, unstacked.
+    email_gates = [
+        a for a in client.get("/approvals").json() if a["kind"] == "approve_outbound_message"
+    ]
+    assert len(email_gates) == 1

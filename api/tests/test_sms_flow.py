@@ -189,3 +189,39 @@ def test_unknown_sid_and_preacceptance_statuses_are_acknowledged_and_ignored() -
         assert queued.status_code == 200
         assert queued.json()["ignored"] is True
         assert client.get(f"/messages/{message['id']}").json()["status"] == "sent"
+
+
+def test_callback_naming_a_rejected_messages_sid_is_a_clean_noop() -> None:
+    # BOP-019 weave: REJECTED is a terminal human "no" with a STATUS_RANK entry —
+    # a stray delivery callback naming such a row's sid must be acknowledged as a
+    # no-op (rank check), never KeyError into a 500 or advance the row.
+    import asyncio
+
+    from brokerops_core.models.message import Message, MessageChannel, MessageStatus
+    from brokerops_core.services.tenancy import tenant_scope
+
+    with TestClient(app) as client:
+        rejected = Message(
+            id="msg-rejected-1",
+            channel=MessageChannel.SMS,
+            recipient="+15551230101",
+            body="drafted then rejected",
+            status=MessageStatus.REJECTED,
+            provider_message_id="SMrejected1",
+        )
+
+        async def save() -> None:
+            with tenant_scope("demo"):
+                await app.state.message_store.save_message(rejected)
+
+        asyncio.run(save())
+        response = _signed_callback(
+            client, {"MessageSid": "SMrejected1", "MessageStatus": "delivered"}
+        )
+        assert response.status_code == 200
+        assert response.json() == {
+            "processed": True,
+            "id": "msg-rejected-1",
+            "status": "rejected",
+        }
+        assert client.get("/messages/msg-rejected-1").json()["status"] == "rejected"

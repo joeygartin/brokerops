@@ -71,7 +71,11 @@ class TransactionCoordinationState(BaseModel):
     escalated_task_ids: list[str] = Field(default_factory=list)
     planned_calls: list[str] = Field(default_factory=list)
     # Drafted reminder-email tail on the due-soon path (BOP-019); same shape
-    # as the vapi follow-up tail.
+    # as the vapi follow-up tail. `suppress_reminder_email` is set by the cron
+    # trigger when this transaction already has a pending outbound-message
+    # gate: only the drafted-email tail is skipped (so gates don't stack) —
+    # escalation and the rest of the run proceed unmuted.
+    suppress_reminder_email: bool = False
     reminder_message_id: str = ""
     reminder_approval: ApprovalOutcome | None = None
     reminder_edited_subject: str = ""

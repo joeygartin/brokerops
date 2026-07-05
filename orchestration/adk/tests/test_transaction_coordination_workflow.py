@@ -197,6 +197,24 @@ async def test_rejected_reminder_email_sends_nothing() -> None:
     assert message_store.rows[payload["message_id"]].status is MessageStatus.REJECTED
 
 
+async def test_cron_suppression_flag_skips_only_the_drafted_tail() -> None:
+    # F1 on ADK: with suppress_reminder_email set (cron saw a pending outbound
+    # gate), the run still sends CRM reminders and completes — no second gate.
+    crm = GraphFakeCRM()
+    messages, email, message_store = make_message_service()
+    store = FakeTransactionStore([TXN_WITH_PARTY], [_milestone("M-1", 2)])
+    engine, _ = make_engine(_workflow(store, crm, messages))
+    run = await engine.start(
+        TRANSACTION_COORDINATION,
+        {"transaction_id": "TXN-1001", "suppress_reminder_email": True},
+    )
+    assert run.status == "completed"
+    assert run.output is not None and run.output["outcome"] == "reminders_sent"
+    assert run.approval is None
+    assert len(crm.created_tasks) == 1
+    assert message_store.rows == {} and email.sent == []
+
+
 async def test_due_soon_without_reachable_party_skips_the_drafted_tail() -> None:
     # Owner "TC Team" is not a transaction party → no recipient → the run ends
     # exactly as before BOP-019 (CRM tasks only, no gate, no message row).

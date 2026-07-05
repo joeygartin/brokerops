@@ -35,25 +35,39 @@ async def run_milestone_checks(
     if secret and x_cron_key != secret:
         raise HTTPException(status_code=401, detail="bad or missing X-Cron-Key")
 
-    # Don't stack duplicate gates: skip transactions that already have a
-    # pending approval in the inbox — an escalation gate or a drafted
-    # reminder-email gate (BOP-019); the vapi follow-up gates carry no
+    # Don't stack duplicate gates — suppression is PER GATE KIND (BOP-019 review):
+    # a pending escalation gate skips the transaction's run entirely (rerunning
+    # would raise a second escalation for the same overdue milestone), while a
+    # pending drafted-email gate suppresses only the drafted-email tail — the run
+    # still executes, so a newly-overdue milestone escalates even while an email
+    # draft sits undecided in the inbox. The vapi follow-up gates carry no
     # transaction_id and never match here.
     pending = await repo.list(ApprovalStatus.PENDING)
-    awaiting = {
-        str(approval.payload.get("transaction_id"))
-        for approval in pending
-        if approval.kind in ("approve_escalation", "approve_outbound_message")
-        and approval.payload.get("transaction_id")
-    }
+
+    def _awaiting(kind: str) -> set[str]:
+        return {
+            str(approval.payload.get("transaction_id"))
+            for approval in pending
+            if approval.kind == kind and approval.payload.get("transaction_id")
+        }
+
+    awaiting_escalation = _awaiting("approve_escalation")
+    awaiting_email = _awaiting("approve_outbound_message")
 
     results: list[dict[str, Any]] = []
-    skipped = 0
+    skipped_escalation = 0
+    email_tail_suppressed = 0
     for transaction in await store.list_active_transactions():
-        if transaction.id in awaiting:
-            skipped += 1
+        if transaction.id in awaiting_escalation:
+            skipped_escalation += 1
             continue
-        run = await engine.start(TRANSACTION_COORDINATION, {"transaction_id": transaction.id})
+        suppress_email = transaction.id in awaiting_email
+        if suppress_email:
+            email_tail_suppressed += 1
+        run = await engine.start(
+            TRANSACTION_COORDINATION,
+            {"transaction_id": transaction.id, "suppress_reminder_email": suppress_email},
+        )
         results.append(
             {
                 "transaction_id": transaction.id,
@@ -62,4 +76,9 @@ async def run_milestone_checks(
                 "approval_id": run.approval.id if run.approval else None,
             }
         )
-    return {"checked": len(results), "skipped_pending_escalation": skipped, "results": results}
+    return {
+        "checked": len(results),
+        "skipped_pending_escalation": skipped_escalation,
+        "email_tail_suppressed": email_tail_suppressed,
+        "results": results,
+    }

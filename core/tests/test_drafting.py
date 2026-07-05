@@ -8,13 +8,14 @@ import pytest
 
 from brokerops_core.models.contact import Contact
 from brokerops_core.models.drafting import DraftContext
-from brokerops_core.models.message import Message, MessageChannel, MessageStatus
+from brokerops_core.models.message import STATUS_RANK, Message, MessageChannel, MessageStatus
 from brokerops_core.models.message_templates import TemplateParamError, UnknownTemplateError
 from brokerops_core.models.milestone import Milestone, MilestoneType
 from brokerops_core.models.transaction import Transaction, TransactionParty, TransactionStage
 from brokerops_core.services.audit import AuditContext, audit_scope
 from brokerops_core.services.drafting import (
     DeterministicDrafter,
+    edited_draft_fields,
     plan_showing_followup_email,
 )
 from brokerops_core.services.message_send import MessageSendService
@@ -44,6 +45,12 @@ class DictMessageStore:
 
     async def get_message(self, message_id: str) -> Message | None:
         return self.rows.get(message_id)
+
+    async def get_message_by_provider_id(self, provider_message_id: str) -> Message | None:
+        for message in self.rows.values():
+            if provider_message_id and message.provider_message_id == provider_message_id:
+                return message
+        return None
 
     async def list_messages(self, contact_id: str | None = None, limit: int = 100) -> list[Message]:
         return list(self.rows.values())[:limit]
@@ -234,13 +241,104 @@ async def test_send_approved_provider_failure_persists_failed_with_final_text() 
 
 async def test_send_approved_refuses_unwired_channels_and_unknown_ids() -> None:
     service, email, store = _service()
-    sms = Message(id="sms-1", channel=MessageChannel.SMS, recipient="+15550100")
+    sms = Message(
+        id="sms-1",
+        channel=MessageChannel.SMS,
+        recipient="+15550100",
+        body="hi",
+        status=MessageStatus.PENDING_APPROVAL,
+    )
     await store.save_message(sms)
-    with pytest.raises(RuntimeError, match="no send port"):
+    with pytest.raises(RuntimeError, match="no SMS provider is wired"):
         await service.send_approved("sms-1")
     with pytest.raises(LookupError):
         await service.send_approved("missing-id")
     assert email.sent == []
+
+
+async def test_send_approved_dispatches_sms_through_the_port_map_when_wired() -> None:
+    email = CountingEmail()
+    sms_port = CountingEmail()  # same shape: async send(Message) -> str
+    store = DictMessageStore()
+    service = MessageSendService(
+        email=email, store=store, sms=sms_port, drafting=DeterministicDrafter()
+    )
+    row = Message(
+        id="sms-2",
+        channel=MessageChannel.SMS,
+        recipient="+15550100",
+        body="hi",
+        status=MessageStatus.PENDING_APPROVAL,
+    )
+    await store.save_message(row)
+    sent = await service.send_approved("sms-2")
+    assert sent.status is MessageStatus.SENT
+    assert [m.id for m in sms_port.sent] == ["sms-2"]
+    assert email.sent == []  # channel dispatch picked the SMS port, not email
+
+
+async def test_send_approved_only_sends_from_pending_or_failed() -> None:
+    # F2: a terminal row is returned untouched — a stray approve must never
+    # re-send a SENT/DELIVERED message or overturn a human REJECTED.
+    service, email, store = _service()
+    for terminal in (MessageStatus.SENT, MessageStatus.DELIVERED, MessageStatus.REJECTED):
+        row = Message(
+            id=f"m-{terminal.value}",
+            recipient="sam@example.com",
+            body="original",
+            status=terminal,
+        )
+        await store.save_message(row)
+        result = await service.send_approved(row.id, body="Should never ship.")
+        assert result.status is terminal  # untouched — DELIVERED never downgrades
+        assert result.body == "original"
+    assert email.sent == []
+
+
+async def test_rejected_row_is_not_resendable_via_approve() -> None:
+    # F2 probe scenario: mark_rejected then send_approved must NOT send and
+    # must NOT flip REJECTED → SENT.
+    service, email, store = _service()
+    message = await service.draft_for_approval(_context())
+    await service.mark_rejected(message.id)
+    result = await service.send_approved(message.id)
+    assert result.status is MessageStatus.REJECTED
+    assert store.rows[message.id].status is MessageStatus.REJECTED
+    assert email.sent == []
+
+
+async def test_send_approved_refuses_a_blank_edited_body() -> None:
+    # F4: a present-but-blank edit must fail loudly, never silently revert to
+    # the original draft text.
+    service, email, store = _service()
+    message = await service.draft_for_approval(_context())
+    for blank in ("", "   \n\t"):
+        with pytest.raises(ValueError, match="blank"):
+            await service.send_approved(message.id, body=blank)
+    assert email.sent == []
+    assert store.rows[message.id].status is MessageStatus.PENDING_APPROVAL
+
+
+def test_edited_draft_fields_extracts_edits_and_refuses_blank_bodies() -> None:
+    assert edited_draft_fields(None) == ("", "")
+    assert edited_draft_fields({}) == ("", "")
+    assert edited_draft_fields({"body": "New text."}) == ("", "New text.")
+    assert edited_draft_fields({"subject": "New subject", "body": "New text."}) == (
+        "New subject",
+        "New text.",
+    )
+    for blank in ("", "   ", "\n\t"):
+        with pytest.raises(ValueError, match="blank"):
+            edited_draft_fields({"body": blank})
+
+
+def test_status_rank_is_total_over_the_lifecycle() -> None:
+    # Item 5: a delivery callback ranks the row's CURRENT status — every enum
+    # member must have a rank (REJECTED included) or a stray callback naming a
+    # rejected message's sid KeyErrors into a 500.
+    assert set(STATUS_RANK) == set(MessageStatus)
+    # REJECTED is terminal: no callback status outranks it.
+    assert all(STATUS_RANK[s] <= STATUS_RANK[MessageStatus.REJECTED] for s in MessageStatus)
 
 
 async def test_mark_rejected_records_the_decision_and_sends_nothing() -> None:

@@ -189,6 +189,48 @@ async def test_rejected_reminder_email_sends_nothing() -> None:
     assert message_store.rows[payload["message_id"]].status is MessageStatus.REJECTED
 
 
+async def test_blank_edited_body_fails_loudly_instead_of_reverting() -> None:
+    # F4: a present-but-blank edited body must never silently fall back to the
+    # original draft — the resume fails loudly and nothing is sent.
+    import pytest
+
+    messages, email, message_store = make_message_service()
+    store = FakeTransactionStore([TXN_WITH_PARTY], [_milestone("M-1", 2)])
+    graph = _build(store, None, messages)
+    config = _config(uuid4().hex)
+
+    paused = await graph.ainvoke({"transaction_id": "TXN-1001"}, config)
+    payload = paused["__interrupt__"][0].value
+    with pytest.raises(ValueError, match="blank"):
+        await graph.ainvoke(
+            Command(
+                resume={
+                    "decision": "approved",
+                    "decided_by": "tc-lead",
+                    "edited_payload": {"body": "   "},
+                }
+            ),
+            config,
+        )
+    assert email.sent == []
+    assert message_store.rows[payload["message_id"]].status is MessageStatus.PENDING_APPROVAL
+
+
+async def test_cron_suppression_flag_skips_only_the_drafted_tail() -> None:
+    # F1: with suppress_reminder_email set (cron saw a pending outbound gate),
+    # the run still sends CRM reminders and completes — no second email gate.
+    crm = GraphFakeCRM()
+    messages, email, message_store = make_message_service()
+    store = FakeTransactionStore([TXN_WITH_PARTY], [_milestone("M-1", 2)])
+    result = await _build(store, crm, messages).ainvoke(
+        {"transaction_id": "TXN-1001", "suppress_reminder_email": True}, _config(uuid4().hex)
+    )
+    assert result["outcome"] == "reminders_sent"
+    assert "__interrupt__" not in result
+    assert len(crm.created_tasks) == 1
+    assert message_store.rows == {} and email.sent == []
+
+
 async def test_due_soon_without_reachable_party_skips_the_drafted_tail() -> None:
     # Owner "TC Team" is not a transaction party → no recipient → the run ends
     # exactly as before BOP-019 (CRM tasks only, no gate, no message row).
