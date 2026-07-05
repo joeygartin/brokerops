@@ -3,6 +3,9 @@ name = "brokerops-api"
 version = "0.1.0"
 description = "brokerops API service"
 requires-python = ">=3.12"
+# Adding a workspace package here? It must ALSO be COPYd + installed in
+# api/Dockerfile, or the image build resolves it against PyPI (see the
+# pairing-rule note there).
 dependencies = [
     "alembic>=1.14",
     "brokerops-adk",

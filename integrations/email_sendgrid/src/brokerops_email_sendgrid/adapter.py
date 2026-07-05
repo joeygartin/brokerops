@@ -19,6 +19,9 @@ Provider quirks the adapter absorbs — none forced a change to `EmailPort` or
 - Failures carry SendGrid's documented ``{"errors": [{"message", "field",
   "help"}]}`` envelope; ``SendGridApiError`` surfaces the first message so
   audit failure records keep the vendor's reason (the Sierra precedent).
+- ``Message.body`` is sent as ``text/plain`` only — there is no HTML path.
+  If LLM-drafted comms (BOP-019/020) ever produce HTML, that is a ``Message``
+  model decision at the port, not a silent content-type flip here.
 """
 
 import httpx
