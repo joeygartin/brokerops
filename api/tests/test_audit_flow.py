@@ -3,8 +3,7 @@
 Drives start → approve and asserts the approval's CRM writes landed in the trail,
 linked to the originating approval and attributed to the approver. The engine reaches
 the CRM through RecordingCRM exactly as production does (wired in main.py), so this is
-the same seam — the cross-engine equivalent is enforced by the {langgraph, adk} e2e
-matrix running scripts/e2e_demo_check.sh.
+the same seam — the full demo path is enforced by scripts/e2e_demo_check.sh in CI.
 """
 
 from collections.abc import Iterator

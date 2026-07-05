@@ -21,14 +21,13 @@ COPY integrations/sierra_crm/ ./integrations/sierra_crm/
 COPY integrations/twilio_sms/ ./integrations/twilio_sms/
 COPY integrations/vapi/ ./integrations/vapi/
 COPY orchestration/langgraph/ ./orchestration/langgraph/
-COPY orchestration/adk/ ./orchestration/adk/
 COPY api/ ./api/
 RUN pip install --no-cache-dir ./core ./integrations/mls_reso ./integrations/followupboss \
     ./integrations/google_drive ./integrations/google_oidc ./integrations/email_sendgrid \
     ./integrations/email_ses ./integrations/email_smtp ./integrations/email_stub \
     ./integrations/llm_extraction ./integrations/pydantic_ai_extraction \
     ./integrations/sierra_crm ./integrations/twilio_sms ./integrations/vapi \
-    ./orchestration/langgraph ./orchestration/adk ./api
+    ./orchestration/langgraph ./api
 
 EXPOSE 8000
 CMD ["sh", "-c", "alembic -c api/alembic.ini upgrade head && uvicorn brokerops_api.main:app --host 0.0.0.0 --port 8000"]

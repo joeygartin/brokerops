@@ -34,8 +34,8 @@ curl -s http://localhost:8002/tasks | python3 -m json.tool
 
 **What just happened:** a workflow ran intake → draft → a HITL interrupt →
 your approval resumed it → it fanned out real CRM tasks through the CRM port.
-(The engine behind it is LangGraph by default; rerun the stack with
-`ORCHESTRATOR=adk make demo` and the identical path runs on Google ADK.)
+(The engine behind it is LangGraph, behind a thin `WorkflowEngine` seam that keeps
+orchestration out of the domain core — ADR-0019.)
 
 ### Optional: prove the pause is durable
 

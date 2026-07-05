@@ -16,7 +16,4 @@ frontend_image = "us-west1-docker.pkg.dev/your-gcp-project-id/brokerops/frontend
 # vapi_base_url = "https://api.vapi.ai"
 # vapi_assistant_id = "your-vapi-assistant-id"
 
-# Workflow engine: langgraph (default) or adk — see ADR-0004.
-# orchestrator = "adk"
-
 # enable_langsmith = true

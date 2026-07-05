@@ -1,6 +1,6 @@
 """Unit coverage for the tenant-scoping seam (BOP-006).
 
-Storage-agnostic: the seam carries the binding + enforcement, so both engines and
+Storage-agnostic: the seam carries the binding + enforcement, so the engine and
 both store backends inherit identical confinement by construction.
 """
 

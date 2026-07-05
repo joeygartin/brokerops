@@ -4,7 +4,7 @@ Agents retry and re-plan by nature, and an orchestrator can re-run a node on res
 A re-issued write must not produce a duplicate side effect — a second FollowUpBoss
 contact/note/task, a duplicate call log, or (worst of all) a second outbound phone
 call. This wraps the same write-capable ports the audit-ledger wraps (`RecordingCRM`,
-`RecordingVoice`), one decorator out, so both engines inherit dedupe identically with
+`RecordingVoice`), one decorator out, so dedupe holds below the engine with
 no engine-specific code (architecture rule #5).
 
 Key convention (rule #3 — derivation lives here, tools don't embed it): a stable

@@ -1,12 +1,11 @@
 """The single write-boundary seam for the action audit-ledger.
 
-Both orchestration engines reach external systems through the same ports, wired
-once in the API. Wrapping the write-capable ports here — `RecordingCRM`,
-`RecordingVoice`, `RecordingEmail` — records every external mutation in one place, so the two
-engines behave identically with no engine-specific code (architecture rule #5).
-The ADK `before_tool_callback`/LangGraph node-wrapper that the task sketched only
-fire for LlmAgent tool calls; these workflows are deterministic zero-LLM
-FunctionNodes that call the ports directly, so a port decorator is the genuinely
+The engine reaches external systems through the same ports, wired once in the API.
+Wrapping the write-capable ports here — `RecordingCRM`, `RecordingVoice`,
+`RecordingEmail` — records every external mutation in one place, below the engine
+and with no engine-specific code (architecture rule #5). An engine-level tool
+callback would only fire for LlmAgent tool calls; these workflows are deterministic
+zero-LLM nodes that call the ports directly, so a port decorator is the genuinely
 single seam.
 
 Per-run context (which run, which approval, which actor) can't be passed through

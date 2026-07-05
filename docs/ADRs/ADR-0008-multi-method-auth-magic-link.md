@@ -2,6 +2,12 @@
 
 **Status:** Accepted · **Date:** 2026-06-19 · **Builds on:** ADR-0003, ADR-0007
 
+> **Historical framing (see [ADR-0019](ADR-0019-one-orchestrator-langgraph.md)).** This
+> ADR was written while two orchestration engines ran side by side (ADR-0004). brokerops
+> has since committed to a single LangGraph engine and removed the ADK lane. The auth
+> design below is unchanged; read "both engines" as the state at this decision's date —
+> auth is API-layer and was, and is, independent of the engine.
+
 ## Context
 
 ADR-0007 shipped operator login via Google OIDC behind an `IdentityVerifier` port.

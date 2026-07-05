@@ -43,7 +43,7 @@ class UnknownOutboundMessageError(LookupError):
     """A decision named an `outbound_messages` row that does not exist (BOP-037).
 
     A *named* domain error (not a bare assert/LookupError) so the gate/send
-    nodes in both engines and the API routes can map a dangling message_id to a
+    nodes and the API routes can map a dangling message_id to a
     clean client error instead of a 500 — and so the check survives `python -O`,
     which strips asserts. Subclasses LookupError, so existing catch sites keep
     working.

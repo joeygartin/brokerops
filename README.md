@@ -10,10 +10,10 @@ human approval gate in front of every consequential action.
 
 Three workflows over an MCP tool boundary, a framework-free domain core, durable
 human-in-the-loop (Postgres-backed — approvals survive restarts and deploys), and
-per-client GCP deploys via Terraform. The orchestration layer is **dual-engine**:
-the same workflows run on LangGraph or Google ADK, selected by
-`ORCHESTRATOR=langgraph|adk` (default `langgraph`), and CI proves both against the
-same end-to-end demo script on every push.
+per-client GCP deploys via Terraform. Workflows run on LangGraph, behind a thin
+`WorkflowEngine` seam that keeps the orchestrator swappable without touching the
+domain core (ADR-0019). Every push proves the whole path with an end-to-end demo
+script against the real compose stack.
 
 | Workflow | Trigger | Human gate |
 |---|---|---|
@@ -45,9 +45,9 @@ its Postgres checkpoint in the new process.
 See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the full picture and
 **[docs/ADRs/](docs/ADRs/)** for the decisions. The short version:
 
-- **`core/`** is plain Python + Pydantic — no LangGraph, no ADK, no FastAPI, no
-  SDKs. Workflow nodes are thin; business rules (marketing drafts, milestone date
-  math, transcript extraction — including a spoken price-range parser) live in core
+- **`core/`** is plain Python + Pydantic — no LangGraph, no FastAPI, no SDKs.
+  Workflow nodes are thin; business rules (marketing drafts, milestone date math,
+  transcript extraction — including a spoken price-range parser) live in core
   services and are unit-tested in isolation.
 - **Every integration is three things:** an adapter implementing a core `Protocol`
   port, a recorded-shape stub, and an MCP server (`uv run mcp-server-mls-reso`,
@@ -55,12 +55,12 @@ See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the full picture and
   base-URL + auth change, pinned by contract tests.
 - **Every human gate is the same spine:** a workflow interrupt → an
   `ApprovalRequest` row → the Approval Inbox → one resume endpoint. That uniformity
-  is what made the orchestrator swappable — and V2 swapped it (ADR-0004).
-- **The dual-engine setup is CI-proven, not claimed:** every push runs mirrored
-  scenario suites and a Postgres restart-survival proof for each engine
-  (`orchestration/langgraph/`, `orchestration/adk/`), then the same e2e demo
-  script as a `{langgraph, adk}` matrix against the full compose stack. Both
-  engines must stay green for `main` to be green.
+  keeps the orchestrator behind a thin seam, so the domain core never depends on the
+  framework (ADR-0019).
+- **Durability is CI-proven, not claimed:** every push runs the scenario suites and a
+  Postgres restart-survival proof (`orchestration/langgraph/`), then the same e2e demo
+  script against the full compose stack. A pause survives an api restart — proven on
+  every push, not just asserted.
 
 ## Development
 
@@ -70,11 +70,10 @@ and Python 3.12+; tests that exercise restart-survival also need a local Postgre
 
 ```bash
 uv sync --all-packages   # install workspace deps
-make test                # ~283 tests (contract, workflow x2 engines, API flow, auth,
-                         # audit ledger, idempotency, transaction open, tenant scoping,
-                         # fail-closed defaults, restart-survival)
+make test                # contract, workflow, API flow, auth, audit ledger,
+                         # idempotency, transaction open, tenant scoping,
+                         # fail-closed defaults, restart-survival
 make frontend-test       # vitest: role gating, apiFetch bearer/401, auth bootstrap
-ORCHESTRATOR=adk make demo   # the same demo on the ADK engine
 make lint                # ruff + mypy strict
 ```
 
@@ -169,7 +168,6 @@ those DNS records and running the deploy stay manual.
 |---|---|
 | `client_name`, `project_id`, `region` | Identity + GCP target (`region` default `us-west1`). |
 | `api_image`, `frontend_image` | Artifact Registry image paths. |
-| `orchestrator` | `langgraph` (default) or `adk` (ADR-0004). |
 | `reso_base_url`, `fub_base_url`, `vapi_base_url` | `internal` (default) runs the bundled stub; set a real base URL to go live. |
 | `vapi_assistant_id` | Vapi assistant for outbound calls (ADR-0005). |
 | `enable_llm_extraction`, `extraction_backend`, `llm_model` | Flip feedback extraction to an LLM backend — `llm` (ADR-0006) or `pydantic_ai` (ADR-0014); needs the `llm-api-key` secret. |
@@ -205,7 +203,7 @@ the `smtp-password` secret for magic-link email.
 core/                    # framework-free domain: models, services, ports
 integrations/            # mls_reso · followupboss · sierra_crm · vapi (adapter + stub + MCP server each)
                          #   · llm_extraction + pydantic_ai_extraction (LLM adapters) · google_oidc · email_smtp (operator auth)
-orchestration/           # the three workflows, twice: langgraph/ (V1) + adk/ (V2)
+orchestration/           # the three workflows on LangGraph, behind the WorkflowEngine seam
 api/                     # FastAPI: routes, webhooks, cron, workflow engine, Alembic
 frontend/                # React + Vite: Listings, Transactions, Approval Inbox
 infra/                   # Terraform per-client module + bootstrap
@@ -214,9 +212,8 @@ docs/                    # ARCHITECTURE.md · DEMO.md · CLIENT_ONBOARDING.md ·
 
 ## Status & roadmap
 
-**Done:** V1 — all three workflows end-to-end with durable HITL, demo mode, and
-per-client GCP deploys. V2 — the Google ADK engine, side-by-side with LangGraph
-and CI-proven equivalent (ADR-0004). Live-integration proofs for **all three**
+**Done:** all three workflows end-to-end with durable HITL, demo mode, and
+per-client GCP deploys. Live-integration proofs for **all three**
 external systems: the MLS adapter runs against a live RESO Web API feed (sparse
 fields, fractional prices, vendor path casing — found and fixed); the voice path
 is proven end-to-end with real phone calls (assistant hardened over five live
@@ -237,14 +234,14 @@ approvals, operators also start workflows and place calls, viewers read), and th
 React app hides controls a role can't use — opt-in, so a deploy without role config
 keeps a flat operator list. An action audit ledger records every write that crosses the
 MCP boundary as a durable, secret-redacted `MutationRecord` (success or failure) at a
-single port-decorator seam both engines share, linked to its approval when gated and
+single port-decorator seam, linked to its approval when gated and
 browsable per workflow run (ADR-0010). Those same writes are idempotent (ADR-0011): a
 second decorator on the seam dedupes by `(workflow run, tool, args)`, so a retried or
 resumed workflow performs each external side effect — a CRM task, an outbound call — at
 most once and returns the original result. The listing→transaction handoff is built:
 an operator opens an escrow via `POST /transactions`, which validates the dates and
 generates a milestone timeline from a per-client template before persisting it, and the
-`transaction_coordination` cron then drives it on either engine. Opening is idempotent
+`transaction_coordination` cron then drives it. Opening is idempotent
 per listing (a same-terms repeat returns the existing transaction; different terms 409).
 Operator sessions refresh without re-login (ADR-0013): the request bearer is a
 short-lived access JWT (1h) and login also issues a refresh token (24h) the SPA
@@ -255,8 +252,6 @@ revoked operator loses access within the hour and a leaked token stays bounded.
 never speculatively:**
 
 - **Demo recording:** a 60–90s screen capture of the docs/DEMO.md path.
-- **Loosen the `google-adk` pin** once its invocation-resumability API leaves
-  experimental status (tracked in ADR-0004).
 - **Documented-but-dormant:** MCP servers as separate Cloud Run services, and
   caching (revisit triggers in ADR-0001).
 

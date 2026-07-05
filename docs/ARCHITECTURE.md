@@ -4,17 +4,16 @@ AI-powered backoffice for real estate brokerages: listing-to-contract marketing,
 deadline-driven transaction coordination, and voice follow-up — every consequential
 action gated by human approval.
 
-Built as a deliberate demonstration of production agent architecture: the same three
-workflows run on either of two orchestration engines — LangGraph and Google ADK —
-behind one seam, with durable human-in-the-loop, an MCP tool boundary, hexagonal
-domain isolation, operator auth with role-based access, and per-client GCP deploys
-via Terraform.
+A production agent architecture: three workflows run on LangGraph behind a thin
+`WorkflowEngine` seam that keeps orchestration out of the domain core, with durable
+human-in-the-loop, an MCP tool boundary, hexagonal domain isolation, operator auth
+with role-based access, and per-client GCP deploys via Terraform.
 
 ## Principles
 
 1. **Hexagonal core.** All domain logic lives in `core/` as plain Python + Pydantic.
-   `core/` imports no LangGraph, no ADK, no FastAPI, no SDK. Orchestration
-   frameworks are shells around it.
+   `core/` imports no LangGraph, no FastAPI, no SDK. The orchestration framework is a
+   shell around it, behind the `WorkflowEngine` seam.
 2. **MCP as the tool boundary.** Every external system (MLS, FollowUpBoss, Vapi) is
    an MCP server, independently runnable over stdio. The integration layer is
    written once; any MCP-native orchestrator can consume it.
@@ -27,10 +26,10 @@ via Terraform.
    base-URL + bearer-token change, pinned by contract tests — proven against a
    real vendor's RESO Web API, which also taught the domain model that sparse
    fields (no rooms, no price, no address) are data, not errors.
-5. **State is durable.** Workflow state lives in Postgres under either engine
-   (LangGraph's checkpointer; ADK's database session service). A workflow paused on
-   a human approval survives restarts, deploys, and Cloud Run cold starts — proven
-   by an automated restart test per engine and a live container-restart drill.
+5. **State is durable.** Workflow state lives in Postgres (LangGraph's checkpointer).
+   A workflow paused on a human approval survives restarts, deploys, and Cloud Run
+   cold starts — proven by an automated restart test and a live container-restart
+   drill.
 6. **Public-repo paranoia.** Secrets never touch the repo: gitleaks pre-commit and
    CI, GitHub push protection, Secret Manager for runtime, `.env.example` with fake
    values. Seed data is fully synthetic.
@@ -46,8 +45,8 @@ via Terraform.
                       │      │  /api/* proxied same-origin (ADR-0003)                  │
                       │      ▼                                                         │
  Vapi webhooks ──────▶│  Cloud Run: api (FastAPI)                                      │
- Cloud Scheduler ────▶│      ├── orchestration/{langgraph|adk}  (3 workflows each,     │
-                      │      │        │      selected by ORCHESTRATOR — ADR-0004)      │
+ Cloud Scheduler ────▶│      ├── orchestration/langgraph  (3 workflows behind the     │
+                      │      │        │      WorkflowEngine seam — ADR-0019)           │
                       │      │        │ ports (Protocol)                               │
                       │      │        ├── integrations/mls_reso      (RESO Web API)    │
                       │      │        ├── integrations/followupboss  (FUB REST)        │
@@ -84,8 +83,7 @@ integrations/
   google_oidc/           # Google ID-token verifier behind IdentityVerifier (ADR-0007)
   email_smtp/            # SMTP EmailSender adapter for magic-link delivery (ADR-0008)
 orchestration/
-  langgraph/             # V1 engine: graphs/, checkpointer (state schemas in core)
-  adk/                   # V2 engine: workflows/, sessions, interrupts
+  langgraph/             # the engine: graphs/, checkpointer (state schemas in core)
 api/                     # FastAPI: routes, webhooks, cron, workflow engine, Alembic
 frontend/                # React + Vite: Listings, Transactions, Approval Inbox
 infra/                   # Terraform: per-client module, client tfvars, bootstrap
@@ -126,8 +124,8 @@ for all of them (ADR-0002), phrased once as a shared prompt in core (ADR-0005).
 
 Every human gate in every workflow passes through the same spine:
 
-1. A node raises an interrupt with a payload (LangGraph `interrupt()`; an ADK
-   `RequestInput`) — the run persists its state and stops.
+1. A node raises an interrupt with a payload (LangGraph `interrupt()`) — the run
+   persists its state and stops.
 2. The workflow engine (the **only** place interrupts are handled) writes an
    `ApprovalRequest` row: workflow, thread id, kind, payload.
 3. The Approval Inbox renders pending requests; kind-specific cards preview the
@@ -138,14 +136,14 @@ Every human gate in every workflow passes through the same spine:
 Because state lives in Postgres and approvals are rows (not in-memory futures), a
 pause costs nothing and survives anything short of losing the database.
 
-This uniformity is the portability story, and V2 cashed it in: `orchestration/adk/`
-implements the same three workflows on Google ADK behind the same `WorkflowEngine`
-protocol, and `ORCHESTRATOR=langgraph|adk` selects the engine at startup
-(ADR-0004). Nodes contain no business logic, all external calls go through ports,
-all HITL passes through `ApprovalRequest` rows, and state schemas are Pydantic
-models in core — so the port touched orchestration wiring and nothing else. CI runs
-the same e2e demo script against both engines on every push; neither needs an LLM
-key for these deterministic workflows.
+This uniformity is what keeps the orchestrator behind a thin seam. Nodes contain no
+business logic, all external calls go through ports, all HITL passes through
+`ApprovalRequest` rows, and state schemas are Pydantic models in core — so the
+LangGraph engine is a shell of run/pause/resume mechanics with nothing domain-specific
+in it. A second orchestration engine once ran the same three workflows behind this same
+protocol, proving the seam holds; the product settled on the single LangGraph engine
+and retains the seam (ADR-0019, superseding ADR-0004). CI runs the e2e demo script on
+every push; the deterministic workflows need no LLM key.
 
 ## Operator authentication & access control
 
@@ -209,9 +207,9 @@ outcome, and external id or error.
 It honors the same seams. The record type is a `core/` Pydantic model and the
 `AuditLog` is a `core/ports/` Protocol (SQL-backed `SqlAuditLog` in `api/`, alembic
 `0005`; an `InMemoryAuditLog` for tests). Recording happens at a **single seam** —
-`RecordingCRM`/`RecordingVoice` port decorators wired once in `main.py` — so both
-engines record identically without any engine-specific callback; per-run context
-(workflow run id, approval id, actor) flows through a `ContextVar` each engine
+`RecordingCRM`/`RecordingVoice` port decorators wired once in `main.py` — so recording
+happens below the engine, with no engine-specific callback; per-run context
+(workflow run id, approval id, actor) flows through a `ContextVar` the engine
 publishes at its run boundary. `GET /audit?workflow_run_id=` reads the trail and a
 React Audit-trail tab browses it. Demo mode still produces records against the stub
 integrations with zero credentials, and the trail survives a mid-run restart.
@@ -273,8 +271,8 @@ least-privilege accounts remain the other follow-on.
 Cloud SQL Postgres (one small instance per client — cheap isolation; consolidation
 to a shared instance is a DSN change). Alembic migrations run on container start.
 Domain tables: approval_requests, transactions, milestones, call_records,
-showing_feedback, magic_login_tokens, mutation_records, idempotency_keys. Each engine
-manages its own state tables alongside (LangGraph's checkpointer; ADK's session service).
+showing_feedback, magic_login_tokens, mutation_records, idempotency_keys. The engine
+manages its own state tables alongside (LangGraph's checkpointer).
 
 Contacts are deliberately **not** a domain table: the CRM is the source of truth and
 contacts are read-through DTOs via `CRMPort`. Caching policy is ADR-0001: a thin
@@ -296,12 +294,12 @@ external health checks on `/readyz` because Google's frontend reserves `/healthz
 
 ## Verification
 
-~283 tests: OData contract tests pinning the RESO subset, adapter tests against the
+OData contract tests pinning the RESO subset, adapter tests against the
 stubs (the same shapes the real APIs return), workflow tests for every branch of all
-three workflows on **both engines**, API-level flow tests, auth tests (allowlist,
+three workflows, API-level flow tests, auth tests (allowlist,
 magic-link lifecycle, session-JWT round-trip, role resolution, and `require_role`
 enforcement), audit-ledger tests (deep secret redaction, success-and-failure
-recording, engine parity, restart survival), idempotency tests (replay performs the
+recording, restart survival), idempotency tests (replay performs the
 side effect at most once and returns the original result, atomic claim, restart
 survival), transaction-open tests (deterministic bounded id, idempotent open with
 conflict and race handling, escrow-date validation, engine wire-through), tenant-scoping
@@ -312,10 +310,8 @@ over the engine tool-port registry),
 extraction-selector tests (deterministic default, fail-loud on an explicitly selected
 LLM backend with no key, fail-closed on unknown values) plus an offline PydanticAI
 adapter suite (TestModel, no credentials),
-a Postgres
-restart-survival proof per
-engine (runs in CI against a service container), and a scripted e2e demo check that CI runs against the full
-compose stack under both `ORCHESTRATOR` values. The frontend has its own vitest
+a Postgres restart-survival proof (runs in CI against a service container), and a
+scripted e2e demo check that CI runs against the full compose stack. The frontend has its own vitest
 suite (role-gating on the Approvals inbox and Listings board, `apiFetch` bearer/401
 handling, and the `AuthProvider` bootstrap phases), type-checked and run as a separate
 CI job. Ruff + mypy strict across the workspace; gitleaks on every commit and in CI.

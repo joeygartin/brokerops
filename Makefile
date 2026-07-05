@@ -28,8 +28,7 @@ lint:
 		integrations/sierra_crm/src integrations/sierra_crm/tests \
 		integrations/twilio_sms/src integrations/twilio_sms/tests \
 		integrations/vapi/src integrations/vapi/tests \
-		orchestration/langgraph/src orchestration/langgraph/tests \
-		orchestration/adk/src orchestration/adk/tests
+		orchestration/langgraph/src orchestration/langgraph/tests
 
 # Regenerate the API contract artifacts after any backend wire-shape change:
 # export the OpenAPI spec from the Pydantic models, then regenerate the TS

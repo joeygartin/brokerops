@@ -1,6 +1,11 @@
 # ADR-0004: LangGraph and ADK run side-by-side behind one engine seam
 
-**Status:** Accepted · **Date:** 2026-06-11
+**Status:** Superseded by [ADR-0019](ADR-0019-one-orchestrator-langgraph.md) (2026-07-05) · **Date:** 2026-06-11
+
+> **Superseded.** brokerops committed to a single orchestrator — LangGraph — and
+> removed the ADK lane; the engine seam this ADR introduced is retained (see
+> ADR-0019). This record stands as the history of why the second engine existed and
+> what the port proved.
 
 ## Context
 

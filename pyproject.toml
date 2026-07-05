@@ -15,7 +15,6 @@ members = [
     "integrations/sierra_crm",
     "integrations/twilio_sms",
     "integrations/vapi",
-    "orchestration/adk",
     "orchestration/langgraph",
 ]
 
@@ -49,7 +48,6 @@ testpaths = [
     "integrations/sierra_crm/tests",
     "integrations/twilio_sms/tests",
     "integrations/vapi/tests",
-    "orchestration/adk/tests",
     "orchestration/langgraph/tests",
 ]
 asyncio_mode = "auto"

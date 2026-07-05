@@ -2,6 +2,13 @@
 
 **Status:** Accepted · **Date:** 2026-07-02 · **Builds on:** ADR-0002, ADR-0005, ADR-0006
 
+> **Historical framing (see [ADR-0019](ADR-0019-one-orchestrator-langgraph.md)).** This
+> ADR was written while two orchestration engines ran side by side (ADR-0004). brokerops
+> has since committed to a single LangGraph engine and removed the ADK lane. The
+> extraction backend and selector below are unchanged (PydanticAI is a port
+> implementation, not orchestration — ADR-0019 reaffirms this); read "both engines" / "the
+> orchestrators" and the `google-adk` pin precedent as the state at this decision's date.
+
 ## Context
 
 ADR-0006 put LLM-backed feedback extraction behind the `ExtractionPort` Protocol with a

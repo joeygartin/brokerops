@@ -5,7 +5,8 @@ description = "ExtractionPort adapter backed by a PydanticAI agent"
 requires-python = ">=3.12"
 dependencies = [
     "brokerops-core",
-    # Pinned to a known-good minor (the ADK lane precedent): PydanticAI moves
+    # Pinned to a known-good minor (the same posture as other agent SDKs here):
+    # PydanticAI moves
     # fast — two majors in ten months — and its 3-month no-break window is
     # shorter than this repo's upgrade cadence.
     "pydantic-ai-slim[anthropic]~=2.3.0",

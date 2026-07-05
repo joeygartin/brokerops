@@ -1,9 +1,9 @@
-"""The workflow-run contract shared by every orchestration engine.
+"""The workflow-run contract the orchestration engine speaks.
 
-Engines (LangGraph, ADK) differ in how they run and pause a workflow, but
-they all speak this vocabulary: the same workflow names, the same
-WorkflowRunResult shape, and the same rule for reading a finished run's
-terminal state. Keeping it here keeps the engines interchangeable.
+However an engine runs and pauses a workflow, it speaks this vocabulary: the same
+workflow names, the same WorkflowRunResult shape, and the same rule for reading a
+finished run's terminal state. Keeping it in core — not in the engine — is what
+keeps the orchestrator swappable behind the WorkflowEngine seam.
 """
 
 from collections.abc import Mapping
