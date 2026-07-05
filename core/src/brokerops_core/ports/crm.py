@@ -14,7 +14,9 @@ class CRMPort(Protocol):
     - Ids (`Contact.crm_id`, note/task/call-log ids) live in the wired
       vendor's namespace and are opaque to callers.
     - Adapters raise ``ValueError`` for drafts that don't meet the vendor's
-      documented minimum (e.g. Sierra requires an email to create a lead).
+      documented minimum (e.g. Sierra requires an email to create a lead) and
+      for write ids that cannot name a record in the vendor's namespace; reads
+      given such an id return the port's "missing" value instead.
     """
 
     async def get_contact(self, contact_id: str) -> Contact | None: ...

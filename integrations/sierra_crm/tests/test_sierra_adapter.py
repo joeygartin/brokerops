@@ -8,7 +8,7 @@ import httpx
 import pytest
 
 from brokerops_core.models.contact import ContactCreate
-from brokerops_sierra_crm.adapter import SierraCRMAdapter
+from brokerops_sierra_crm.adapter import SierraApiError, SierraCRMAdapter
 from brokerops_sierra_crm.stub import (
     STUB_TASK_ANCHOR_LEAD_ID,
     STUB_TASK_ASSIGNEE_ID,
@@ -16,7 +16,7 @@ from brokerops_sierra_crm.stub import (
 )
 
 
-def _adapter() -> SierraCRMAdapter:
+def _adapter(anchor_lead_id: str = STUB_TASK_ANCHOR_LEAD_ID) -> SierraCRMAdapter:
     transport = httpx.ASGITransport(app=create_stub_app())
     client = httpx.AsyncClient(
         transport=transport,
@@ -28,7 +28,7 @@ def _adapter() -> SierraCRMAdapter:
         base_url="http://sierra.test",
         client=client,
         task_assignee_id=STUB_TASK_ASSIGNEE_ID,
-        task_anchor_lead_id=STUB_TASK_ANCHOR_LEAD_ID,
+        task_anchor_lead_id=anchor_lead_id,
     )
 
 
@@ -171,8 +171,96 @@ async def test_log_call_journals_as_note(adapter: SierraCRMAdapter) -> None:
     assert "Wants a second showing" in message
 
 
-async def test_unknown_lead_writes_surface_as_http_errors(adapter: SierraCRMAdapter) -> None:
-    with pytest.raises(httpx.HTTPStatusError):
+async def test_unknown_lead_writes_carry_the_vendor_error_message(
+    adapter: SierraCRMAdapter,
+) -> None:
+    # Non-2xx failures raise SierraApiError carrying Sierra's errorMessage, so
+    # audit failure records keep the vendor's reason instead of a bare status.
+    with pytest.raises(SierraApiError, match="Lead not found") as excinfo:
         await adapter.add_note("999999", "s", "b")
-    with pytest.raises(httpx.HTTPStatusError):
+    assert excinfo.value.status_code == 404
+    assert excinfo.value.error_message == "Lead not found"
+    with pytest.raises(SierraApiError, match="Lead not found"):
         await adapter.create_task("Task", due_date=date(2026, 7, 10), contact_id="999999")
+
+
+async def test_http_200_with_success_false_fails_loud() -> None:
+    # Belt-and-suspenders for envelope drift: an OK status whose body says
+    # success:false must not die with a KeyError — it raises with the reason.
+    def respond(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"success": False, "errorMessage": "Lead is archived"})
+
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(respond), base_url="http://sierra.test"
+    )
+    adapter = SierraCRMAdapter(
+        api_key="k",
+        base_url="http://sierra.test",
+        client=client,
+        task_assignee_id=STUB_TASK_ASSIGNEE_ID,
+        task_anchor_lead_id=STUB_TASK_ANCHOR_LEAD_ID,
+    )
+    with pytest.raises(SierraApiError, match="Lead is archived") as excinfo:
+        await adapter.add_note("501", "s", "b")
+    assert excinfo.value.status_code == 200
+
+
+@pytest.mark.parametrize(
+    "hostile_id",
+    [
+        "../admin/users?x=",
+        "501/../../admin",
+        "501?admin=1",
+        "501#frag",
+        "leads",
+        "",
+    ],
+)
+async def test_writes_reject_ids_that_cannot_name_a_lead(
+    adapter: SierraCRMAdapter, hostile_id: str
+) -> None:
+    # Port-level ids arrive from workflow state and MCP tool args; a crafted
+    # "id" must never rewrite the request path (the Sierra-ApiKey header rides
+    # on every request). Only digits or an email may reach a URL.
+    with pytest.raises(ValueError, match="not a Sierra lead id"):
+        await adapter.add_note(hostile_id, "s", "b")
+    with pytest.raises(ValueError, match="not a Sierra lead id"):
+        await adapter.log_call(hostile_id, outcome="positive")
+    with pytest.raises(ValueError, match="not a Sierra lead id"):
+        await adapter.create_task("Task", due_date=date(2026, 7, 10), contact_id=hostile_id)
+
+
+async def test_reads_treat_malformed_ids_as_missing(adapter: SierraCRMAdapter) -> None:
+    # Reads keep the port's "missing → None" semantics: a value that can't
+    # name a Sierra lead names nothing, and no request is sent for it.
+    sent: list[str] = []
+
+    async def capture(request: httpx.Request) -> None:
+        sent.append(request.url.path)
+
+    adapter._client.event_hooks["request"].append(capture)
+    assert await adapter.get_contact("../admin/users?x=") is None
+    assert sent == []
+
+
+async def test_email_lead_ids_are_url_encoded(adapter: SierraCRMAdapter) -> None:
+    # Sierra legitimately addresses leads by email; the segment is encoded
+    # (Sierra's own docs call for it), never interpolated raw.
+    captured: list[bytes] = []
+
+    async def capture(request: httpx.Request) -> None:
+        captured.append(request.url.raw_path)
+
+    adapter._client.event_hooks["request"].append(capture)
+    note_id = await adapter.add_note("sam.okafor@example.test", "s", "b")
+    assert note_id
+    assert captured[0] == b"/leads/sam.okafor%40example.test/note"
+
+
+async def test_anchor_lead_misconfig_is_named_in_the_error() -> None:
+    # A 404 on the anchored (contact-less) task write is a deploy misconfig,
+    # not a caller bug — the error names the config knob to fix.
+    adapter = _adapter(anchor_lead_id="999999")
+    with pytest.raises(SierraApiError, match="SIERRA_TASK_ANCHOR_LEAD_ID") as excinfo:
+        await adapter.create_task("Order yard sign", due_date=date(2026, 7, 10))
+    assert "999999" in str(excinfo.value)

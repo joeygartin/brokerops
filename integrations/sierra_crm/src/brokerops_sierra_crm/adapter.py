@@ -21,16 +21,49 @@ Vendor constraints the port absorbs (ADR-0015):
   here (unlike FollowUpBoss, whose limits are documented and enforced).
 """
 
+import re
 import secrets
 from collections.abc import Mapping
 from datetime import date
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
 from brokerops_core.models.contact import Contact, ContactCreate, CrmTask
 
 SIERRA_API_BASE = "https://api.sierrainteractivedev.com"
+
+# Sierra addresses a lead by numeric id or email — nothing else may reach a
+# path. A permissive email shape (no slash/whitespace/extra @) is enough here:
+# the goal is rejecting path/query injection, not RFC 5322 validation.
+_EMAIL_SEGMENT = re.compile(r"^[^@/\\?#\s]+@[^@/\\?#\s]+\.[^@/\\?#\s]+$")
+
+
+class SierraApiError(RuntimeError):
+    """A Sierra API call failed. Carries the vendor's documented failure
+    envelope (``errorMessage``) so audit failure records keep the reason."""
+
+    def __init__(self, status_code: int, message: str) -> None:
+        super().__init__(f"Sierra API error {status_code}: {message}")
+        self.status_code = status_code
+        self.error_message = message
+
+
+def _lead_segment(value: str) -> str:
+    """Validate + encode a ``{leadIdOrEmail}`` URL segment.
+
+    Port-level ids arrive from workflow state and MCP tool args, so they are
+    untrusted: interpolating them raw would let a crafted "id" rewrite the
+    request path (with the Sierra-ApiKey header attached). Only Sierra's two
+    documented lead addresses pass — a numeric id, or an email (URL-encoded,
+    as Sierra's own docs require).
+    """
+    if value.isdigit():
+        return value
+    if _EMAIL_SEGMENT.match(value):
+        return quote(value, safe="")
+    raise ValueError(f"not a Sierra lead id or email: {value!r}")
 
 
 def contact_from_sierra(lead: Mapping[str, Any]) -> Contact:
@@ -63,11 +96,30 @@ class SierraCRMAdapter:
 
     @staticmethod
     def _data(response: httpx.Response) -> Any:
-        response.raise_for_status()
-        return response.json()["data"]
+        """Unwrap Sierra's documented envelope; fail loud with the vendor's reason.
+
+        Both documented failure shapes raise SierraApiError carrying
+        ``errorMessage``: a non-2xx status, and the belt-and-suspenders case of
+        an HTTP 200 whose body says ``"success": false``.
+        """
+        try:
+            body: Any = response.json()
+        except ValueError:
+            body = None
+        envelope: dict[str, Any] = body if isinstance(body, dict) else {}
+        if response.status_code >= 300 or envelope.get("success") is not True:
+            message = str(envelope.get("errorMessage") or f"HTTP {response.status_code}")
+            raise SierraApiError(response.status_code, message)
+        return envelope["data"]
 
     async def get_contact(self, contact_id: str) -> Contact | None:
-        response = await self._client.get(f"/leads/get/{contact_id}")
+        try:
+            segment = _lead_segment(contact_id)
+        except ValueError:
+            # A value that can't name a Sierra lead names nothing: reads keep
+            # the port's "missing → None" semantics (writes fail loud instead).
+            return None
+        response = await self._client.get(f"/leads/get/{segment}")
         if response.status_code == 404:
             return None
         return contact_from_sierra(self._data(response))
@@ -107,7 +159,9 @@ class SierraCRMAdapter:
     async def add_note(self, contact_id: str, subject: str, body: str) -> str:
         # Sierra notes have no subject field; fold it into the message.
         message = f"{subject}\n\n{body}" if subject else body
-        response = await self._client.post(f"/leads/{contact_id}/note", json={"message": message})
+        response = await self._client.post(
+            f"/leads/{_lead_segment(contact_id)}/note", json={"message": message}
+        )
         return str(self._data(response)["id"])
 
     async def create_task(
@@ -120,8 +174,19 @@ class SierraCRMAdapter:
             "taskType": "Other",
             "contents": name,
         }
-        response = await self._client.post(f"/leads/{lead_id}/task", json=payload)
-        body = self._data(response)
+        response = await self._client.post(f"/leads/{_lead_segment(lead_id)}/task", json=payload)
+        try:
+            body = self._data(response)
+        except SierraApiError as exc:
+            if contact_id is None and exc.status_code == 404:
+                # The anchor lead is deploy config; name it so the misconfig is
+                # operator-diagnosable (the audit record only shows contact_id=None).
+                raise SierraApiError(
+                    404,
+                    f"task anchor lead {self._task_anchor_lead_id!r} not found — "
+                    "check SIERRA_TASK_ANCHOR_LEAD_ID",
+                ) from exc
+            raise
         # contact_id echoes the caller's value: the anchor lead is deploy
         # plumbing, not task semantics (ADR-0015).
         return CrmTask(id=str(body["id"]), name=name, due_date=due_date, contact_id=contact_id)
@@ -134,5 +199,7 @@ class SierraCRMAdapter:
         message = f"Call log — outcome: {outcome}; duration: {duration_seconds}s"
         if note:
             message = f"{message}\n\n{note}"
-        response = await self._client.post(f"/leads/{contact_id}/note", json={"message": message})
+        response = await self._client.post(
+            f"/leads/{_lead_segment(contact_id)}/note", json={"message": message}
+        )
         return str(self._data(response)["id"])

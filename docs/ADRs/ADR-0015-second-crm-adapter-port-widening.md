@@ -74,10 +74,19 @@ not with per-adapter special-casing in workflows or services.
 
 5. **Vendor-minimum validation is a declared port error.** Sierra requires an email
    (and a password) to create a lead; FUB does not. The port contract declares that
-   adapters raise `ValueError` for drafts below the vendor's documented minimum, so the
-   failure mode is uniform and pre-HTTP. The Sierra adapter generates the required
-   throwaway password itself and suppresses the registration email — lead-site login is
-   not brokerops's concern.
+   adapters raise `ValueError` for drafts below the vendor's documented minimum — and
+   for write ids that cannot name a record in the vendor's namespace — so the failure
+   mode is uniform and pre-HTTP. The Sierra adapter generates the required throwaway
+   password itself and suppresses the registration email — lead-site login is not
+   brokerops's concern.
+
+   Port-level ids arrive from workflow state and MCP tool args, so they are untrusted
+   input to a URL: the Sierra adapter validates every `{leadIdOrEmail}` path segment
+   against Sierra's two documented lead addresses (numeric id, or email — URL-encoded,
+   as Sierra's own docs require) before it touches a path, so a crafted "id" can never
+   rewrite the request path with the `Sierra-ApiKey` header attached. Writes with any
+   other value raise `ValueError`; reads keep the port's "missing → None" semantics (a
+   value that can't name a lead names nothing, and no request is sent).
 
 6. **`RecordingCRM` takes an `integration` name.** The audit-ledger wrapper hardcoded
    `"followupboss"` into every mutation record; with two vendors that stopped being
@@ -101,8 +110,12 @@ not with per-adapter special-casing in workflows or services.
   vendor documents limits.
 - **The `{"success", "data"}/errorMessage` envelope and `Sierra-ApiKey` auth** are
   Sierra shapes that never leave the integration package, exactly like FUB's basic-auth
-  and payload shapes. HTTP failures surface as `httpx.HTTPStatusError` from both
-  adapters.
+  and payload shapes. The Sierra adapter parses the envelope on every response and
+  raises `SierraApiError` carrying the vendor's `errorMessage` — for non-2xx statuses
+  and for the drift case of an HTTP 200 whose body says `"success": false` — so audit
+  failure records keep the vendor's reason. A 404 on the *anchored* (contact-less) task
+  write is re-raised naming `SIERRA_TASK_ANCHOR_LEAD_ID`, because that is a deploy
+  misconfiguration, not a caller bug.
 - **Workflow state keys** (e.g. `fub_task_ids`) were not renamed — they are workflow
   output vocabulary, not port surface, and renaming them is frontend/e2e churn with no
   port meaning. Candidate for a later cleanup.
@@ -113,7 +126,10 @@ not with per-adapter special-casing in workflows or services.
 (CRMPort over documented REST shapes), `stub.py` (recorded-shape double with synthetic
 seed leads, enforcing Sierra's documented required fields and failure envelope so
 contract tests catch payload drift), `mcp_server.py` (the same six tools over stdio,
-`uv run mcp-server-sierra`).
+`uv run mcp-server-sierra`). The MCP server mirrors the api wiring's fail-loud posture:
+against the real API host, `SIERRA_API_KEY` / `SIERRA_TASK_ASSIGNEE_ID` /
+`SIERRA_TASK_ANCHOR_LEAD_ID` must all be explicit; the stub's seeded defaults apply
+only when `SIERRA_BASE_URL` points at a stub endpoint.
 
 ## Proof
 

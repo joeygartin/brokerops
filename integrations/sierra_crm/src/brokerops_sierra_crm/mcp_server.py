@@ -2,8 +2,11 @@
 
 Runs standalone over stdio (`uv run mcp-server-sierra`); points at any
 Sierra-shaped endpoint via SIERRA_BASE_URL (real API by default, stub in demo
-mode). Task writes need SIERRA_TASK_ASSIGNEE_ID and SIERRA_TASK_ANCHOR_LEAD_ID
-(see adapter — Sierra tasks are always assigned and lead-attached).
+mode). Against the real API host, the API credential and the task assignee and
+anchor settings must all be explicit — fail-loud, mirroring the api wiring
+(ADR-0015): stub defaults must never silently write tasks onto whatever lead
+their id happens to name in a real account. Pointing SIERRA_BASE_URL at a stub
+keeps the stub's seeded defaults.
 """
 
 import os
@@ -19,10 +22,29 @@ from brokerops_sierra_crm.stub import STUB_TASK_ANCHOR_LEAD_ID, STUB_TASK_ASSIGN
 mcp = FastMCP("sierra")
 
 
+def _require_env(name: str) -> str:
+    # Same posture as the api wiring: "unset" is the Terraform placeholder for
+    # a secret that was never pushed — the same misconfiguration as absent.
+    value = os.environ.get(name, "")
+    if not value or value == "unset":
+        raise RuntimeError(f"{name} is required when SIERRA_BASE_URL points at the real Sierra API")
+    return value
+
+
 def _adapter() -> SierraCRMAdapter:
+    base_url = os.environ.get("SIERRA_BASE_URL", SIERRA_API_BASE)
+    if base_url == SIERRA_API_BASE:
+        return SierraCRMAdapter(
+            api_key=_require_env("SIERRA_API_KEY"),
+            base_url=base_url,
+            task_assignee_id=int(_require_env("SIERRA_TASK_ASSIGNEE_ID")),
+            task_anchor_lead_id=_require_env("SIERRA_TASK_ANCHOR_LEAD_ID"),
+        )
+    # A non-default base URL is a stub/demo endpoint; the stub's seeded
+    # assignee/anchor are safe defaults there and only there.
     return SierraCRMAdapter(
         api_key=os.environ.get("SIERRA_API_KEY", ""),
-        base_url=os.environ.get("SIERRA_BASE_URL", SIERRA_API_BASE),
+        base_url=base_url,
         task_assignee_id=int(os.environ.get("SIERRA_TASK_ASSIGNEE_ID", str(STUB_TASK_ASSIGNEE_ID))),
         task_anchor_lead_id=os.environ.get("SIERRA_TASK_ANCHOR_LEAD_ID", STUB_TASK_ANCHOR_LEAD_ID),
     )
