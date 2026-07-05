@@ -3,7 +3,7 @@ MessageStore, and the deterministic replay identity within a run (ADR-0015)."""
 
 import pytest
 
-from brokerops_core.models.message import Message, MessageChannel, MessageStatus
+from brokerops_core.models.message import STATUS_RANK, Message, MessageChannel, MessageStatus
 from brokerops_core.models.message_templates import TemplateParamError, UnknownTemplateError
 from brokerops_core.services.audit import AuditContext, audit_scope
 from brokerops_core.services.message_send import MessageSendService
@@ -45,6 +45,17 @@ class DictMessageStore:
 
     async def list_messages(self, contact_id: str | None = None, limit: int = 100) -> list[Message]:
         return list(self.rows.values())[:limit]
+
+    async def advance_message_status(
+        self, message_id: str, status: MessageStatus
+    ) -> Message | None:
+        row = self.rows.get(message_id)
+        if row is None:
+            return None
+        if STATUS_RANK[status] > STATUS_RANK[row.status]:
+            row = row.model_copy(update={"status": status})
+            self.rows[message_id] = row
+        return row
 
 
 def _service(

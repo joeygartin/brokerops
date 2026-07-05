@@ -39,6 +39,21 @@ from brokerops_core.services.idempotency import idempotency_key
 _SEND_TOOL = {MessageChannel.EMAIL: "send_email", MessageChannel.SMS: "send_sms"}
 
 
+class UnknownOutboundMessageError(LookupError):
+    """A decision named an `outbound_messages` row that does not exist (BOP-037).
+
+    A *named* domain error (not a bare assert/LookupError) so the gate/send
+    nodes in both engines and the API routes can map a dangling message_id to a
+    clean client error instead of a 500 — and so the check survives `python -O`,
+    which strips asserts. Subclasses LookupError, so existing catch sites keep
+    working.
+    """
+
+    def __init__(self, message_id: str) -> None:
+        super().__init__(f"no outbound message {message_id!r}")
+        self.message_id = message_id
+
+
 def _message_id(draft: Message) -> str:
     context = current_audit_context()
     if context is None or not context.workflow_run_id:
@@ -257,7 +272,7 @@ class MessageSendService:
             )
         row = await self._store.get_message(message_id)
         if row is None:
-            raise LookupError(f"no outbound message {message_id!r} to send")
+            raise UnknownOutboundMessageError(message_id)
         if row.status not in (MessageStatus.PENDING_APPROVAL, MessageStatus.FAILED):
             return row
         port = self._port_for(row.channel)
@@ -295,7 +310,7 @@ class MessageSendService:
         """
         row = await self._store.get_message(message_id)
         if row is None:
-            raise LookupError(f"no outbound message {message_id!r} to reject")
+            raise UnknownOutboundMessageError(message_id)
         if row.status is not MessageStatus.PENDING_APPROVAL:
             return row
         rejected = row.model_copy(update={"status": MessageStatus.REJECTED})

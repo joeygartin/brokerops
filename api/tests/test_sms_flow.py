@@ -225,3 +225,39 @@ def test_callback_naming_a_rejected_messages_sid_is_a_clean_noop() -> None:
             "status": "rejected",
         }
         assert client.get("/messages/msg-rejected-1").json()["status"] == "rejected"
+
+
+def test_sms_recipient_must_be_e164_at_the_boundary() -> None:
+    # BOP-037: garbage recipients are a 422 at the boundary — never a billed
+    # provider round-trip that dies as a FAILED row.
+    with TestClient(app) as client:
+        for bad in ("5551230101", "+05551230101", "not-a-number", "+1 555 123 0101", "+"):
+            response = client.post("/messages/send", json={**PAYLOAD, "recipient": bad})
+            assert response.status_code == 422, bad
+            assert "E.164" in response.text
+        # email recipients are untouched by the rule
+        ok = client.post(
+            "/messages/send",
+            json={
+                "channel": "email",
+                "recipient": "sam@example.com",
+                "template": "showing_followup:v1",
+                "params": PAYLOAD["params"],
+            },
+        )
+        assert ok.status_code == 201
+
+
+def test_rank_equal_callback_never_overwrites_a_terminal_status() -> None:
+    # BOP-037 weave for the conditional store transition: DELIVERED and FAILED
+    # share a rank, so whichever lands first wins and the other is a clean
+    # no-op that reports the row's actual status.
+    with TestClient(app) as client:
+        message = _send_one(client, "req-sms-race-1")
+        sid = message["provider_message_id"]
+        first = _signed_callback(client, {"MessageSid": sid, "MessageStatus": "delivered"})
+        assert first.json()["status"] == "delivered"
+        second = _signed_callback(client, {"MessageSid": sid, "MessageStatus": "failed"})
+        assert second.status_code == 200
+        assert second.json() == {"processed": True, "id": message["id"], "status": "delivered"}
+        assert client.get(f"/messages/{message['id']}").json()["status"] == "delivered"

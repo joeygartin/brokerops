@@ -21,7 +21,7 @@ from brokerops_core.models.call import CallRecord
 from brokerops_core.models.contact import Contact, ContactCreate, CrmTask
 from brokerops_core.models.feedback import ShowingFeedback
 from brokerops_core.models.listing import Listing, ListingMedia, ListingQuery, ListingStatus
-from brokerops_core.models.message import Message
+from brokerops_core.models.message import STATUS_RANK, Message, MessageStatus
 from brokerops_core.models.milestone import Milestone
 from brokerops_core.models.transaction import Transaction
 from brokerops_core.ports.transactions import TransactionAlreadyExists
@@ -214,6 +214,17 @@ class DictMessageStore:
 
     async def list_messages(self, contact_id: str | None = None, limit: int = 100) -> list[Message]:
         return list(self.rows.values())[:limit]
+
+    async def advance_message_status(
+        self, message_id: str, status: MessageStatus
+    ) -> Message | None:
+        row = self.rows.get(message_id)
+        if row is None:
+            return None
+        if STATUS_RANK[status] > STATUS_RANK[row.status]:
+            row = row.model_copy(update={"status": status})
+            self.rows[message_id] = row
+        return row
 
 
 def make_message_service() -> tuple[MessageSendService, FakeEmail, DictMessageStore]:

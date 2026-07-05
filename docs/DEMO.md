@@ -64,9 +64,12 @@ state), and approving it resumes the workflow in the new process.
    exactly your text sends through the email provider (watch
    `docker compose logs api` for the stub's printout) and lands in the
    `outbound_messages` history and the audit ledger.
-5. Click **Run milestone check** again — note it *skips* transactions rather
-   than stacking duplicate gates while one is pending… and since the
-   milestone is still overdue, a fresh escalation appears at the next level.
+5. Click **Run milestone check** again — gates don't stack, but suppression is
+   *per gate kind* and only while that kind's card is still **pending**: a
+   pending escalation skips the transaction's run entirely, while a pending
+   drafted email suppresses only the email tail. You decided both cards in
+   steps 3–4, so this rerun produces a **fresh escalation at the next level**
+   (the milestone is still overdue) *and* a **second drafted reminder email**.
 
 ## 3. Voice feedback call — webhook-driven workflow (1 min)
 

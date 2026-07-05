@@ -6,8 +6,14 @@ from datetime import date, timedelta
 
 import pytest
 
+from pydantic import ValidationError
+
 from brokerops_core.models.contact import Contact
-from brokerops_core.models.drafting import DraftContext
+from brokerops_core.models.drafting import (
+    EDITED_BODY_MAX_CHARS,
+    DraftContext,
+    EditedMessagePayload,
+)
 from brokerops_core.models.message import STATUS_RANK, Message, MessageChannel, MessageStatus
 from brokerops_core.models.message_templates import TemplateParamError, UnknownTemplateError
 from brokerops_core.models.milestone import Milestone, MilestoneType
@@ -18,7 +24,7 @@ from brokerops_core.services.drafting import (
     edited_draft_fields,
     plan_showing_followup_email,
 )
-from brokerops_core.services.message_send import MessageSendService
+from brokerops_core.services.message_send import MessageSendService, UnknownOutboundMessageError
 from brokerops_core.services.milestone_engine import plan_reminder_email
 
 TODAY = date.today()
@@ -54,6 +60,17 @@ class DictMessageStore:
 
     async def list_messages(self, contact_id: str | None = None, limit: int = 100) -> list[Message]:
         return list(self.rows.values())[:limit]
+
+    async def advance_message_status(
+        self, message_id: str, status: MessageStatus
+    ) -> Message | None:
+        row = self.rows.get(message_id)
+        if row is None:
+            return None
+        if STATUS_RANK[status] > STATUS_RANK[row.status]:
+            row = row.model_copy(update={"status": status})
+            self.rows[message_id] = row
+        return row
 
 
 def _service(
@@ -317,6 +334,47 @@ async def test_send_approved_refuses_a_blank_edited_body() -> None:
             await service.send_approved(message.id, body=blank)
     assert email.sent == []
     assert store.rows[message.id].status is MessageStatus.PENDING_APPROVAL
+
+
+async def test_dangling_ids_raise_the_named_domain_error() -> None:
+    # BOP-037: send_approved/mark_rejected raise UnknownOutboundMessageError —
+    # a LookupError subclass (old catch sites keep working) that routes can map
+    # to a clean 409 instead of a 500.
+    service, _, _ = _service()
+    with pytest.raises(UnknownOutboundMessageError) as sent_exc:
+        await service.send_approved("missing-id")
+    assert sent_exc.value.message_id == "missing-id"
+    assert isinstance(sent_exc.value, LookupError)
+    with pytest.raises(UnknownOutboundMessageError):
+        await service.mark_rejected("missing-id")
+
+
+def test_edited_message_payload_accepts_a_plain_body_edit() -> None:
+    # The boundary shape of an approve-outbound-message decision's edits (BOP-037).
+    payload = EditedMessagePayload.model_validate({"body": "Edited before send.\nThanks!"})
+    assert payload.body == "Edited before send.\nThanks!"
+    assert EditedMessagePayload.model_validate({}).body is None  # "{}" stays a no-op
+
+
+def test_edited_message_payload_rejects_subject_entirely() -> None:
+    # Decided policy: the UI never offers a subject edit, so the API admits no
+    # subject field at all — the CRLF header-injection surface does not exist.
+    with pytest.raises(ValidationError):
+        EditedMessagePayload.model_validate({"subject": "Re: tour\r\nBcc: x@evil.test"})
+    with pytest.raises(ValidationError):
+        EditedMessagePayload.model_validate({"subject": "harmless", "body": "hi"})
+
+
+def test_edited_message_payload_rejects_hostile_bodies() -> None:
+    for bad in ("with a \x00 null", "esc\x1b[31m", "bell\x07", "del\x7f"):
+        with pytest.raises(ValidationError, match="control characters"):
+            EditedMessagePayload.model_validate({"body": bad})
+    with pytest.raises(ValidationError, match="blank"):
+        EditedMessagePayload.model_validate({"body": "   \n\t"})
+    with pytest.raises(ValidationError):
+        EditedMessagePayload.model_validate({"body": "x" * (EDITED_BODY_MAX_CHARS + 1)})
+    # \n, \r, \t are legitimate in multiline text and stay allowed.
+    assert EditedMessagePayload.model_validate({"body": "a\r\nb\tc"}).body == "a\r\nb\tc"
 
 
 def test_edited_draft_fields_extracts_edits_and_refuses_blank_bodies() -> None:

@@ -11,6 +11,7 @@ keeps the stub's seeded defaults.
 
 import os
 from datetime import date
+from functools import lru_cache
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
@@ -31,22 +32,45 @@ def _require_env(name: str) -> str:
     return value
 
 
+def _is_real_api(base_url: str) -> bool:
+    # Normalize before the real-vs-stub compare (BOP-037): a trailing-slash or
+    # case variant of the real host must take the real-API branch — never the
+    # stub one, whose seeded assignee/anchor ids would silently write tasks
+    # onto whatever lead they happen to name in a real account.
+    return base_url.strip().rstrip("/").lower() == SIERRA_API_BASE
+
+
+@lru_cache(maxsize=None)
+def _cached_adapter(
+    api_key: str, base_url: str, task_assignee_id: int, task_anchor_lead_id: str
+) -> SierraCRMAdapter:
+    # Built once per config and reused (BOP-037): a long-lived MCP server must
+    # not leak one unclosed httpx.AsyncClient per tool call. Env is fixed for
+    # the process lifetime, so this is one adapter in practice.
+    return SierraCRMAdapter(
+        api_key=api_key,
+        base_url=base_url,
+        task_assignee_id=task_assignee_id,
+        task_anchor_lead_id=task_anchor_lead_id,
+    )
+
+
 def _adapter() -> SierraCRMAdapter:
     base_url = os.environ.get("SIERRA_BASE_URL", SIERRA_API_BASE)
-    if base_url == SIERRA_API_BASE:
-        return SierraCRMAdapter(
-            api_key=_require_env("SIERRA_API_KEY"),
-            base_url=base_url,
-            task_assignee_id=int(_require_env("SIERRA_TASK_ASSIGNEE_ID")),
-            task_anchor_lead_id=_require_env("SIERRA_TASK_ANCHOR_LEAD_ID"),
+    if _is_real_api(base_url):
+        return _cached_adapter(
+            _require_env("SIERRA_API_KEY"),
+            SIERRA_API_BASE,
+            int(_require_env("SIERRA_TASK_ASSIGNEE_ID")),
+            _require_env("SIERRA_TASK_ANCHOR_LEAD_ID"),
         )
     # A non-default base URL is a stub/demo endpoint; the stub's seeded
     # assignee/anchor are safe defaults there and only there.
-    return SierraCRMAdapter(
-        api_key=os.environ.get("SIERRA_API_KEY", ""),
-        base_url=base_url,
-        task_assignee_id=int(os.environ.get("SIERRA_TASK_ASSIGNEE_ID", str(STUB_TASK_ASSIGNEE_ID))),
-        task_anchor_lead_id=os.environ.get("SIERRA_TASK_ANCHOR_LEAD_ID", STUB_TASK_ANCHOR_LEAD_ID),
+    return _cached_adapter(
+        os.environ.get("SIERRA_API_KEY", ""),
+        base_url,
+        int(os.environ.get("SIERRA_TASK_ASSIGNEE_ID", str(STUB_TASK_ASSIGNEE_ID))),
+        os.environ.get("SIERRA_TASK_ANCHOR_LEAD_ID", STUB_TASK_ANCHOR_LEAD_ID),
     )
 
 

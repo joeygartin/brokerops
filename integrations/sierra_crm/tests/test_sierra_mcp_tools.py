@@ -93,3 +93,28 @@ def test_stub_base_url_keeps_stub_defaults(monkeypatch: pytest.MonkeyPatch) -> N
     _clear_sierra_env(monkeypatch)
     monkeypatch.setenv("SIERRA_BASE_URL", "http://localhost:8004")
     assert isinstance(build_env_adapter(), SierraCRMAdapter)
+
+
+def test_real_host_url_variants_still_take_the_real_branch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # BOP-037: a trailing-slash or case variant of the real host must not
+    # silently select the stub branch, whose seeded assignee/anchor ids would
+    # write tasks onto whatever lead they name in a real account.
+    _clear_sierra_env(monkeypatch)
+    for variant in (
+        "https://api.sierrainteractivedev.com/",
+        "HTTPS://API.SIERRAINTERACTIVEDEV.COM",
+        " https://api.sierrainteractivedev.com ",
+    ):
+        monkeypatch.setenv("SIERRA_BASE_URL", variant)
+        with pytest.raises(RuntimeError, match="SIERRA_API_KEY"):
+            build_env_adapter()
+
+
+def test_adapter_is_built_once_and_reused(monkeypatch: pytest.MonkeyPatch) -> None:
+    # BOP-037: a long-lived MCP server must not leak one unclosed AsyncClient
+    # per tool call — the same config yields the same adapter instance.
+    _clear_sierra_env(monkeypatch)
+    monkeypatch.setenv("SIERRA_BASE_URL", "http://sierra-cache.test")
+    assert build_env_adapter() is build_env_adapter()

@@ -8,6 +8,7 @@ API flow additionally through the audit/idempotency/tenant seam.
 """
 
 import os
+from functools import lru_cache
 from uuid import uuid4
 
 from mcp.server.fastmcp import FastMCP
@@ -27,13 +28,34 @@ def _require_env(name: str) -> str:
     return value
 
 
-def _adapter() -> SESEmailAdapter:
+@lru_cache(maxsize=None)
+def _cached_adapter(
+    access_key_id: str,
+    secret_access_key: str,
+    from_address: str,
+    region: str,
+    base_url: str | None,
+) -> SESEmailAdapter:
+    # Built once per config and reused (BOP-037): a long-lived MCP server must
+    # not leak one unclosed httpx.AsyncClient per tool call. Env is fixed for
+    # the process lifetime, so this is one adapter in practice. (No real-vs-stub
+    # branch to normalize here — SES config is fail-loud on every path.)
     return SESEmailAdapter(
-        access_key_id=_require_env("SES_ACCESS_KEY_ID"),
-        secret_access_key=_require_env("SES_SECRET_ACCESS_KEY"),
-        from_address=_require_env("SES_FROM_ADDRESS"),
-        region=os.environ.get("SES_REGION", DEFAULT_REGION),
-        base_url=os.environ.get("SES_BASE_URL") or None,
+        access_key_id=access_key_id,
+        secret_access_key=secret_access_key,
+        from_address=from_address,
+        region=region,
+        base_url=base_url,
+    )
+
+
+def _adapter() -> SESEmailAdapter:
+    return _cached_adapter(
+        _require_env("SES_ACCESS_KEY_ID"),
+        _require_env("SES_SECRET_ACCESS_KEY"),
+        _require_env("SES_FROM_ADDRESS"),
+        os.environ.get("SES_REGION", DEFAULT_REGION),
+        os.environ.get("SES_BASE_URL") or None,
     )
 
 

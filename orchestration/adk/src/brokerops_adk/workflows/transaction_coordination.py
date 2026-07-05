@@ -25,7 +25,7 @@ from brokerops_core.models.workflow_state import ApprovalOutcome, TransactionCoo
 from brokerops_core.ports.crm import CRMPort
 from brokerops_core.ports.transactions import TransactionStore
 from brokerops_core.services.drafting import edited_draft_fields
-from brokerops_core.services.message_send import MessageSendService
+from brokerops_core.services.message_send import MessageSendService, UnknownOutboundMessageError
 from brokerops_core.services.milestone_engine import (
     MilestoneClass,
     assess_milestones,
@@ -131,7 +131,11 @@ def build_transaction_coordination(
         decision: dict[str, Any] | None = ctx.resume_inputs.get(APPROVE_OUTBOUND_MESSAGE)
         if decision is None:
             message = await messages.get_message(reminder_message_id)
-            assert message is not None
+            if message is None:
+                # A named domain error (BOP-037), not an assert: the row vanishing
+                # under the gate must surface as a clean state conflict — and an
+                # assert disappears entirely under `python -O`.
+                raise UnknownOutboundMessageError(reminder_message_id)
             yield request_input(
                 APPROVE_OUTBOUND_MESSAGE,
                 payload={

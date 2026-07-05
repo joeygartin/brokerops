@@ -1,6 +1,7 @@
 from typing import Any
 from uuid import uuid4
 
+import pytest
 from conftest import FakeFeedbackStore, FakeVoice, GraphFakeCRM, make_message_service
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
@@ -9,7 +10,7 @@ from brokerops_core.models.call import CallRecord
 from brokerops_core.models.contact import Contact
 from brokerops_core.models.message import MessageStatus
 from brokerops_core.services.feedback_extraction import DeterministicExtractor
-from brokerops_core.services.message_send import MessageSendService
+from brokerops_core.services.message_send import MessageSendService, UnknownOutboundMessageError
 from brokerops_langgraph.graphs.vapi_followup import build_vapi_followup
 
 HOT_TRANSCRIPT = (
@@ -163,6 +164,25 @@ async def test_rejected_followup_email_sends_nothing() -> None:
     # the feedback + CRM sync from before the gate stand
     assert store.feedback["FB-call-7"].sentiment.value == "negative"
     assert len(crm.notes) == 1
+
+
+async def test_dangling_followup_message_id_raises_the_named_domain_error() -> None:
+    # BOP-037: the gate node re-fetches the draft row on resume; a vanished row
+    # must raise UnknownOutboundMessageError (mappable to a clean 409 upstream),
+    # not an `assert` that AssertionErrors into a 500 — or vanishes under -O.
+    crm, store = _crm_with_contact(), FakeFeedbackStore()
+    messages, email, message_store = make_message_service()
+    graph = _build(crm, store, messages=messages)
+    config = _config(uuid4().hex)
+
+    paused = await graph.ainvoke(_input(COOL_TRANSCRIPT, "call-8"), config)
+    payload = paused["__interrupt__"][0].value
+    del message_store.rows[payload["message_id"]]
+    with pytest.raises(UnknownOutboundMessageError):
+        await graph.ainvoke(
+            Command(resume={"decision": "approved", "decided_by": "demo-operator"}), config
+        )
+    assert email.sent == []
 
 
 async def test_missing_transcript_falls_back_to_voice_port() -> None:

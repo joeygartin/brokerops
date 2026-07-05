@@ -11,7 +11,7 @@ stays untouched; providers implementing this port are selected by EMAIL_PROVIDER
 
 from typing import Protocol
 
-from brokerops_core.models.message import Message
+from brokerops_core.models.message import Message, MessageStatus
 
 
 class EmailPort(Protocol):
@@ -52,6 +52,20 @@ class MessageStore(Protocol):
     async def get_message_by_provider_id(self, provider_message_id: str) -> Message | None:
         """Look up a message by the provider's id — how a delivery-status webhook
         (which only knows the provider's MessageSid) finds its row (BOP-018)."""
+        ...
+
+    async def advance_message_status(
+        self, message_id: str, status: MessageStatus
+    ) -> Message | None:
+        """Conditionally move the row's lifecycle *forward* to `status` (BOP-037).
+
+        The transition applies only when the row's current STATUS_RANK is strictly
+        below `status`'s, checked-and-written atomically at the store — so two
+        racing delivery callbacks can't both pass a read-side rank guard and
+        last-writer-win over each other (or clobber concurrent field changes the
+        way a full-row save would). Returns the row as it stands afterwards
+        (advanced or left untouched), or None when no such row exists.
+        """
         ...
 
     async def list_messages(

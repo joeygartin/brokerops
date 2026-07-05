@@ -59,3 +59,13 @@ def test_the_terraform_placeholder_counts_as_missing(monkeypatch: pytest.MonkeyP
     monkeypatch.setenv("SES_FROM_ADDRESS", "fake-value")
     with pytest.raises(RuntimeError, match="SES_SECRET_ACCESS_KEY"):
         mcp_server._adapter()
+
+
+def test_adapter_is_built_once_and_reused(monkeypatch: pytest.MonkeyPatch) -> None:
+    # BOP-037: a long-lived MCP server must not leak one unclosed AsyncClient
+    # per tool call — the same config yields the same adapter instance. (SES has
+    # no real-vs-stub branch to normalize; config is fail-loud on every path.)
+    for name in ("SES_ACCESS_KEY_ID", "SES_SECRET_ACCESS_KEY", "SES_FROM_ADDRESS"):
+        monkeypatch.setenv(name, "fake-cache-value")
+    monkeypatch.setenv("SES_BASE_URL", "http://ses-cache.test")
+    assert mcp_server._adapter() is mcp_server._adapter()

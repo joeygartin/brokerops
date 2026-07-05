@@ -25,7 +25,7 @@ from brokerops_core.ports.idempotency import IdempotencyStore as IdempotencyStor
 from brokerops_core.models.document import Document
 from brokerops_core.models.feedback import ShowingFeedback
 from brokerops_core.models.idempotency import ClaimStatus, IdempotencyClaim
-from brokerops_core.models.message import Message
+from brokerops_core.models.message import STATUS_RANK, Message, MessageStatus
 from brokerops_core.models.milestone import Milestone
 from brokerops_core.models.mutation import MutationRecord
 from brokerops_core.models.transaction import ACTIVE_STAGES, Transaction
@@ -658,6 +658,29 @@ class SqlMessageStore:
             rows = result.all()
         return [Message.model_validate(dict(row._mapping)) for row in rows]
 
+    async def advance_message_status(
+        self, message_id: str, status: MessageStatus
+    ) -> Message | None:
+        # Forward-only, decided at the database (BOP-037): the UPDATE matches only
+        # rows still at a strictly lower rank, so two racing delivery callbacks
+        # can't both win — and only the status column is written, never a stale
+        # full-row snapshot.
+        lower_ranked = [s.value for s in MessageStatus if STATUS_RANK[s] < STATUS_RANK[status]]
+        async with self._engine.begin() as conn:
+            await conn.execute(
+                outbound_messages.update()
+                .where(
+                    outbound_messages.c.id == message_id,
+                    outbound_messages.c.status.in_(lower_ranked),
+                )
+                .values(status=status.value)
+            )
+            result = await conn.execute(
+                outbound_messages.select().where(outbound_messages.c.id == message_id)
+            )
+            row = result.first()
+        return Message.model_validate(dict(row._mapping)) if row is not None else None
+
 
 class InMemoryMessageStore:
     def __init__(self) -> None:
@@ -684,6 +707,19 @@ class InMemoryMessageStore:
         epoch = datetime.min.replace(tzinfo=UTC)
         found.sort(key=lambda m: m.created_at or epoch, reverse=True)
         return found[:limit]
+
+    async def advance_message_status(
+        self, message_id: str, status: MessageStatus
+    ) -> Message | None:
+        # Forward-only and atomic under the event loop (no await between the rank
+        # check and the write), mirroring the SQL store's conditional UPDATE.
+        row = self._messages.get(message_id)
+        if row is None:
+            return None
+        if STATUS_RANK[status] > STATUS_RANK[row.status]:
+            row = row.model_copy(update={"status": status})
+            self._messages[message_id] = row
+        return row
 
 
 class InMemoryApprovalRepo:

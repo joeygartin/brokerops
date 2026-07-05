@@ -13,7 +13,11 @@
 # updates@ for business comms). If the business-comms identity must be a
 # different domain from the auth-delivery one, run the script again with that
 # domain — the send-only IAM policies are named per domain and accumulate, so a
-# second run never revokes the first domain's sending rights.
+# second run never revokes the first domain's sending rights. BUT: every run
+# mints a NEW access key and overwrites BOTH Secret Manager secrets, so after a
+# second run any deployed service still holding the previous key id breaks on
+# its next instance start — redeploy both email channels with the new key id
+# (the script prints this warning too).
 #
 # Wraps the per-client SES onboarding: (1) create the SES domain identity with
 # EasyDKIM, (3) create a send-only IAM user scoped to that identity + an access
@@ -170,6 +174,10 @@ if [ "${RC}" -ne 0 ]; then
     echo "ERROR: an access key WAS created but its secrets were not (all) stored." >&2
     echo "       delete the unused key to avoid an orphan:" >&2
     echo "       aws iam delete-access-key --user-name ${IAM_USER} --access-key-id ${ACCESS_KEY_ID}" >&2
+    echo "       NOTE: ${SECRET_NAME} may already hold a NEW version from this run (the" >&2
+    echo "       pushes run in order: SMTP password first, then the API key). A leftover" >&2
+    echo "       new version pairs with the key you are about to delete — after cleanup," >&2
+    echo "       re-run this script so both secrets match one live key, then redeploy." >&2
   else
     echo "ERROR: could not create an access key for ${IAM_USER}." >&2
     echo "       IAM allows max 2 keys per user — delete an unused one and retry:" >&2
@@ -184,6 +192,15 @@ echo "    pushed ${API_SECRET_NAME}"
 cat <<EOF
 
 ==> done. Add the DNS records above, wait for DKIM to verify, then deploy.
+
+!! KEY ROTATION WARNING — if this was a SECOND run for this client (e.g. a
+!! separate business-comms domain): this run minted a NEW access key and
+!! overwrote BOTH Secret Manager secrets (${SECRET_NAME},
+!! ${API_SECRET_NAME}). Deployed services still holding the previous
+!! smtp_username / SES_ACCESS_KEY_ID pair with a secret they can no longer
+!! read and will break on their next instance start. Redeploy BOTH email
+!! channels (magic-link SMTP and EMAIL_PROVIDER=ses) with the new key id
+!! below, then delete the old access key on ${IAM_USER}.
 
 Magic-link delivery (EmailSender, SMTP path):
 

@@ -32,7 +32,7 @@ from brokerops_core.models.approval import ApprovalRequest, ApprovalStatus
 from brokerops_core.models.call import CallRecord
 from brokerops_core.models.document import Document
 from brokerops_core.models.feedback import ShowingFeedback
-from brokerops_core.models.message import Message
+from brokerops_core.models.message import Message, MessageStatus
 from brokerops_core.models.milestone import Milestone
 from brokerops_core.models.transaction import Transaction
 from brokerops_core.ports.approvals import ApprovalRepo
@@ -245,6 +245,21 @@ class ScopedMessageStore:
         ambient = require_tenant()
         rows = await self._inner.list_messages(contact_id, limit)
         return [m for m in rows if not _is_foreign(m.tenant_id, ambient)]
+
+    async def advance_message_status(
+        self, message_id: str, status: MessageStatus
+    ) -> Message | None:
+        # By-id mutation of an existing row: same confinement as save_message's
+        # update branch — a foreign row is denied + audited, never advanced. The
+        # forward-only conditional itself stays atomic in the inner store.
+        ambient = require_tenant()
+        existing = await self._inner.get_message(message_id)
+        if existing is None:
+            return None
+        if _is_foreign(existing.tenant_id, ambient):
+            await self._audit_foreign("advance_message_status", existing.tenant_id, ambient)
+            return None
+        return await self._inner.advance_message_status(message_id, status)
 
     async def _audit_foreign(self, tool: str, attempted: str, bound: str) -> None:
         await record_cross_tenant_attempt(

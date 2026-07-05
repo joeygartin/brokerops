@@ -199,6 +199,27 @@ async def test_blank_edited_body_fails_loudly_instead_of_reverting() -> None:
     assert message_store.rows[payload["message_id"]].status is MessageStatus.PENDING_APPROVAL
 
 
+async def test_dangling_followup_message_id_raises_the_named_domain_error() -> None:
+    # BOP-037: a decided gate whose draft row has vanished must surface the
+    # named UnknownOutboundMessageError (mappable to a clean 409 upstream), not
+    # an AssertionError/bare LookupError 500.
+    import pytest
+
+    from brokerops_core.services.message_send import UnknownOutboundMessageError
+
+    crm, store = _crm_with_contact(), FakeFeedbackStore()
+    messages, email, message_store = make_message_service()
+    engine, _ = make_engine(_workflow(crm, store, messages=messages))
+
+    run = await engine.start(VAPI_FOLLOWUP, _input(COOL_TRANSCRIPT, "call-9"))
+    assert run.approval is not None
+    del message_store.rows[run.approval.payload["message_id"]]
+
+    with pytest.raises(UnknownOutboundMessageError):
+        await engine.decide(run.approval, _decision(ApprovalStatus.APPROVED))
+    assert email.sent == []
+
+
 async def test_missing_transcript_falls_back_to_voice_port() -> None:
     crm, store = GraphFakeCRM(), FakeFeedbackStore()
     voice = FakeVoice(

@@ -1,3 +1,4 @@
+import logging
 import os
 from collections.abc import Callable
 from functools import lru_cache
@@ -38,6 +39,8 @@ from brokerops_followupboss.adapter import FUB_API_BASE, FUBCRMAdapter
 from brokerops_twilio_sms.adapter import TWILIO_API_BASE, TwilioSMSAdapter
 from brokerops_mls_reso.adapter import ResoMLSAdapter
 from brokerops_vapi.adapter import VAPI_API_BASE, VapiVoiceAdapter
+
+logger = logging.getLogger(__name__)
 
 # Sentinel base-URL value: run the integration's stub in-process over an ASGI
 # transport — no separate service, no credentials. This is how a demo client
@@ -333,12 +336,27 @@ def build_sms_port() -> SMSPort:
                 "TWILIO_MESSAGING_SERVICE_SID (the A2P 10DLC sender — see "
                 "docs/A2P_10DLC_ONBOARDING.md)"
             )
+        status_callback_url = os.environ.get("TWILIO_STATUS_CALLBACK_URL", "")
+        if not status_callback_url:
+            # Documented behavior, but silently surprising in production (BOP-037):
+            # no pin means no StatusCallback is requested, so rows stay SENT forever
+            # (delivery tracking is off) — and if console-level webhooks fire anyway
+            # behind a proxy (Cloud Run), the signature is computed over a URL the
+            # app can't reconstruct, so every callback 401s. Diagnosability only;
+            # the deploy still starts.
+            logger.warning(
+                "SMS_PROVIDER='twilio' with TWILIO_STATUS_CALLBACK_URL unset: delivery-status "
+                "callbacks are not requested (messages stay SENT; no DELIVERED/FAILED "
+                "transitions), and behind a proxy any console-configured webhook will fail "
+                "signature validation. Set the pin to the public /webhooks/twilio-sms URL "
+                "to enable delivery tracking."
+            )
         return TwilioSMSAdapter(
             account_sid=account_sid,
             auth_token=auth_token,
             from_number=from_number,
             messaging_service_sid=messaging_service_sid,
-            status_callback_url=os.environ.get("TWILIO_STATUS_CALLBACK_URL", ""),
+            status_callback_url=status_callback_url,
             base_url=os.environ.get("SMS_BASE_URL", TWILIO_API_BASE),
         )
     raise RuntimeError(

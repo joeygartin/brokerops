@@ -11,6 +11,7 @@ additionally through the audit/idempotency/tenant seam.
 """
 
 import os
+from functools import lru_cache
 from uuid import uuid4
 
 from mcp.server.fastmcp import FastMCP
@@ -33,20 +34,36 @@ def _require_env(name: str) -> str:
     return value
 
 
+def _is_real_api(base_url: str) -> bool:
+    # Normalize before the real-vs-stub compare (BOP-037): a trailing-slash or
+    # case variant of the real host must take the real-API branch — never the
+    # stub one, whose placeholder key and synthetic sender must never be used
+    # against api.sendgrid.com.
+    return base_url.strip().rstrip("/").lower() == SENDGRID_API_BASE
+
+
+@lru_cache(maxsize=None)
+def _cached_adapter(api_key: str, from_email: str, base_url: str) -> SendGridEmailAdapter:
+    # Built once per config and reused (BOP-037): a long-lived MCP server must
+    # not leak one unclosed httpx.AsyncClient per tool call. Env is fixed for
+    # the process lifetime, so this is one adapter in practice.
+    return SendGridEmailAdapter(api_key=api_key, from_email=from_email, base_url=base_url)
+
+
 def _adapter() -> SendGridEmailAdapter:
     base_url = os.environ.get("SENDGRID_BASE_URL") or SENDGRID_API_BASE
-    if base_url == SENDGRID_API_BASE:
-        return SendGridEmailAdapter(
-            api_key=_require_env("SENDGRID_API_KEY"),
-            from_email=_require_env("SENDGRID_FROM_EMAIL"),
-            base_url=base_url,
+    if _is_real_api(base_url):
+        return _cached_adapter(
+            _require_env("SENDGRID_API_KEY"),
+            _require_env("SENDGRID_FROM_EMAIL"),
+            SENDGRID_API_BASE,
         )
     # A non-default base URL is a stub/demo endpoint; the stub's key and a
     # synthetic sender are safe defaults there and only there.
-    return SendGridEmailAdapter(
-        api_key=os.environ.get("SENDGRID_API_KEY", STUB_API_KEY),
-        from_email=os.environ.get("SENDGRID_FROM_EMAIL", "demo@example.test"),
-        base_url=base_url,
+    return _cached_adapter(
+        os.environ.get("SENDGRID_API_KEY", STUB_API_KEY),
+        os.environ.get("SENDGRID_FROM_EMAIL", "demo@example.test"),
+        base_url,
     )
 
 

@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
 from brokerops_api.deps import get_message_store, get_workflow_engine
 from brokerops_api.workflows import VAPI_FOLLOWUP, WorkflowEngine
-from brokerops_core.models.message import STATUS_RANK, MessageStatus
+from brokerops_core.models.message import MessageStatus
 from brokerops_core.ports.messaging import MessageStore
 from brokerops_twilio_sms.signature import signature_is_valid
 
@@ -117,9 +117,12 @@ async def twilio_sms_webhook(
         # Unknown sid (or another tenant's — the scoped store resolves those to
         # None). 200 so Twilio doesn't retry a callback we will never match.
         return {"ignored": True, "reason": "unknown MessageSid"}
-    # Callbacks carry no ordering guarantee: only ever move the lifecycle forward,
-    # so a late "sent" can never downgrade a DELIVERED/FAILED row.
-    if STATUS_RANK[status] <= STATUS_RANK[message.status]:
-        return {"processed": True, "id": message.id, "status": message.status.value}
-    await store.save_message(message.model_copy(update={"status": status}))
-    return {"processed": True, "id": message.id, "status": status.value}
+    # Callbacks carry no ordering guarantee: only ever move the lifecycle forward.
+    # The rank check-and-write is atomic AT THE STORE (BOP-037) — a read-side
+    # guard here would let two concurrent callbacks for one sid both pass and
+    # last-writer-win; the conditional transition also writes only the status
+    # column, so it can't clobber concurrent field changes the way the old
+    # full-row save could. A late "sent" still never downgrades DELIVERED/FAILED.
+    row = await store.advance_message_status(message.id, status)
+    final = row if row is not None else message
+    return {"processed": True, "id": message.id, "status": final.status.value}

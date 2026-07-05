@@ -70,6 +70,15 @@ def sigv4_signature(
     Shared by the adapter (signing outbound requests) and the stub (re-deriving
     the signature from the received wire request to verify it) — one
     canonicalization, checked from both sides.
+
+    Guard-rails (BOP-037): this implementation is correct ONLY for the fixed
+    request shape this adapter sends. It does NOT handle query-string
+    canonicalization (the canonical query string is hardcoded empty — a path
+    with a query would sign wrong), multi-value headers, or headers whose
+    values need internal-whitespace folding (each signed header is assumed
+    single-valued and is only edge-trimmed). If you touch this function — or
+    start sending a different request shape through it — re-verify with a
+    manual live send against real SES, not just the stub.
     """
     canonical_headers = "".join(f"{name}:{headers[name].strip()}\n" for name in signed_headers)
     canonical_request = "\n".join(
@@ -174,6 +183,11 @@ def _error_message(response: httpx.Response) -> str:
         detail: Any = response.json()
     except ValueError:
         detail = None
-    if isinstance(detail, dict) and detail.get("message"):
-        return str(detail["message"])
+    if isinstance(detail, dict):
+        # AWS error envelopes are inconsistent about the key's case: SES v2
+        # documents lowercase "message", but several AWS services (and some
+        # gateway-level errors) emit "Message" — accept both (BOP-037).
+        for key in ("message", "Message"):
+            if detail.get(key):
+                return str(detail[key])
     return f"HTTP {response.status_code}"

@@ -95,3 +95,25 @@ def test_non_default_base_url_keeps_permissive_stub_defaults(
     # credentials required there, and only there.
     monkeypatch.setenv("SMS_BASE_URL", "http://localhost:8026")
     assert isinstance(REAL_ADAPTER_FACTORY(), TwilioSMSAdapter)
+
+
+def test_real_host_url_variants_still_take_the_real_branch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # BOP-037: a trailing-slash or case variant of the real host must not
+    # silently select the permissive stub branch with placeholder credentials.
+    for variant in (
+        "https://api.twilio.com/",
+        "HTTPS://API.TWILIO.COM",
+        " https://api.twilio.com ",
+    ):
+        monkeypatch.setenv("SMS_BASE_URL", variant)
+        with pytest.raises(RuntimeError, match="TWILIO_ACCOUNT_SID is required"):
+            REAL_ADAPTER_FACTORY()
+
+
+def test_adapter_is_built_once_and_reused(monkeypatch: pytest.MonkeyPatch) -> None:
+    # BOP-037: a long-lived MCP server must not leak one unclosed AsyncClient
+    # per tool call — the same config yields the same adapter instance.
+    monkeypatch.setenv("SMS_BASE_URL", "http://sms-cache.test")
+    assert REAL_ADAPTER_FACTORY() is REAL_ADAPTER_FACTORY()

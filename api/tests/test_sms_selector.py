@@ -75,3 +75,37 @@ def test_unknown_provider_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SMS_PROVIDER", "carrier-pigeon")
     with pytest.raises(RuntimeError, match="unknown SMS_PROVIDER"):
         build_sms_port()
+
+
+def _configure_real_twilio(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SMS_PROVIDER", "twilio")
+    monkeypatch.setenv("TWILIO_ACCOUNT_SID", "ACreal000000000000000000000000000")
+    monkeypatch.setenv("TWILIO_AUTH_TOKEN", "real-token")
+    monkeypatch.setenv("TWILIO_FROM_NUMBER", "+15005550006")
+
+
+def test_missing_callback_pin_logs_a_startup_warning(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # BOP-037: an unset pin silently disables delivery tracking (rows stay SENT
+    # forever) and 401s console-level callbacks behind a proxy — the deploy
+    # still starts, but the operator gets one loud, greppable line about it.
+    _configure_real_twilio(monkeypatch)
+    with caplog.at_level("WARNING", logger="brokerops_api.deps"):
+        assert isinstance(build_sms_port(), TwilioSMSAdapter)
+    warnings = [r for r in caplog.records if "TWILIO_STATUS_CALLBACK_URL" in r.getMessage()]
+    assert len(warnings) == 1
+    assert warnings[0].levelname == "WARNING"
+    assert "delivery-status callbacks are not requested" in warnings[0].getMessage()
+
+
+def test_configured_callback_pin_logs_no_warning(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    _configure_real_twilio(monkeypatch)
+    monkeypatch.setenv(
+        "TWILIO_STATUS_CALLBACK_URL", "https://api.client.example/webhooks/twilio-sms"
+    )
+    with caplog.at_level("WARNING", logger="brokerops_api.deps"):
+        assert isinstance(build_sms_port(), TwilioSMSAdapter)
+    assert not [r for r in caplog.records if "TWILIO_STATUS_CALLBACK_URL" in r.getMessage()]

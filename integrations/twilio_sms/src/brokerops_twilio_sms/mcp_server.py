@@ -11,6 +11,7 @@ through the API flow additionally through the audit/idempotency/tenant seam.
 """
 
 import os
+from functools import lru_cache
 from uuid import uuid4
 
 from mcp.server.fastmcp import FastMCP
@@ -30,9 +31,36 @@ def _require_env(name: str) -> str:
     return value
 
 
+def _is_real_api(base_url: str) -> bool:
+    # Normalize before the real-vs-stub compare (BOP-037): a trailing-slash or
+    # case variant of the real host must take the real-API branch — never the
+    # permissive stub one with placeholder credentials.
+    return base_url.strip().rstrip("/").lower() == TWILIO_API_BASE
+
+
+@lru_cache(maxsize=None)
+def _cached_adapter(
+    account_sid: str,
+    auth_token: str,
+    from_number: str,
+    messaging_service_sid: str,
+    base_url: str,
+) -> TwilioSMSAdapter:
+    # Built once per config and reused (BOP-037): a long-lived MCP server must
+    # not leak one unclosed httpx.AsyncClient per tool call. Env is fixed for
+    # the process lifetime, so this is one adapter in practice.
+    return TwilioSMSAdapter(
+        account_sid=account_sid,
+        auth_token=auth_token,
+        from_number=from_number,
+        messaging_service_sid=messaging_service_sid,
+        base_url=base_url,
+    )
+
+
 def _adapter() -> TwilioSMSAdapter:
     base_url = os.environ.get("SMS_BASE_URL", TWILIO_API_BASE)
-    if base_url == TWILIO_API_BASE:
+    if _is_real_api(base_url):
         account_sid = _require_env("TWILIO_ACCOUNT_SID")
         auth_token = _require_env("TWILIO_AUTH_TOKEN")
         from_number = os.environ.get("TWILIO_FROM_NUMBER", "")
@@ -44,21 +72,17 @@ def _adapter() -> TwilioSMSAdapter:
                 "TWILIO_FROM_NUMBER or TWILIO_MESSAGING_SERVICE_SID is required when "
                 "SMS_BASE_URL points at the real Twilio API"
             )
-        return TwilioSMSAdapter(
-            account_sid=account_sid,
-            auth_token=auth_token,
-            from_number=from_number,
-            messaging_service_sid=messaging_service_sid,
-            base_url=base_url,
+        return _cached_adapter(
+            account_sid, auth_token, from_number, messaging_service_sid, TWILIO_API_BASE
         )
     # A non-default base URL is a stub/demo endpoint; permissive defaults are
     # safe there and only there.
-    return TwilioSMSAdapter(
-        account_sid=os.environ.get("TWILIO_ACCOUNT_SID", "ACstub00000000000000000000000000"),
-        auth_token=os.environ.get("TWILIO_AUTH_TOKEN", "stub-token"),
-        from_number=os.environ.get("TWILIO_FROM_NUMBER", "+15005550006"),
-        messaging_service_sid=os.environ.get("TWILIO_MESSAGING_SERVICE_SID", ""),
-        base_url=base_url,
+    return _cached_adapter(
+        os.environ.get("TWILIO_ACCOUNT_SID", "ACstub00000000000000000000000000"),
+        os.environ.get("TWILIO_AUTH_TOKEN", "stub-token"),
+        os.environ.get("TWILIO_FROM_NUMBER", "+15005550006"),
+        os.environ.get("TWILIO_MESSAGING_SERVICE_SID", ""),
+        base_url,
     )
 
 

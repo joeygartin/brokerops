@@ -11,7 +11,7 @@ same MessageSendService seam the stub provider uses — no per-adapter code.
 import httpx
 import pytest
 
-from brokerops_core.models.message import Message, MessageChannel, MessageStatus
+from brokerops_core.models.message import STATUS_RANK, Message, MessageChannel, MessageStatus
 from brokerops_core.ports.messaging import EmailPort
 from brokerops_core.services.message_send import MessageSendService
 from brokerops_email_ses.adapter import SESApiError, SESEmailAdapter
@@ -137,6 +137,17 @@ class DictMessageStore:
     async def list_messages(self, contact_id: str | None = None, limit: int = 100) -> list[Message]:
         return list(self.rows.values())[:limit]
 
+    async def advance_message_status(
+        self, message_id: str, status: MessageStatus
+    ) -> Message | None:
+        row = self.rows.get(message_id)
+        if row is None:
+            return None
+        if STATUS_RANK[status] > STATUS_RANK[row.status]:
+            row = row.model_copy(update={"status": status})
+            self.rows[message_id] = row
+        return row
+
 
 PARAMS = {
     "recipient_name": "Sam",
@@ -166,3 +177,18 @@ async def test_lifecycle_failure_persists_failed_and_reraises_the_provider_error
     (row,) = store.rows.values()
     assert row.status is MessageStatus.FAILED
     assert row.provider_message_id == ""
+
+
+def test_error_message_accepts_both_envelope_key_cases() -> None:
+    # BOP-037: AWS error envelopes are inconsistent about the key's case — SES v2
+    # documents "message", but gateway-level errors can emit "Message". Both must
+    # survive into SESApiError (and thus the ledger); neither falls back to the
+    # bare HTTP status line.
+    from brokerops_email_ses.adapter import _error_message
+
+    lower = httpx.Response(400, json={"message": "Email address is not verified."})
+    capital = httpx.Response(400, json={"Message": "Rate exceeded"})
+    neither = httpx.Response(500, content=b"not json")
+    assert _error_message(lower) == "Email address is not verified."
+    assert _error_message(capital) == "Rate exceeded"
+    assert _error_message(neither) == "HTTP 500"

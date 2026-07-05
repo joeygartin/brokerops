@@ -288,3 +288,77 @@ async def test_admin_surface_is_tenant_scoped() -> None:
     # fails closed without a bound tenant
     with pytest.raises(TenantContextMissing):
         await store.count_transactions()
+
+
+@pytest.mark.asyncio
+async def test_scoped_advance_message_status_confines_to_the_bound_tenant() -> None:
+    # BOP-037: the delivery webhook's conditional transition gets the same
+    # confinement as every other by-id mutation — a foreign row is denied +
+    # audited (never advanced), an owned row moves forward, and no bound tenant
+    # fails closed.
+    from brokerops_core.models.message import Message, MessageStatus
+    from brokerops_core.ports.messaging import MessageStore
+    from brokerops_core.services.scoped_stores import ScopedMessageStore
+
+    class FakeMessageStore:
+        def __init__(self) -> None:
+            self.rows: dict[str, Message] = {}
+
+        async def save_message(self, message: Message) -> None:
+            self.rows[message.id] = message
+
+        async def get_message(self, message_id: str) -> Message | None:
+            return self.rows.get(message_id)
+
+        async def get_message_by_provider_id(self, provider_message_id: str) -> Message | None:
+            for row in self.rows.values():
+                if provider_message_id and row.provider_message_id == provider_message_id:
+                    return row
+            return None
+
+        async def list_messages(
+            self, contact_id: str | None = None, limit: int = 100
+        ) -> list[Message]:
+            return list(self.rows.values())[:limit]
+
+        async def advance_message_status(
+            self, message_id: str, status: MessageStatus
+        ) -> Message | None:
+            from brokerops_core.models.message import STATUS_RANK
+
+            row = self.rows.get(message_id)
+            if row is None:
+                return None
+            if STATUS_RANK[status] > STATUS_RANK[row.status]:
+                row = row.model_copy(update={"status": status})
+                self.rows[message_id] = row
+            return row
+
+    inner: MessageStore = FakeMessageStore()
+    fake = inner  # keep the concrete handle for direct row access
+    assert isinstance(fake, FakeMessageStore)
+    audit = CollectingAuditLog()
+    store = ScopedMessageStore(inner, audit)
+    fake.rows["m-foreign"] = Message(
+        id="m-foreign",
+        tenant_id="brokerage-b",
+        recipient="x@example.test",
+        status=MessageStatus.SENT,
+        provider_message_id="SM-foreign",
+    )
+    fake.rows["m-owned"] = Message(
+        id="m-owned",
+        tenant_id="demo",
+        recipient="y@example.test",
+        status=MessageStatus.SENT,
+        provider_message_id="SM-owned",
+    )
+    with tenant_scope("demo"):
+        assert await store.advance_message_status("m-foreign", MessageStatus.DELIVERED) is None
+        assert await store.advance_message_status("nope", MessageStatus.DELIVERED) is None
+        advanced = await store.advance_message_status("m-owned", MessageStatus.DELIVERED)
+    assert fake.rows["m-foreign"].status is MessageStatus.SENT  # untouched
+    assert advanced is not None and advanced.status is MessageStatus.DELIVERED
+    assert any(r.tool == "advance_message_status" for r in audit.records)
+    with pytest.raises(TenantContextMissing):
+        await store.advance_message_status("m-owned", MessageStatus.FAILED)

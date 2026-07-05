@@ -25,7 +25,7 @@ from brokerops_core.ports.feedback import FeedbackStore
 from brokerops_core.ports.voice import VoicePort
 from brokerops_core.services.drafting import edited_draft_fields, plan_showing_followup_email
 from brokerops_core.services.feedback_extraction import ExtractedFeedback
-from brokerops_core.services.message_send import MessageSendService
+from brokerops_core.services.message_send import MessageSendService, UnknownOutboundMessageError
 from brokerops_langgraph.state import ApprovalOutcome, VapiFollowupState
 
 NOTIFY_AGENT = "notify_agent"
@@ -153,7 +153,11 @@ def build_vapi_followup(
 
     async def approve_followup_email(state: VapiFollowupState) -> dict[str, Any]:
         message = await messages.get_message(state.followup_message_id)
-        assert message is not None
+        if message is None:
+            # A named domain error (BOP-037), not an assert: the row vanishing
+            # under the gate must surface as a clean state conflict — and an
+            # assert disappears entirely under `python -O`.
+            raise UnknownOutboundMessageError(state.followup_message_id)
         decision: dict[str, Any] = interrupt(
             {
                 "kind": APPROVE_OUTBOUND_MESSAGE,
