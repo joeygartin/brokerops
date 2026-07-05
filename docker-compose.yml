@@ -98,6 +98,11 @@ services:
       SES_SECRET_ACCESS_KEY: ${SES_SECRET_ACCESS_KEY:-}
       SES_FROM_ADDRESS: ${SES_FROM_ADDRESS:-}
       SES_BASE_URL: ${SES_BASE_URL:-}
+      # SendGrid companion config (BOP-017): only read when EMAIL_PROVIDER=
+      # sendgrid, which fails loud without a real key + sender identity.
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
+      SENDGRID_FROM_EMAIL: ${SENDGRID_FROM_EMAIL:-}
+      SENDGRID_BASE_URL: ${SENDGRID_BASE_URL:-}
       # Demo seed/reset routes (/demo/*): on for the local demo so the "Seed demo
       # transactions" button works; off by default everywhere else (the route can wipe
       # tenant data). Real client deploys never set this.

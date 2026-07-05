@@ -222,17 +222,19 @@ def build_email_port() -> EmailPort:
 
     Closed, explicit selector in the ADR-0014 posture: EMAIL_PROVIDER names the
     provider; nothing is inferred from key presence. Unset → the stub, so demo
-    mode stays zero-credential; an unknown value raises at wiring; `ses` with
-    missing config fails loud (BOP-016); `sendgrid` is declared-but-unwired
-    until BOP-017 lands its adapter, and naming it fails loud rather than
-    silently downgrading to the stub.
+    mode stays zero-credential; an unknown value raises at wiring; `ses`
+    (BOP-016) and `sendgrid` (BOP-017) each require their real credentials and
+    sender identity and fail loud without them — never a silent downgrade to
+    the stub.
     """
     provider = os.environ.get("EMAIL_PROVIDER", "").strip().lower() or "stub"
     if provider == "stub":
         # The stub's default base URL is the `internal` sentinel (unlike real
         # integrations, there is no external counterpart to default to), so
         # `docker compose up` exercises the email flow with zero configuration.
-        base_url = os.environ.get("EMAIL_BASE_URL", INTERNAL)
+        # `or` (not a get() default): compose interpolates unset vars to the
+        # empty string, which must mean internal too, not base_url="".
+        base_url = os.environ.get("EMAIL_BASE_URL") or INTERNAL
         if base_url == INTERNAL:
             from brokerops_email_stub.stub import create_stub_app
 
@@ -243,9 +245,24 @@ def build_email_port() -> EmailPort:
     if provider == "ses":
         return _build_ses_email_adapter()
     if provider == "sendgrid":
-        raise RuntimeError(
-            "EMAIL_PROVIDER='sendgrid' is not yet wired (its adapter lands in "
-            "BOP-017); use EMAIL_PROVIDER=stub until then"
+        from brokerops_email_sendgrid.adapter import SENDGRID_API_BASE, SendGridEmailAdapter
+
+        # Explicitly selected provider, explicit config: the API key and the
+        # domain-authenticated sender identity must both be real values —
+        # missing or placeholder ("unset", the Terraform push-was-forgotten
+        # value) fails loud at wiring, never a silent downgrade to the stub.
+        config = {
+            name: os.environ.get(name, "") for name in ("SENDGRID_API_KEY", "SENDGRID_FROM_EMAIL")
+        }
+        for name, value in config.items():
+            if not value or value == "unset":
+                raise RuntimeError(
+                    f"EMAIL_PROVIDER='sendgrid' requires {name} to be set to a real value"
+                )
+        return SendGridEmailAdapter(
+            api_key=config["SENDGRID_API_KEY"],
+            from_email=config["SENDGRID_FROM_EMAIL"],
+            base_url=os.environ.get("SENDGRID_BASE_URL") or SENDGRID_API_BASE,
         )
     raise RuntimeError(
         f"unknown EMAIL_PROVIDER {provider!r}; expected one of {sorted(EMAIL_PROVIDERS)}"

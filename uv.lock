@@ -13,7 +13,7 @@ members = [
     "brokerops-adk",
     "brokerops-api",
     "brokerops-core",
-    "brokerops-email-ses",
+    "brokerops-email-sendgrid",
     "brokerops-email-smtp",
     "brokerops-email-stub",
     "brokerops-followupboss",
@@ -189,7 +189,7 @@ dependencies = [
     { name = "alembic" },
     { name = "brokerops-adk" },
     { name = "brokerops-core" },
-    { name = "brokerops-email-ses" },
+    { name = "brokerops-email-sendgrid" },
     { name = "brokerops-email-smtp" },
     { name = "brokerops-email-stub" },
     { name = "brokerops-followupboss" },
@@ -223,7 +223,7 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.14" },
     { name = "brokerops-adk", editable = "orchestration/adk" },
     { name = "brokerops-core", editable = "core" },
-    { name = "brokerops-email-ses", editable = "integrations/email_ses" },
+    { name = "brokerops-email-sendgrid", editable = "integrations/email_sendgrid" },
     { name = "brokerops-email-smtp", editable = "integrations/email_smtp" },
     { name = "brokerops-email-stub", editable = "integrations/email_stub" },
     { name = "brokerops-followupboss", editable = "integrations/followupboss" },
@@ -264,9 +264,9 @@ dependencies = [
 requires-dist = [{ name = "pydantic", specifier = ">=2.10" }]
 
 [[package]]
-name = "brokerops-email-ses"
+name = "brokerops-email-sendgrid"
 version = "0.1.0"
-source = { editable = "integrations/email_ses" }
+source = { editable = "integrations/email_sendgrid" }
 dependencies = [
     { name = "brokerops-core" },
     { name = "fastapi" },

@@ -34,8 +34,10 @@ jobs:
       - run: uv run ruff format --check .
       - run: >
           uv run mypy api/src api/tests core/src core/tests
+          integrations/email_sendgrid/src integrations/email_sendgrid/tests
           integrations/email_ses/src integrations/email_ses/tests
           integrations/email_smtp/src integrations/email_smtp/tests
+          integrations/email_stub/src integrations/email_stub/tests
           integrations/mls_reso/src integrations/mls_reso/tests
           integrations/followupboss/src integrations/followupboss/tests
           integrations/google_drive/src integrations/google_drive/tests

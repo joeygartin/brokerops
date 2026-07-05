@@ -15,6 +15,7 @@ lint:
 	uv run ruff check .
 	uv run ruff format --check .
 	uv run mypy api/src api/tests core/src core/tests \
+		integrations/email_sendgrid/src integrations/email_sendgrid/tests \
 		integrations/email_ses/src integrations/email_ses/tests \
 		integrations/email_smtp/src integrations/email_smtp/tests \
 		integrations/email_stub/src integrations/email_stub/tests \

@@ -40,7 +40,8 @@ mechanism yet, must be built for this client.
 | **Office files (Google Drive)** | Auth mode + folder convention — see §2a | `FILES_PROVIDER` **[config]** + drive-credentials secret |
 | **LLM feedback extraction** (optional) | Use Claude vs. deterministic? model id? | `enable_llm_extraction`, `llm_model` **[config]** + `llm-api-key` secret |
 | **Email delivery** (for magic-link) | SMTP host/port/from/username | `smtp_*` **[config]** + `smtp-password` secret — for AWS SES, `scripts/setup_ses.sh <client> <domain>` automates the identity + IAM user + password push (prints the DKIM records and deploy `-var`s) |
-| **Outbound business email** (client-facing comms, BOP-016) | Provider (`ses`) + the business-comms **sending identity** (from address) — see §2b | `EMAIL_PROVIDER`, `SES_REGION`, `SES_ACCESS_KEY_ID`, `SES_FROM_ADDRESS` **[config]** + `ses-secret-access-key` secret (pushed by `setup_ses.sh`) |
+| **Outbound business email (SES)** (client-facing comms, BOP-016) | Provider (`ses`) + the business-comms **sending identity** (from address) — see §2b | `EMAIL_PROVIDER`, `SES_REGION`, `SES_ACCESS_KEY_ID`, `SES_FROM_ADDRESS` **[config]** + `ses-secret-access-key` secret (pushed by `setup_ses.sh`) |
+| **Outbound business email (SendGrid)** | API key + authenticated sending domain + from-address — see §2c | `EMAIL_PROVIDER=sendgrid`, `SENDGRID_FROM_EMAIL` **[config]** + `sendgrid-api-key` secret |
 
 If a system isn't ready, leave it on the bundled stub (`*_base_url = "internal"`)
 and turn it on later.
@@ -84,6 +85,30 @@ Capture at intake:
 | **DKIM/SPF DNS records** for the sending domain — `setup_ses.sh` prints the EasyDKIM CNAMEs + DMARC TXT; for SPF alignment add the optional custom MAIL FROM records it prints (MX + SPF TXT on `mail.<domain>`). Records go in MANUALLY at the client's DNS provider. | client DNS **[manual]** |
 | **Region + credentials** — the script mints a send-only IAM key and pushes the secret access key to Secret Manager (`brokerops-<client>-ses-secret-access-key`); the key id and region are non-secret deploy vars. | `SES_REGION`, `SES_ACCESS_KEY_ID` **[config]** + `ses-secret-access-key` secret |
 | **Sandbox exit** — a fresh SES account only delivers to verified identities and has minimal quotas. Request production access (SES console → Account dashboard) *before* the first real client send; approval can take ~24h. | AWS account **[manual]** |
+
+### 2c. Outbound business email — SendGrid domain authentication (BOP-017)
+
+Client-facing email (showing follow-ups, milestone reminders — the `EmailPort`
+channel, ADR-0015; **not** the magic-link SMTP above) sends through SendGrid
+when `EMAIL_PROVIDER=sendgrid`. Selection is explicit: the API key and the
+from-address are both required and **fail loud at startup** when missing or a
+placeholder — never a silent fallback to the stub.
+
+Deliverability lives or dies on **domain authentication**: without it,
+client-facing mail lands in spam or is rejected outright. Do this before the
+first real send, in the *client's* SendGrid account (per-client credentials,
+never shared):
+
+| Capture / do | Lands in |
+|---|---|
+| **Domain authentication (DKIM + SPF).** In SendGrid: Settings → Sender Authentication → Authenticate Your Domain. SendGrid issues 3 CNAME records (they cover DKIM signing and SPF alignment via the return-path); the brokerage adds them at their DNS host, then verify in SendGrid. Automated security (rotating DKIM keys via CNAME) is the default — keep it. | Client's DNS; verified state in their SendGrid account |
+| **DMARC (recommended).** A `_dmarc` TXT record (start at `p=none; rua=…`) so the brokerage can see who sends as their domain; tighten once clean. | Client's DNS |
+| **From-address** on the authenticated domain (e.g. `updates@yourbrokerage.com`). A free-mail or unauthenticated from-address will fail DMARC alignment. | `SENDGRID_FROM_EMAIL` **[config]** |
+| **API key** — create a restricted key with the **Mail Send scope only** (never Full Access). | `sendgrid-api-key` → Secret Manager, surfaced to the container as `SENDGRID_API_KEY`; never the repo or a tfvars file |
+
+Sends flow through the same seam as every external write — audited
+(ADR-0010), deduped (ADR-0011), tenant-scoped (ADR-0012) — and every message
+is reviewable in the `/messages` history.
 
 ## 3. Listing intake checklist ("taking a listing")
 

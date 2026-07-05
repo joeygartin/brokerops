@@ -1,15 +1,16 @@
 """The closed EMAIL_PROVIDER selector (ADR-0015, the ADR-0014 posture).
 
 Selection is explicit deploy config, never key-presence inference. Under test:
-unset/blank defaults to the zero-credential stub; `ses` selects the SES adapter
-and fails loud on missing config (BOP-016); `sendgrid` is declared but fails
-loud until BOP-017 wires its adapter (never a silent downgrade to the stub);
-an unknown value fails closed, mirroring ORCHESTRATOR/EXTRACTION_BACKEND.
+unset/blank defaults to the zero-credential stub; `ses` (BOP-016) and
+`sendgrid` (BOP-017) each select their adapter and fail loud on missing or
+placeholder config (never a silent downgrade to the stub); an unknown value
+fails closed, mirroring ORCHESTRATOR/EXTRACTION_BACKEND.
 """
 
 import pytest
 
 from brokerops_api.deps import build_email_port
+from brokerops_email_sendgrid.adapter import SendGridEmailAdapter
 from brokerops_email_ses.adapter import SESEmailAdapter
 from brokerops_email_stub.adapter import StubEmailAdapter
 
@@ -65,9 +66,46 @@ def test_ses_with_the_terraform_placeholder_fails_loud(monkeypatch: pytest.Monke
         build_email_port()
 
 
-def test_declared_but_unwired_sendgrid_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_blank_base_url_still_means_the_internal_stub(monkeypatch: pytest.MonkeyPatch) -> None:
+    # docker compose interpolates an unset var to the empty string; that must
+    # select the in-process stub, not construct an adapter with base_url="".
+    monkeypatch.setenv("EMAIL_PROVIDER", "stub")
+    monkeypatch.setenv("EMAIL_BASE_URL", "")
+    assert isinstance(build_email_port(), StubEmailAdapter)
+
+
+def test_sendgrid_selects_the_sendgrid_adapter(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("EMAIL_PROVIDER", "sendgrid")
-    with pytest.raises(RuntimeError, match="not yet wired"):
+    monkeypatch.setenv("SENDGRID_API_KEY", "fake-sendgrid-key")
+    monkeypatch.setenv("SENDGRID_FROM_EMAIL", "updates@brokerage.test")
+    assert isinstance(build_email_port(), SendGridEmailAdapter)
+
+
+def test_sendgrid_without_an_api_key_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("EMAIL_PROVIDER", "sendgrid")
+    monkeypatch.delenv("SENDGRID_API_KEY", raising=False)
+    monkeypatch.setenv("SENDGRID_FROM_EMAIL", "updates@brokerage.test")
+    with pytest.raises(RuntimeError, match="SENDGRID_API_KEY"):
+        build_email_port()
+
+
+def test_sendgrid_with_a_placeholder_key_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:
+    # "unset" is the Terraform placeholder for a secret that was never pushed —
+    # the same misconfiguration as absent, never a silent downgrade.
+    monkeypatch.setenv("EMAIL_PROVIDER", "sendgrid")
+    monkeypatch.setenv("SENDGRID_API_KEY", "unset")
+    monkeypatch.setenv("SENDGRID_FROM_EMAIL", "updates@brokerage.test")
+    with pytest.raises(RuntimeError, match="SENDGRID_API_KEY"):
+        build_email_port()
+
+
+def test_sendgrid_without_a_sender_identity_fails_loud(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("EMAIL_PROVIDER", "sendgrid")
+    monkeypatch.setenv("SENDGRID_API_KEY", "fake-sendgrid-key")
+    monkeypatch.delenv("SENDGRID_FROM_EMAIL", raising=False)
+    with pytest.raises(RuntimeError, match="SENDGRID_FROM_EMAIL"):
         build_email_port()
 
 
