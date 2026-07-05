@@ -220,7 +220,7 @@
         "type": "object"
       },
       "DecideRequest": {
-        "description": "Wire shape for a decision. `decided_by` is intentionally absent \u2014 the API\nstamps it from the authenticated principal, never the client.",
+        "description": "Wire shape for a decision. `decided_by` is intentionally absent \u2014 the API\nstamps it from the authenticated principal, never the client.\n\n`edited_payload` stays a dict here because its shape depends on the approval\n*kind*, known only after the row is fetched; the decide route validates it\nagainst the kind's boundary model (EditedMessagePayload for the\noutbound-message gate) before anything reaches an engine.",
         "properties": {
           "decision": {
             "$ref": "#/components/schemas/ApprovalStatus"
@@ -2860,6 +2860,65 @@
           }
         },
         "summary": "Get Message",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
+    "/messages/{message_id}/retry": {
+      "post": {
+        "description": "Re-drive a FAILED send to completion (BOP-037).\n\nThe gap this closes: an approved gate whose provider send failed leaves the\napproval APPROVED (the decide route 409s forever) and the row FAILED \u2014 with\nno surface able to reach `send_approved`'s FAILED\u2192SENT path. Strictly\nFAILED-only, so it can never bypass a pending human gate or re-send a\nterminal row; the send runs through the same seam (audited + deduped) under\na fresh run id, linked back to the original approval when one exists.",
+        "operationId": "retry_failed_message_messages__message_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "title": "Message Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry Failed Message",
         "tags": [
           "messages"
         ]

@@ -27,6 +27,7 @@ from brokerops_api.deps import (
     require_role,
 )
 from brokerops_api.db import ApprovalRepo
+from brokerops_api.routes.approvals import APPROVE_OUTBOUND_MESSAGE
 from brokerops_core.models.message import Message, MessageChannel, MessageStatus
 from brokerops_core.models.message_templates import TemplateParamError, UnknownTemplateError
 from brokerops_core.ports.identity import Principal, Role
@@ -130,7 +131,7 @@ async def retry_failed_message(
         (
             a
             for a in approvals
-            if a.kind == "approve_outbound_message" and a.payload.get("message_id") == message_id
+            if a.kind == APPROVE_OUTBOUND_MESSAGE and a.payload.get("message_id") == message_id
         ),
         None,
     )

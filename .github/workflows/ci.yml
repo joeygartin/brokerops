@@ -91,10 +91,11 @@ jobs:
       - run: make generate
       - name: fail on contract drift
         run: |
-          git diff --exit-code -- frontend/openapi.json frontend/src/client
+          fail() { echo "::error::API contract drift — run 'make generate' and commit the result (see frontend/README.md)"; exit 1; }
+          git diff --exit-code --stat -- frontend/openapi.json frontend/src/client || fail
           # diff misses untracked files (e.g. a brand-new generated module) —
           # any dirt under the generated paths is drift.
-          test -z "$(git status --porcelain -- frontend/openapi.json frontend/src/client)"
+          test -z "$(git status --porcelain -- frontend/openapi.json frontend/src/client)" || fail
 
   gitleaks:
     runs-on: ubuntu-latest

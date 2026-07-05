@@ -164,6 +164,11 @@ export type Contact = {
  *
  * Wire shape for a decision. `decided_by` is intentionally absent — the API
  * stamps it from the authenticated principal, never the client.
+ *
+ * `edited_payload` stays a dict here because its shape depends on the approval
+ * *kind*, known only after the row is fetched; the decide route validates it
+ * against the kind's boundary model (EditedMessagePayload for the
+ * outbound-message gate) before anything reaches an engine.
  */
 export type DecideRequest = {
     decision: ApprovalStatus;
@@ -1867,6 +1872,42 @@ export type GetMessageMessagesMessageIdGetResponses = {
 };
 
 export type GetMessageMessagesMessageIdGetResponse = GetMessageMessagesMessageIdGetResponses[keyof GetMessageMessagesMessageIdGetResponses];
+
+export type RetryFailedMessageMessagesMessageIdRetryPostData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path: {
+        /**
+         * Message Id
+         */
+        message_id: string;
+    };
+    query?: never;
+    url: '/messages/{message_id}/retry';
+};
+
+export type RetryFailedMessageMessagesMessageIdRetryPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type RetryFailedMessageMessagesMessageIdRetryPostError = RetryFailedMessageMessagesMessageIdRetryPostErrors[keyof RetryFailedMessageMessagesMessageIdRetryPostErrors];
+
+export type RetryFailedMessageMessagesMessageIdRetryPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: Message;
+};
+
+export type RetryFailedMessageMessagesMessageIdRetryPostResponse = RetryFailedMessageMessagesMessageIdRetryPostResponses[keyof RetryFailedMessageMessagesMessageIdRetryPostResponses];
 
 export type ReadyzReadyzGetData = {
     body?: never;
