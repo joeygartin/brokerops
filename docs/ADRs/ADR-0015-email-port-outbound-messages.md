@@ -79,7 +79,8 @@ the ADR-0011 at-most-once posture, unchanged.
 
 - (+) BOP-016/017 are pure adapter work: implement `EmailPort`, add a selector
   branch, done — the seam, history, templates, and route are all in place (the
-  two-adapter proof, the way ADK proved `WorkflowEngine`).
+  two-adapter proof, the way a second orchestration engine once proved
+  `WorkflowEngine` — since collapsed to one engine, ADR-0019).
 - (+) SMS reuses everything but the port: same `Message`, same table, same
   service pattern, same seam (BOP-018).
 - (+) Auth email and business email cannot take each other down; each is
