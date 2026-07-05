@@ -86,6 +86,46 @@ describe("apiFetch", () => {
   });
 });
 
+describe("apiFetch as the generated client's fetch layer (Request input)", () => {
+  it("attaches the bearer to a Request and preserves its method/headers/body", async () => {
+    setToken("tok");
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true }));
+
+    await apiFetch(
+      new Request("http://api/thing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hello: "world" }),
+      }),
+    );
+
+    const [sent] = fetchMock.mock.calls[0] as [Request];
+    expect(sent.method).toBe("POST");
+    expect(sent.url).toBe("http://api/thing");
+    expect(sent.headers.get("Authorization")).toBe("Bearer tok");
+    expect(sent.headers.get("Content-Type")).toBe("application/json");
+    expect(await sent.json()).toEqual({ hello: "world" });
+  });
+
+  it("replays a Request after a 401 refresh with the fresh bearer and intact body", async () => {
+    setSession("stale", "ref");
+    fetchMock
+      .mockResolvedValueOnce(new Response(null, { status: 401 })) // original request
+      .mockResolvedValueOnce(jsonResponse({ session_token: "fresh" })) // /auth/refresh
+      .mockResolvedValueOnce(jsonResponse({ ok: true })); // replay
+
+    const response = await apiFetch(
+      new Request("http://api/protected", { method: "POST", body: JSON.stringify({ n: 1 }) }),
+    );
+
+    expect(response.status).toBe(200);
+    // The replay is a fresh clone: new bearer, same single-use body still readable.
+    const [replayed] = fetchMock.mock.calls[2] as [Request];
+    expect(replayed.headers.get("Authorization")).toBe("Bearer fresh");
+    expect(await replayed.json()).toEqual({ n: 1 });
+  });
+});
+
 describe("loadAuthConfig", () => {
   it("returns the parsed config on 200", async () => {
     fetchMock.mockResolvedValueOnce(

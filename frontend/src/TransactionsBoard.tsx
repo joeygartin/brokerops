@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { apiFetch } from "./auth";
+import { unwrap } from "./api";
+import { API_BASE } from "./auth";
 import TransactionDocuments from "./TransactionDocuments";
-import { API_BASE, MilestoneView, TransactionDetail } from "./types";
+import {
+  listTransactionsTransactionsGet,
+  seedDemoDataDemoSeedPost,
+  type MilestoneView,
+  type TransactionDetail,
+} from "./client";
 
 const CLASS_STYLES: Record<string, { color: string; background: string; label: string }> = {
   overdue: { color: "#fff", background: "#cf222e", label: "OVERDUE" },
@@ -40,7 +46,7 @@ function MilestoneRow({ milestone }: { milestone: MilestoneView }) {
         {milestone.blocked_reason && (
           <em style={{ color: "#8250df", fontSize: "0.8rem" }}> — {milestone.blocked_reason}</em>
         )}
-        {milestone.escalation_level > 0 && (
+        {(milestone.escalation_level ?? 0) > 0 && (
           <strong style={{ color: "#cf222e", fontSize: "0.8rem" }}>
             {" "}
             (escalation L{milestone.escalation_level})
@@ -74,25 +80,25 @@ export default function TransactionsBoard() {
   const [running, setRunning] = useState(false);
 
   const refresh = useCallback(() => {
-    apiFetch(`${API_BASE}/transactions`)
-      .then((response) => {
-        if (!response.ok) throw new Error(`api returned ${response.status}`);
-        return response.json() as Promise<TransactionDetail[]>;
-      })
-      .then(setDetails)
+    listTransactionsTransactionsGet()
+      .then((result) => setDetails(unwrap(result)))
       .catch((cause) => setError(String(cause)));
   }, []);
 
   useEffect(refresh, [refresh]);
 
   const seed = async () => {
-    await fetch(`${API_BASE}/demo/seed`, { method: "POST" });
+    await seedDemoDataDemoSeedPost();
     refresh();
   };
 
   const runCron = async () => {
     setRunning(true);
     try {
+      // Deliberately plain fetch, not the generated client: /internal/cron is
+      // gated by X-Cron-Key (not the bearer), and a 401 from it must not trip
+      // apiFetch's refresh/sign-out path — it isn't a session problem. Its
+      // response is an open dict on the wire, so the summary type stays local.
       const response = await fetch(`${API_BASE}/internal/cron/milestones`, { method: "POST" });
       if (!response.ok) throw new Error(`api returned ${response.status}`);
       const summary = (await response.json()) as {
@@ -218,7 +224,9 @@ function TransactionCard({
         </span>
       </div>
       <div style={{ color: "#57606a", fontSize: "0.85rem", margin: "0.3rem 0 0.6rem" }}>
-        {transaction.parties.map((p) => `${p.name} (${p.role.replace(/_/g, " ")})`).join(" · ")}
+        {(transaction.parties ?? [])
+          .map((p) => `${p.name} (${p.role.replace(/_/g, " ")})`)
+          .join(" · ")}
         {transaction.close_date ? ` — closes ${transaction.close_date}` : ""}
       </div>
       <div style={{ display: "flex", gap: "0.4rem", marginBottom: "0.6rem" }}>

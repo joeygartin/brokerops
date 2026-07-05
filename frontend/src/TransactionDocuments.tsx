@@ -1,20 +1,25 @@
 import { useCallback, useEffect, useState } from "react";
-import { apiFetch } from "./auth";
+import { unwrap } from "./api";
 import { useAuth } from "./authContext";
 import {
-  API_BASE,
-  DOCUMENT_KINDS,
-  DocumentRecord,
-  FileRef,
-  MilestoneView,
-  Transaction,
-} from "./types";
+  attachDocumentTransactionsTransactionIdDocumentsPost,
+  DocumentKind,
+  listFilesFilesGet,
+  type Document,
+  type FileRef,
+  type MilestoneView,
+  type Transaction,
+} from "./client";
 
 // The Documents tab on a transaction card (BOP-021): list what's attached,
 // open it in the file store's own viewer, and (operators and up) attach a file
 // from the transaction's office folder. Pointers only — no bytes, no preview,
 // no doc generation. The API is the security boundary; hiding the attach
 // controls from viewers just mirrors the server's role gate.
+
+// The kind picker enumerates the backend enum via its generated runtime object
+// — a new DocumentKind lands here through `npm run generate`, never by hand.
+const DOCUMENT_KINDS = Object.values(DocumentKind);
 
 function prettyKind(kind: string): string {
   return kind.replace(/_/g, " ");
@@ -27,7 +32,7 @@ export default function TransactionDocuments({
   onChanged,
 }: {
   transaction: Transaction;
-  documents: DocumentRecord[];
+  documents: Document[];
   milestones: MilestoneView[];
   onChanged: () => void;
 }) {
@@ -35,19 +40,15 @@ export default function TransactionDocuments({
   const [folderFiles, setFolderFiles] = useState<FileRef[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState("");
-  const [kind, setKind] = useState<string>("other");
+  const [kind, setKind] = useState<DocumentKind>("other");
   const [milestoneId, setMilestoneId] = useState("");
   const [attaching, setAttaching] = useState(false);
 
   const canAttach = hasRole("operator");
 
   const loadFolder = useCallback(() => {
-    apiFetch(`${API_BASE}/files?folder=${encodeURIComponent(transaction.listing_key)}`)
-      .then((response) => {
-        if (!response.ok) throw new Error(`api returned ${response.status}`);
-        return response.json() as Promise<FileRef[]>;
-      })
-      .then(setFolderFiles)
+    listFilesFilesGet({ query: { folder: transaction.listing_key } })
+      .then((result) => setFolderFiles(unwrap(result)))
       .catch((cause) => setError(String(cause)));
   }, [transaction.listing_key]);
 
@@ -60,16 +61,16 @@ export default function TransactionDocuments({
     setAttaching(true);
     setError(null);
     try {
-      const response = await apiFetch(`${API_BASE}/transactions/${transaction.id}/documents`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          file_id: selectedFile,
-          kind,
-          milestone_id: milestoneId || null,
+      unwrap(
+        await attachDocumentTransactionsTransactionIdDocumentsPost({
+          path: { transaction_id: transaction.id },
+          body: {
+            file_id: selectedFile,
+            kind,
+            milestone_id: milestoneId || null,
+          },
         }),
-      });
-      if (!response.ok) throw new Error(`api returned ${response.status}`);
+      );
       setSelectedFile("");
       setMilestoneId("");
       onChanged();
@@ -110,7 +111,7 @@ export default function TransactionDocuments({
                   whiteSpace: "nowrap",
                 }}
               >
-                {prettyKind(document.kind).toUpperCase()}
+                {prettyKind(document.kind ?? "other").toUpperCase()}
               </span>
               <span style={{ flex: 1 }}>{document.title}</span>
               <span style={{ color: "#57606a", fontSize: "0.8rem", whiteSpace: "nowrap" }}>
@@ -163,7 +164,7 @@ export default function TransactionDocuments({
           <select
             aria-label="Document kind"
             value={kind}
-            onChange={(e) => setKind(e.target.value)}
+            onChange={(e) => setKind(e.target.value as DocumentKind)}
             style={{ padding: "0.35rem", borderRadius: 6, border: "1px solid #d0d7de" }}
           >
             {DOCUMENT_KINDS.map((k) => (

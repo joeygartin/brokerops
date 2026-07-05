@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
-import { apiFetch } from "./auth";
+import { unwrap } from "./api";
 import { useAuth } from "./authContext";
-import { API_BASE, Listing, WorkflowRunResult } from "./types";
+import {
+  searchListingsListingsGet,
+  startListingToContractWorkflowsListingToContractStartPost,
+  startOutboundCallCallsOutboundPost,
+  type Listing,
+} from "./client";
 
 const price = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -31,13 +36,11 @@ function ListingCard({
   const startWorkflow = async () => {
     setStarting(true);
     try {
-      const response = await apiFetch(`${API_BASE}/workflows/listing-to-contract/start`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listing_key: listing.mls_id }),
-      });
-      if (!response.ok) throw new Error(`api returned ${response.status}`);
-      const result = (await response.json()) as WorkflowRunResult;
+      const result = unwrap(
+        await startListingToContractWorkflowsListingToContractStartPost({
+          body: { listing_key: listing.mls_id },
+        }),
+      );
       onStarted(
         result.status === "awaiting_approval"
           ? `${listing.mls_id}: marketing draft is waiting in the Approvals inbox.`
@@ -53,13 +56,11 @@ function ListingCard({
   const startFeedbackCall = async () => {
     setCalling(true);
     try {
-      const response = await apiFetch(`${API_BASE}/calls/outbound`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listing_key: listing.mls_id, contact_id: DEMO_FEEDBACK_CONTACT }),
-      });
-      if (!response.ok) throw new Error(`api returned ${response.status}`);
-      const result = (await response.json()) as { call_id: string };
+      const result = unwrap(
+        await startOutboundCallCallsOutboundPost({
+          body: { listing_key: listing.mls_id, contact_id: DEMO_FEEDBACK_CONTACT },
+        }),
+      );
       onStarted(
         `${listing.mls_id}: feedback call ${result.call_id} placed — the transcript lands as a ` +
           `CRM note (check Approvals if the buyer is hot).`,
@@ -149,12 +150,8 @@ export default function ListingsBoard() {
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
-    apiFetch(`${API_BASE}/listings`)
-      .then((response) => {
-        if (!response.ok) throw new Error(`api returned ${response.status}`);
-        return response.json() as Promise<Listing[]>;
-      })
-      .then(setListings)
+    searchListingsListingsGet()
+      .then((result) => setListings(unwrap(result)))
       .catch((cause) => setError(String(cause)));
   }, []);
 

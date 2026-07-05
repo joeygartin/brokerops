@@ -1,4 +1,6 @@
-import { API_BASE } from "./types";
+// Where the API lives: same-origin `/api` behind nginx in the cloud (ADR-0003),
+// the direct localhost URL in dev.
+export const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
 
 // The access token (Google ID token or session JWT) lives in memory +
 // sessionStorage so a reload doesn't force a re-login, but it never persists
@@ -154,13 +156,25 @@ export function refreshSession(): Promise<boolean> {
 // Drop-in for fetch on protected endpoints: attaches the bearer when present. On
 // a 401 it tries once to renew the access token via the refresh token and, if
 // that succeeds, replays the request; otherwise it clears the session so the SPA
-// re-prompts.
-export async function apiFetch(url: string, init: RequestInit = {}): Promise<Response> {
+// re-prompts. Accepts a `Request` as well as a URL because it is also the
+// generated API client's fetch layer (ADR-0018): the client builds a Request and
+// hands it here, so every generated call inherits the bearer/refresh behavior.
+export async function apiFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+): Promise<Response> {
   const generation = sessionGeneration;
   const send = () => {
+    if (input instanceof Request) {
+      // Clone per attempt: a Request body is single-use, and the 401 path may
+      // replay — the original must stay pristine for the second send.
+      const request = new Request(input.clone(), init);
+      if (token) request.headers.set("Authorization", `Bearer ${token}`);
+      return fetch(request);
+    }
     const headers = new Headers(init.headers);
     if (token) headers.set("Authorization", `Bearer ${token}`);
-    return fetch(url, { ...init, headers });
+    return fetch(input, { ...init, headers });
   };
   let response = await send();
   // If a sign-out or a different login replaced the session while this request was

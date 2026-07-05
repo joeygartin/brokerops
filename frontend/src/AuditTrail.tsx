@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { apiFetch } from "./auth";
-import { API_BASE, MutationRecord } from "./types";
+import { unwrap } from "./api";
+import { listMutationsAuditGet, type MutationRecord } from "./client";
 
 const INTEGRATION_LABELS: Record<string, string> = {
   followupboss: "FollowUpBoss",
@@ -80,13 +80,8 @@ export default function AuditTrail() {
   const [runFilter, setRunFilter] = useState("");
 
   const refresh = useCallback(() => {
-    const query = runFilter.trim() ? `?workflow_run_id=${encodeURIComponent(runFilter.trim())}` : "";
-    apiFetch(`${API_BASE}/audit${query}`)
-      .then((response) => {
-        if (!response.ok) throw new Error(`api returned ${response.status}`);
-        return response.json() as Promise<MutationRecord[]>;
-      })
-      .then(setRecords)
+    listMutationsAuditGet({ query: { workflow_run_id: runFilter.trim() || undefined } })
+      .then((result) => setRecords(unwrap(result)))
       .catch((cause) => setError(String(cause)));
   }, [runFilter]);
 

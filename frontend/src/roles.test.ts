@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { roleAtLeast, type Role } from "./types";
+import { roleAtLeast, type Role } from "./roles";
 
 const ROLES: Role[] = ["viewer", "operator", "admin"];
 

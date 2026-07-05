@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { Role, TransactionDetail } from "./types";
+import type { TransactionDetail } from "./client";
+import type { Role } from "./roles";
 
 const roleState = vi.hoisted(() => ({ role: "operator" as Role }));
 const RANK: Record<Role, number> = { viewer: 0, operator: 1, admin: 2 };
@@ -15,8 +16,10 @@ vi.mock("./authContext", () => ({
   }),
 }));
 
+// The generated client routes every call through apiFetch (its fetch layer),
+// so stubbing ./auth intercepts the SDK's Requests too.
 const apiFetchMock = vi.hoisted(() => vi.fn());
-vi.mock("./auth", () => ({ apiFetch: apiFetchMock }));
+vi.mock("./auth", () => ({ apiFetch: apiFetchMock, API_BASE: "http://localhost:8000" }));
 
 import TransactionsBoard from "./TransactionsBoard";
 
@@ -91,8 +94,8 @@ function json(body: unknown): Response {
 beforeEach(() => {
   roleState.role = "operator";
   apiFetchMock.mockReset();
-  apiFetchMock.mockImplementation((url: string) => {
-    if (url.includes("/files?")) return Promise.resolve(json([]));
+  apiFetchMock.mockImplementation((request: Request) => {
+    if (request.url.includes("/files?")) return Promise.resolve(json([]));
     return Promise.resolve(json([DETAIL]));
   });
 });
@@ -117,8 +120,8 @@ describe("TransactionsBoard documents tie-in", () => {
         DETAIL.milestones[1],
       ],
     };
-    apiFetchMock.mockImplementation((url: string) => {
-      if (url.includes("/files?")) return Promise.resolve(json([]));
+    apiFetchMock.mockImplementation((request: Request) => {
+      if (request.url.includes("/files?")) return Promise.resolve(json([]));
       return Promise.resolve(json([satisfied]));
     });
     render(<TransactionsBoard />);

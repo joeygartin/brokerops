@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { AuthProvider, useAuth } from "./authContext";
 import { setToken } from "./auth";
-import type { Role } from "./types";
+import type { Role } from "./roles";
 
 const fetchMock = vi.fn();
 

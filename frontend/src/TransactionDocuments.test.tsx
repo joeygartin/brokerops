@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { DocumentRecord, FileRef, MilestoneView, Role, Transaction } from "./types";
+import type { Document, FileRef, MilestoneView, Transaction } from "./client";
+import type { Role } from "./roles";
 
 const roleState = vi.hoisted(() => ({ role: "operator" as Role }));
 const RANK: Record<Role, number> = { viewer: 0, operator: 1, admin: 2 };
@@ -15,8 +16,10 @@ vi.mock("./authContext", () => ({
   }),
 }));
 
+// The generated client routes every call through apiFetch (its fetch layer),
+// so stubbing ./auth intercepts the SDK's Requests too.
 const apiFetchMock = vi.hoisted(() => vi.fn());
-vi.mock("./auth", () => ({ apiFetch: apiFetchMock }));
+vi.mock("./auth", () => ({ apiFetch: apiFetchMock, API_BASE: "http://localhost:8000" }));
 
 import TransactionDocuments from "./TransactionDocuments";
 
@@ -62,7 +65,7 @@ const FOLDER_FILES: FileRef[] = [
   },
 ];
 
-const ATTACHED: DocumentRecord = {
+const ATTACHED: Document = {
   id: "DOC-abc",
   transaction_id: "TXN-1001",
   milestone_id: null,
@@ -83,8 +86,8 @@ function json(body: unknown, status = 200): Response {
 beforeEach(() => {
   roleState.role = "operator";
   apiFetchMock.mockReset();
-  apiFetchMock.mockImplementation((url: string) => {
-    if (url.includes("/files?")) return Promise.resolve(json(FOLDER_FILES));
+  apiFetchMock.mockImplementation((request: Request) => {
+    if (request.url.includes("/files?")) return Promise.resolve(json(FOLDER_FILES));
     return Promise.resolve(json(ATTACHED, 201));
   });
 });
@@ -125,7 +128,9 @@ describe("TransactionDocuments", () => {
 
     // folder is browsed via the transaction's listing key
     await waitFor(() =>
-      expect(apiFetchMock).toHaveBeenCalledWith(expect.stringContaining("/files?folder=RM1004")),
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        expect.objectContaining({ url: expect.stringContaining("/files?folder=RM1004") }),
+      ),
     );
 
     const user = userEvent.setup();
@@ -144,13 +149,12 @@ describe("TransactionDocuments", () => {
     await user.click(screen.getByRole("button", { name: "Attach" }));
 
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
-    const attachCall = apiFetchMock.mock.calls.find(
-      (call) => typeof call[0] === "string" && call[0].endsWith("/transactions/TXN-1001/documents"),
-    );
-    expect(attachCall).toBeDefined();
-    const [url, init] = attachCall as [string, RequestInit];
-    expect(url).toContain("/transactions/TXN-1001/documents");
-    expect(JSON.parse(String(init.body))).toEqual({
+    const attach = apiFetchMock.mock.calls
+      .map(([request]) => request as Request)
+      .find((request) => request.url.endsWith("/transactions/TXN-1001/documents"));
+    expect(attach).toBeDefined();
+    expect(attach?.method).toBe("POST");
+    expect(await attach?.clone().json()).toEqual({
       file_id: "drive-0004",
       kind: "inspection_report",
       milestone_id: "MS-1001-INS",

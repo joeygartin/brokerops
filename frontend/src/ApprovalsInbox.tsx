@@ -1,10 +1,58 @@
 import { useCallback, useEffect, useState } from "react";
-import { apiFetch } from "./auth";
+import { unwrap } from "./api";
 import { useAuth } from "./authContext";
-import { API_BASE, ApprovalRequest } from "./types";
+import {
+  decideApprovalApprovalsApprovalIdDecidePost,
+  listApprovalsApprovalsGet,
+  type ApprovalRequest,
+} from "./client";
+
+// The backend deliberately types ApprovalRequest.payload as an open dict — the
+// HITL spine carries every approval kind through one model, discriminated by
+// `kind` at runtime — so the generated type is `{ [key: string]: unknown }` and
+// this typed view of the kinds the inbox renders stays frontend-owned.
+type MarketingDraft = {
+  listing_key: string;
+  headline: string;
+  body: string;
+  channels: string[];
+};
+
+type EscalationMilestone = {
+  id: string;
+  title: string;
+  due_date: string;
+  days_overdue: number;
+  escalation_level: number;
+  note: string;
+};
+
+type ApprovalPayload = {
+  kind: string;
+  listing_key?: string;
+  draft?: MarketingDraft;
+  transaction_id?: string;
+  milestones?: EscalationMilestone[];
+  contact_id?: string;
+  call_id?: string;
+  reason?: string;
+  summary?: string;
+  // approve_outbound_message (BOP-019): a drafted email awaiting the human
+  // decision — the body is editable in the card and the edited text is what sends.
+  message_id?: string;
+  channel?: string;
+  recipient?: string;
+  subject?: string;
+  body?: string;
+  template_ref?: string;
+};
+
+function payloadOf(approval: ApprovalRequest): ApprovalPayload {
+  return approval.payload as ApprovalPayload;
+}
 
 function MarketingPreview({ approval }: { approval: ApprovalRequest }) {
-  const draft = approval.payload.draft;
+  const draft = payloadOf(approval).draft;
   if (!draft) return null;
   return (
     <>
@@ -33,7 +81,7 @@ function MarketingPreview({ approval }: { approval: ApprovalRequest }) {
 }
 
 function EscalationPreview({ approval }: { approval: ApprovalRequest }) {
-  const milestones = approval.payload.milestones ?? [];
+  const milestones = payloadOf(approval).milestones ?? [];
   return (
     <ul style={{ margin: "0.6rem 0", paddingLeft: "1.2rem" }}>
       {milestones.map((m) => (
@@ -59,10 +107,11 @@ function OutboundMessagePreview({
   onEditBody: (body: string) => void;
   canEdit: boolean;
 }) {
+  const payload = payloadOf(approval);
   return (
     <div style={{ margin: "0.6rem 0", fontSize: "0.9rem", textAlign: "left" }}>
       <p style={{ margin: "0 0 0.3rem", color: "#24292f" }}>
-        To <strong>{approval.payload.recipient}</strong>
+        To <strong>{payload.recipient}</strong>
         <span
           style={{
             display: "inline-block",
@@ -74,11 +123,11 @@ function OutboundMessagePreview({
             marginLeft: "0.5rem",
           }}
         >
-          {approval.payload.channel}
+          {payload.channel}
         </span>
       </p>
-      {approval.payload.subject && (
-        <p style={{ margin: "0 0 0.3rem", fontWeight: 600 }}>{approval.payload.subject}</p>
+      {payload.subject && (
+        <p style={{ margin: "0 0 0.3rem", fontWeight: 600 }}>{payload.subject}</p>
       )}
       <textarea
         aria-label="Draft body"
@@ -114,14 +163,15 @@ function OutboundMessagePreview({
 }
 
 function HotLeadPreview({ approval }: { approval: ApprovalRequest }) {
+  const payload = payloadOf(approval);
   return (
     <div style={{ margin: "0.6rem 0", fontSize: "0.9rem" }}>
       <p style={{ color: "#cf222e", fontWeight: 600, margin: "0 0 0.3rem" }}>
-        🔥 {approval.payload.reason}
+        🔥 {payload.reason}
       </p>
-      <p style={{ color: "#24292f", margin: 0 }}>{approval.payload.summary}</p>
+      <p style={{ color: "#24292f", margin: 0 }}>{payload.summary}</p>
       <p style={{ color: "#57606a", fontSize: "0.8rem", margin: "0.3rem 0 0" }}>
-        Contact {approval.payload.contact_id} · call {approval.payload.call_id}
+        Contact {payload.contact_id} · call {payload.call_id}
       </p>
     </div>
   );
@@ -136,56 +186,54 @@ function ApprovalCard({
 }) {
   const [busy, setBusy] = useState(false);
   const { hasRole } = useAuth();
+  const payload = payloadOf(approval);
   const isEscalation = approval.kind === "approve_escalation";
   const isHotLead = approval.kind === "notify_agent";
   const isOutboundMessage = approval.kind === "approve_outbound_message";
   // The editable draft body (approve_outbound_message): approving carries any
   // edits through as edited_payload, so the human decision includes the final text.
-  const [editedBody, setEditedBody] = useState(approval.payload.body ?? "");
+  const [editedBody, setEditedBody] = useState(payload.body ?? "");
   // An emptied draft can't be approved — the card promises the visible text is
   // exactly what sends, and blank means "nothing would send". Reject instead.
   const blankDraftBody = isOutboundMessage && editedBody.trim() === "";
   const subject = isEscalation
-    ? `Escalate overdue milestones — ${approval.payload.transaction_id} (${approval.payload.listing_key})`
+    ? `Escalate overdue milestones — ${payload.transaction_id} (${payload.listing_key})`
     : isHotLead
-      ? `Hot lead — notify listing agent (${approval.payload.listing_key})`
+      ? `Hot lead — notify listing agent (${payload.listing_key})`
       : isOutboundMessage
-        ? `Approve outbound ${approval.payload.channel ?? "message"} — ${approval.payload.recipient}`
-        : `Approve marketing — ${approval.payload.listing_key}`;
+        ? `Approve outbound ${payload.channel ?? "message"} — ${payload.recipient}`
+        : `Approve marketing — ${payload.listing_key}`;
 
   const decide = async (decision: "approved" | "rejected") => {
     setBusy(true);
     const editedPayload =
-      isOutboundMessage && decision === "approved" && editedBody !== (approval.payload.body ?? "")
+      isOutboundMessage && decision === "approved" && editedBody !== (payload.body ?? "")
         ? { body: editedBody }
         : undefined;
     try {
-      const response = await apiFetch(`${API_BASE}/approvals/${approval.id}/decide`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          editedPayload ? { decision, edited_payload: editedPayload } : { decision },
-        ),
-      });
-      if (!response.ok) throw new Error(`api returned ${response.status}`);
-      const outcome = (await response.json()) as {
-        workflow: {
-          status: string;
-          output: { fub_task_ids?: string[]; escalated_task_ids?: string[] } | null;
-        };
-      };
-      const output = outcome.workflow.output as {
-        fub_task_ids?: string[];
-        escalated_task_ids?: string[];
-        hot_task_id?: string;
-      } | null;
+      const outcome = unwrap(
+        await decideApprovalApprovalsApprovalIdDecidePost({
+          path: { approval_id: approval.id },
+          body: editedPayload ? { decision, edited_payload: editedPayload } : { decision },
+        }),
+      );
+      // The workflow output is an open dict on the wire (engine-specific), so
+      // the task-count view of it stays a local cast.
+      const output = outcome.workflow.output as
+        | {
+            fub_task_ids?: string[];
+            escalated_task_ids?: string[];
+            hot_task_id?: string;
+          }
+        | null
+        | undefined;
       const taskCount =
         output?.fub_task_ids?.length ??
         output?.escalated_task_ids?.length ??
         (output?.hot_task_id ? 1 : undefined);
       const target = isOutboundMessage
-        ? (approval.payload.recipient ?? approval.payload.listing_key)
-        : (approval.payload.transaction_id ?? approval.payload.listing_key);
+        ? (payload.recipient ?? payload.listing_key)
+        : (payload.transaction_id ?? payload.listing_key);
       onDecided(
         `${target} ${decision} — workflow status: ${outcome.workflow.status}` +
           (taskCount ? `, ${taskCount} CRM task(s) created.` : "."),
@@ -275,12 +323,8 @@ export default function ApprovalsInbox() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
-    apiFetch(`${API_BASE}/approvals`)
-      .then((response) => {
-        if (!response.ok) throw new Error(`api returned ${response.status}`);
-        return response.json() as Promise<ApprovalRequest[]>;
-      })
-      .then(setApprovals)
+    listApprovalsApprovalsGet()
+      .then((result) => setApprovals(unwrap(result)))
       .catch((cause) => setError(String(cause)));
   }, []);
 

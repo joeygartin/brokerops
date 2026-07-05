@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
-import type { Listing, Role } from "./types";
+import type { Listing } from "./client";
+import type { Role } from "./roles";
 
 const roleState = vi.hoisted(() => ({ role: "operator" as Role }));
 const RANK: Record<Role, number> = { viewer: 0, operator: 1, admin: 2 };
@@ -14,8 +15,10 @@ vi.mock("./authContext", () => ({
   }),
 }));
 
+// The generated client routes every call through apiFetch (its fetch layer),
+// so stubbing ./auth intercepts the SDK's Requests too.
 const apiFetchMock = vi.hoisted(() => vi.fn());
-vi.mock("./auth", () => ({ apiFetch: apiFetchMock }));
+vi.mock("./auth", () => ({ apiFetch: apiFetchMock, API_BASE: "http://localhost:8000" }));
 
 import ListingsBoard from "./ListingsBoard";
 

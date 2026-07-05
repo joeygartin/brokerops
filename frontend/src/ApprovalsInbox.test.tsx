@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { ApprovalRequest, Role } from "./types";
+import type { ApprovalRequest } from "./client";
+import type { Role } from "./roles";
 
 // Control the operator's role per-test and stub the data fetch. Both modules
-// are hoisted mocks so ApprovalsInbox picks them up at import time.
+// are hoisted mocks so ApprovalsInbox picks them up at import time. The
+// generated client routes every call through apiFetch (its fetch layer), so
+// stubbing ./auth intercepts the SDK's Requests too.
 const roleState = vi.hoisted(() => ({ role: "admin" as Role }));
 const RANK: Record<Role, number> = { viewer: 0, operator: 1, admin: 2 };
 
@@ -17,7 +20,7 @@ vi.mock("./authContext", () => ({
 }));
 
 const apiFetchMock = vi.hoisted(() => vi.fn());
-vi.mock("./auth", () => ({ apiFetch: apiFetchMock }));
+vi.mock("./auth", () => ({ apiFetch: apiFetchMock, API_BASE: "http://localhost:8000" }));
 
 import ApprovalsInbox from "./ApprovalsInbox";
 
@@ -60,8 +63,8 @@ const OUTBOUND_MESSAGE_APPROVAL: ApprovalRequest = {
 
 function mockInbox(approvals: ApprovalRequest[]) {
   apiFetchMock.mockReset();
-  apiFetchMock.mockImplementation((url: string, init?: RequestInit) => {
-    if (init?.method === "POST") {
+  apiFetchMock.mockImplementation((request: Request) => {
+    if (request.method === "POST") {
       return Promise.resolve(
         new Response(
           JSON.stringify({
@@ -118,11 +121,14 @@ describe("Outbound-message card (approve_outbound_message)", () => {
     fireEvent.change(body, { target: { value: "Edited before send." } });
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
 
-    await waitFor(() => {
-      const post = apiFetchMock.mock.calls.find(([, init]) => init?.method === "POST");
+    await waitFor(async () => {
+      const post = apiFetchMock.mock.calls
+        .map(([request]) => request as Request)
+        .find((request) => request.method === "POST");
       expect(post).toBeTruthy();
-      expect(String(post?.[0])).toContain("/approvals/ap-2/decide");
-      expect(JSON.parse(String(post?.[1]?.body))).toEqual({
+      expect(post?.url).toContain("/approvals/ap-2/decide");
+      // Clone before reading: waitFor may retry and a Request body is single-use.
+      expect(await post?.clone().json()).toEqual({
         decision: "approved",
         edited_payload: { body: "Edited before send." },
       });
@@ -137,10 +143,12 @@ describe("Outbound-message card (approve_outbound_message)", () => {
     fireEvent.change(body, { target: { value: "Would-be edit, then rejected." } });
     fireEvent.click(screen.getByRole("button", { name: "Reject" }));
 
-    await waitFor(() => {
-      const post = apiFetchMock.mock.calls.find(([, init]) => init?.method === "POST");
+    await waitFor(async () => {
+      const post = apiFetchMock.mock.calls
+        .map(([request]) => request as Request)
+        .find((request) => request.method === "POST");
       expect(post).toBeTruthy();
-      expect(JSON.parse(String(post?.[1]?.body))).toEqual({ decision: "rejected" });
+      expect(await post?.clone().json()).toEqual({ decision: "rejected" });
     });
   });
 

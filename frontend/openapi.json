@@ -1,0 +1,3418 @@
+{
+  "components": {
+    "schemas": {
+      "ApprovalRequest": {
+        "description": "The HITL spine \u2014 every human gate in any workflow passes through one of these.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "decided_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By"
+          },
+          "graph_thread_id": {
+            "title": "Graph Thread Id",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ApprovalStatus",
+            "default": "pending"
+          },
+          "tenant_id": {
+            "default": "",
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "workflow": {
+            "title": "Workflow",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workflow",
+          "graph_thread_id",
+          "kind",
+          "payload",
+          "created_at"
+        ],
+        "title": "ApprovalRequest",
+        "type": "object"
+      },
+      "ApprovalStatus": {
+        "enum": [
+          "pending",
+          "approved",
+          "rejected"
+        ],
+        "title": "ApprovalStatus",
+        "type": "string"
+      },
+      "AttachDocument": {
+        "properties": {
+          "file_id": {
+            "title": "File Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/DocumentKind",
+            "default": "other"
+          },
+          "milestone_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Milestone Id"
+          },
+          "title": {
+            "default": "",
+            "maxLength": 300,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id"
+        ],
+        "title": "AttachDocument",
+        "type": "object"
+      },
+      "CallRecord": {
+        "description": "A voice call, raw and extracted layers kept separate.",
+        "properties": {
+          "contact_id": {
+            "default": "",
+            "title": "Contact Id",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "extracted": {
+            "additionalProperties": true,
+            "title": "Extracted",
+            "type": "object"
+          },
+          "listing_key": {
+            "default": "",
+            "title": "Listing Key",
+            "type": "string"
+          },
+          "outcome": {
+            "default": "",
+            "title": "Outcome",
+            "type": "string"
+          },
+          "tenant_id": {
+            "default": "",
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "transcript": {
+            "default": "",
+            "title": "Transcript",
+            "type": "string"
+          },
+          "vapi_call_id": {
+            "title": "Vapi Call Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vapi_call_id"
+        ],
+        "title": "CallRecord",
+        "type": "object"
+      },
+      "Contact": {
+        "description": "CRM contact DTO. The CRM behind `CRMPort` is the source of truth \u2014\nthis is a read-through shape, never persisted on our side.\n\n`crm_id` is the contact's id in whichever CRM this deploy is wired to\n(a FollowUpBoss person id, a Sierra Interactive lead id, \u2026); it is only\nmeaningful to the adapter that produced it.",
+        "properties": {
+          "crm_id": {
+            "title": "Crm Id",
+            "type": "string"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "role": {
+            "default": "Lead",
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "crm_id",
+          "name"
+        ],
+        "title": "Contact",
+        "type": "object"
+      },
+      "DecideRequest": {
+        "description": "Wire shape for a decision. `decided_by` is intentionally absent \u2014 the API\nstamps it from the authenticated principal, never the client.",
+        "properties": {
+          "decision": {
+            "$ref": "#/components/schemas/ApprovalStatus"
+          },
+          "edited_payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited Payload"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "DecideRequest",
+        "type": "object"
+      },
+      "DecisionResponse": {
+        "properties": {
+          "approval": {
+            "$ref": "#/components/schemas/ApprovalRequest"
+          },
+          "workflow": {
+            "$ref": "#/components/schemas/WorkflowRunResult"
+          }
+        },
+        "required": [
+          "approval",
+          "workflow"
+        ],
+        "title": "DecisionResponse",
+        "type": "object"
+      },
+      "Document": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "file": {
+            "$ref": "#/components/schemas/FileRef"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/DocumentKind",
+            "default": "other"
+          },
+          "milestone_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Milestone Id"
+          },
+          "tenant_id": {
+            "default": "",
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "transaction_id": {
+            "title": "Transaction Id",
+            "type": "string"
+          },
+          "uploaded_by": {
+            "default": "",
+            "title": "Uploaded By",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "transaction_id",
+          "title",
+          "file",
+          "created_at"
+        ],
+        "title": "Document",
+        "type": "object"
+      },
+      "DocumentKind": {
+        "enum": [
+          "purchase_agreement",
+          "disclosures",
+          "inspection_report",
+          "appraisal_report",
+          "loan_approval",
+          "closing_statement",
+          "other"
+        ],
+        "title": "DocumentKind",
+        "type": "string"
+      },
+      "FeedbackSource": {
+        "enum": [
+          "call",
+          "form"
+        ],
+        "title": "FeedbackSource",
+        "type": "string"
+      },
+      "FileRef": {
+        "description": "A pointer to a file living in the office file store.\n\n`file_id` is the backend's opaque identifier; `web_url` is where a human\nopens the file (the provider's own viewer). No provider-specific fields.",
+        "properties": {
+          "file_id": {
+            "title": "File Id",
+            "type": "string"
+          },
+          "mime_type": {
+            "default": "",
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "web_url": {
+            "default": "",
+            "title": "Web Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "name"
+        ],
+        "title": "FileRef",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "Listing": {
+        "properties": {
+          "address": {
+            "default": "",
+            "title": "Address",
+            "type": "string"
+          },
+          "agent_id": {
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "agent_name": {
+            "title": "Agent Name",
+            "type": "string"
+          },
+          "bathrooms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bathrooms"
+          },
+          "bedrooms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bedrooms"
+          },
+          "city": {
+            "default": "",
+            "title": "City",
+            "type": "string"
+          },
+          "list_price": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "List price in whole dollars",
+            "title": "List Price"
+          },
+          "living_area_sqft": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Living Area Sqft"
+          },
+          "media": {
+            "items": {
+              "$ref": "#/components/schemas/ListingMedia"
+            },
+            "title": "Media",
+            "type": "array"
+          },
+          "mls_id": {
+            "title": "Mls Id",
+            "type": "string"
+          },
+          "modified_at": {
+            "format": "date-time",
+            "title": "Modified At",
+            "type": "string"
+          },
+          "postal_code": {
+            "title": "Postal Code",
+            "type": "string"
+          },
+          "remarks": {
+            "default": "",
+            "title": "Remarks",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ListingStatus"
+          },
+          "year_built": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year Built"
+          }
+        },
+        "required": [
+          "mls_id",
+          "status",
+          "state",
+          "postal_code",
+          "agent_id",
+          "agent_name",
+          "modified_at"
+        ],
+        "title": "Listing",
+        "type": "object"
+      },
+      "ListingMedia": {
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "listing_key": {
+            "title": "Listing Key",
+            "type": "string"
+          },
+          "media_key": {
+            "title": "Media Key",
+            "type": "string"
+          },
+          "order": {
+            "default": 0,
+            "title": "Order",
+            "type": "integer"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "media_key",
+          "listing_key",
+          "url"
+        ],
+        "title": "ListingMedia",
+        "type": "object"
+      },
+      "ListingStatus": {
+        "enum": [
+          "active",
+          "pending",
+          "closed"
+        ],
+        "title": "ListingStatus",
+        "type": "string"
+      },
+      "MagicRedeem": {
+        "properties": {
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "MagicRedeem",
+        "type": "object"
+      },
+      "MagicRequest": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "MagicRequest",
+        "type": "object"
+      },
+      "Message": {
+        "additionalProperties": false,
+        "description": "One outbound business communication to a person.\n\n`extra=\"forbid\"`: this model is the single source of truth for the comms-history\nshape \u2014 a field that isn't declared here doesn't exist.",
+        "properties": {
+          "body": {
+            "default": "",
+            "title": "Body",
+            "type": "string"
+          },
+          "channel": {
+            "$ref": "#/components/schemas/MessageChannel",
+            "default": "email"
+          },
+          "contact_id": {
+            "default": "",
+            "title": "Contact Id",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "listing_key": {
+            "default": "",
+            "title": "Listing Key",
+            "type": "string"
+          },
+          "provider_message_id": {
+            "default": "",
+            "title": "Provider Message Id",
+            "type": "string"
+          },
+          "recipient": {
+            "title": "Recipient",
+            "type": "string"
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/MessageStatus",
+            "default": "drafted"
+          },
+          "subject": {
+            "default": "",
+            "title": "Subject",
+            "type": "string"
+          },
+          "template_ref": {
+            "default": "",
+            "title": "Template Ref",
+            "type": "string"
+          },
+          "tenant_id": {
+            "default": "",
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "transaction_id": {
+            "default": "",
+            "title": "Transaction Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "recipient"
+        ],
+        "title": "Message",
+        "type": "object"
+      },
+      "MessageChannel": {
+        "enum": [
+          "email",
+          "sms"
+        ],
+        "title": "MessageChannel",
+        "type": "string"
+      },
+      "MessageStatus": {
+        "description": "Lifecycle of an outbound message.\n\nDRAFTED \u2192 SENT | FAILED is the direct-send path (BOP-015). Workflow-drafted\ncomms (BOP-019) insert a human gate between draft and send:\nPENDING_APPROVAL \u2192 SENT | FAILED | REJECTED \u2014 no drafted text leaves the\nboundary without a human decision. DELIVERED is set only by a provider\ndelivery-status webhook (BOP-018): SENT means the provider accepted the\nmessage; DELIVERED means the provider confirmed the handset got it. A\ndelivery callback can also move SENT \u2192 FAILED.",
+        "enum": [
+          "drafted",
+          "pending_approval",
+          "sent",
+          "delivered",
+          "failed",
+          "rejected"
+        ],
+        "title": "MessageStatus",
+        "type": "string"
+      },
+      "MilestoneStatus": {
+        "enum": [
+          "pending",
+          "complete",
+          "waived"
+        ],
+        "title": "MilestoneStatus",
+        "type": "string"
+      },
+      "MilestoneType": {
+        "enum": [
+          "inspection",
+          "appraisal",
+          "financing",
+          "closing",
+          "custom"
+        ],
+        "title": "MilestoneType",
+        "type": "string"
+      },
+      "MilestoneView": {
+        "properties": {
+          "blocked_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked Reason"
+          },
+          "classification": {
+            "title": "Classification",
+            "type": "string"
+          },
+          "days_until_due": {
+            "title": "Days Until Due",
+            "type": "integer"
+          },
+          "document_satisfied": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Satisfied"
+          },
+          "due_date": {
+            "format": "date",
+            "title": "Due Date",
+            "type": "string"
+          },
+          "escalation_level": {
+            "default": 0,
+            "title": "Escalation Level",
+            "type": "integer"
+          },
+          "expected_document": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DocumentKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "owner": {
+            "default": "",
+            "title": "Owner",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/MilestoneStatus",
+            "default": "pending"
+          },
+          "tenant_id": {
+            "default": "",
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "transaction_id": {
+            "title": "Transaction Id",
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/MilestoneType"
+          }
+        },
+        "required": [
+          "id",
+          "transaction_id",
+          "type",
+          "title",
+          "due_date",
+          "classification",
+          "days_until_due"
+        ],
+        "title": "MilestoneView",
+        "type": "object"
+      },
+      "MutationOutcome": {
+        "enum": [
+          "success",
+          "failure"
+        ],
+        "title": "MutationOutcome",
+        "type": "string"
+      },
+      "MutationRecord": {
+        "description": "One durable, reviewable line in the business audit trail: a single write the\nsystem performed against an external system across the MCP boundary.\n\nDistinct from an ApprovalRequest (which records a *decision*) and from tracing\n(which records *execution* for debugging) \u2014 this is the trustworthy history of\nthe actions themselves: what tool ran, on which integration, with what\n(secret-redacted) arguments, under which workflow run, on whose authority, and\nwith what result. Both success and failure are recorded.",
+        "properties": {
+          "actor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor"
+          },
+          "approval_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Id"
+          },
+          "args": {
+            "additionalProperties": true,
+            "title": "Args",
+            "type": "object"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "integration": {
+            "title": "Integration",
+            "type": "string"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/MutationOutcome"
+          },
+          "tool": {
+            "title": "Tool",
+            "type": "string"
+          },
+          "workflow": {
+            "title": "Workflow",
+            "type": "string"
+          },
+          "workflow_run_id": {
+            "title": "Workflow Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workflow_run_id",
+          "workflow",
+          "tool",
+          "integration",
+          "args",
+          "outcome",
+          "created_at"
+        ],
+        "title": "MutationRecord",
+        "type": "object"
+      },
+      "OpenTransaction": {
+        "properties": {
+          "close_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Close Date"
+          },
+          "contract_date": {
+            "format": "date",
+            "title": "Contract Date",
+            "type": "string"
+          },
+          "listing_key": {
+            "title": "Listing Key",
+            "type": "string"
+          },
+          "parties": {
+            "items": {
+              "$ref": "#/components/schemas/TransactionParty"
+            },
+            "title": "Parties",
+            "type": "array"
+          }
+        },
+        "required": [
+          "listing_key",
+          "contract_date"
+        ],
+        "title": "OpenTransaction",
+        "type": "object"
+      },
+      "OutboundCallRequest": {
+        "properties": {
+          "contact_id": {
+            "title": "Contact Id",
+            "type": "string"
+          },
+          "listing_key": {
+            "title": "Listing Key",
+            "type": "string"
+          },
+          "scenario": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario"
+          }
+        },
+        "required": [
+          "listing_key",
+          "contact_id"
+        ],
+        "title": "OutboundCallRequest",
+        "type": "object"
+      },
+      "OutboundCallResult": {
+        "properties": {
+          "call_id": {
+            "title": "Call Id",
+            "type": "string"
+          },
+          "status": {
+            "default": "queued",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "call_id"
+        ],
+        "title": "OutboundCallResult",
+        "type": "object"
+      },
+      "RefreshRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "refresh_token": {
+            "title": "Refresh Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "refresh_token"
+        ],
+        "title": "RefreshRequest",
+        "type": "object"
+      },
+      "RefreshResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "session_token": {
+            "title": "Session Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_token"
+        ],
+        "title": "RefreshResponse",
+        "type": "object"
+      },
+      "SeedRequest": {
+        "properties": {
+          "reset": {
+            "default": false,
+            "title": "Reset",
+            "type": "boolean"
+          }
+        },
+        "title": "SeedRequest",
+        "type": "object"
+      },
+      "SeedResult": {
+        "properties": {
+          "milestones": {
+            "title": "Milestones",
+            "type": "integer"
+          },
+          "seeded": {
+            "title": "Seeded",
+            "type": "boolean"
+          },
+          "transactions": {
+            "title": "Transactions",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seeded",
+          "transactions",
+          "milestones"
+        ],
+        "title": "SeedResult",
+        "type": "object"
+      },
+      "SendMessageRequest": {
+        "properties": {
+          "channel": {
+            "$ref": "#/components/schemas/MessageChannel",
+            "default": "email"
+          },
+          "contact_id": {
+            "default": "",
+            "title": "Contact Id",
+            "type": "string"
+          },
+          "listing_key": {
+            "default": "",
+            "title": "Listing Key",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Params",
+            "type": "object"
+          },
+          "recipient": {
+            "title": "Recipient",
+            "type": "string"
+          },
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "template": {
+            "title": "Template",
+            "type": "string"
+          },
+          "transaction_id": {
+            "default": "",
+            "title": "Transaction Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "recipient",
+          "template"
+        ],
+        "title": "SendMessageRequest",
+        "type": "object"
+      },
+      "Sentiment": {
+        "enum": [
+          "positive",
+          "neutral",
+          "negative"
+        ],
+        "title": "Sentiment",
+        "type": "string"
+      },
+      "SessionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "refresh_token": {
+            "title": "Refresh Token",
+            "type": "string"
+          },
+          "session_token": {
+            "title": "Session Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_token",
+          "refresh_token"
+        ],
+        "title": "SessionResponse",
+        "type": "object"
+      },
+      "ShowingFeedback": {
+        "properties": {
+          "call_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call Id"
+          },
+          "contact_id": {
+            "title": "Contact Id",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "listing_key": {
+            "title": "Listing Key",
+            "type": "string"
+          },
+          "sentiment": {
+            "$ref": "#/components/schemas/Sentiment",
+            "default": "neutral"
+          },
+          "source": {
+            "$ref": "#/components/schemas/FeedbackSource",
+            "default": "call"
+          },
+          "structured_answers": {
+            "additionalProperties": true,
+            "title": "Structured Answers",
+            "type": "object"
+          },
+          "tenant_id": {
+            "default": "",
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "listing_key",
+          "contact_id"
+        ],
+        "title": "ShowingFeedback",
+        "type": "object"
+      },
+      "StartListingToContract": {
+        "properties": {
+          "listing_key": {
+            "title": "Listing Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "listing_key"
+        ],
+        "title": "StartListingToContract",
+        "type": "object"
+      },
+      "Transaction": {
+        "properties": {
+          "close_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Close Date"
+          },
+          "contract_date": {
+            "format": "date",
+            "title": "Contract Date",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "listing_key": {
+            "title": "Listing Key",
+            "type": "string"
+          },
+          "parties": {
+            "items": {
+              "$ref": "#/components/schemas/TransactionParty"
+            },
+            "title": "Parties",
+            "type": "array"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/TransactionStage"
+          },
+          "tenant_id": {
+            "default": "",
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "listing_key",
+          "stage",
+          "contract_date"
+        ],
+        "title": "Transaction",
+        "type": "object"
+      },
+      "TransactionDetail": {
+        "properties": {
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/Document"
+            },
+            "title": "Documents",
+            "type": "array"
+          },
+          "milestones": {
+            "items": {
+              "$ref": "#/components/schemas/MilestoneView"
+            },
+            "title": "Milestones",
+            "type": "array"
+          },
+          "transaction": {
+            "$ref": "#/components/schemas/Transaction"
+          }
+        },
+        "required": [
+          "transaction",
+          "milestones",
+          "documents"
+        ],
+        "title": "TransactionDetail",
+        "type": "object"
+      },
+      "TransactionParty": {
+        "properties": {
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id"
+          },
+          "email": {
+            "default": "",
+            "title": "Email",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "name"
+        ],
+        "title": "TransactionParty",
+        "type": "object"
+      },
+      "TransactionStage": {
+        "enum": [
+          "under_contract",
+          "contingencies",
+          "clear_to_close",
+          "closed",
+          "cancelled"
+        ],
+        "title": "TransactionStage",
+        "type": "string"
+      },
+      "UploadDocument": {
+        "properties": {
+          "content_text": {
+            "maxLength": 1000000,
+            "title": "Content Text",
+            "type": "string"
+          },
+          "folder": {
+            "default": "",
+            "title": "Folder",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/DocumentKind",
+            "default": "other"
+          },
+          "milestone_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Milestone Id"
+          },
+          "name": {
+            "maxLength": 300,
+            "title": "Name",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "maxLength": 300,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "content_text"
+        ],
+        "title": "UploadDocument",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "WorkflowRunResult": {
+        "properties": {
+          "approval": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApprovalRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "output": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "thread_id": {
+            "title": "Thread Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "thread_id",
+          "status"
+        ],
+        "title": "WorkflowRunResult",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "brokerops api",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/": {
+      "get": {
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Root  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Root"
+      }
+    },
+    "/approvals": {
+      "get": {
+        "operationId": "list_approvals_approvals_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ApprovalStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "pending",
+              "title": "Status"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ApprovalRequest"
+                  },
+                  "title": "Response List Approvals Approvals Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Approvals",
+        "tags": [
+          "approvals"
+        ]
+      }
+    },
+    "/approvals/{approval_id}": {
+      "get": {
+        "operationId": "get_approval_approvals__approval_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "approval_id",
+            "required": true,
+            "schema": {
+              "title": "Approval Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalRequest"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Approval",
+        "tags": [
+          "approvals"
+        ]
+      }
+    },
+    "/approvals/{approval_id}/decide": {
+      "post": {
+        "operationId": "decide_approval_approvals__approval_id__decide_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "approval_id",
+            "required": true,
+            "schema": {
+              "title": "Approval Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decide Approval",
+        "tags": [
+          "approvals"
+        ]
+      }
+    },
+    "/audit": {
+      "get": {
+        "description": "The action audit-ledger: external writes this system performed, newest first.\n\nRead-only and open to any authenticated operator (viewer and up) \u2014 the trail is\na review surface, not a privileged action. Filter to one run with\n`workflow_run_id` to see everything done under a single workflow run.",
+        "operationId": "list_mutations_audit_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "workflow_run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workflow Run Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MutationRecord"
+                  },
+                  "title": "Response List Mutations Audit Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Mutations",
+        "tags": [
+          "audit"
+        ]
+      }
+    },
+    "/auth/config": {
+      "get": {
+        "operationId": "auth_config_auth_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Auth Config Auth Config Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Auth Config",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/magic/redeem": {
+      "post": {
+        "operationId": "redeem_magic_link_auth_magic_redeem_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MagicRedeem"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Redeem Magic Link",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/magic/request": {
+      "post": {
+        "operationId": "request_magic_link_auth_magic_request_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MagicRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Request Magic Link Auth Magic Request Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request Magic Link",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "operationId": "auth_me_auth_me_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Auth Me Auth Me Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Auth Me",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/refresh": {
+      "post": {
+        "operationId": "refresh_session_auth_refresh_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh Session",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/calls/outbound": {
+      "post": {
+        "operationId": "start_outbound_call_calls_outbound_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OutboundCallRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutboundCallResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Outbound Call",
+        "tags": [
+          "calls"
+        ]
+      }
+    },
+    "/calls/{call_id}": {
+      "get": {
+        "operationId": "get_call_record_calls__call_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "call_id",
+            "required": true,
+            "schema": {
+              "title": "Call Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CallRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Call Record",
+        "tags": [
+          "calls"
+        ]
+      }
+    },
+    "/contacts": {
+      "get": {
+        "operationId": "search_contacts_contacts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Contact"
+                  },
+                  "title": "Response Search Contacts Contacts Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Contacts",
+        "tags": [
+          "contacts"
+        ]
+      }
+    },
+    "/contacts/{contact_id}": {
+      "get": {
+        "operationId": "get_contact_contacts__contact_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "contact_id",
+            "required": true,
+            "schema": {
+              "title": "Contact Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Contact"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Contact",
+        "tags": [
+          "contacts"
+        ]
+      }
+    },
+    "/demo/seed": {
+      "post": {
+        "operationId": "seed_demo_data_demo_seed_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/SeedRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeedResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Seed Demo Data",
+        "tags": [
+          "demo"
+        ]
+      }
+    },
+    "/feedback": {
+      "get": {
+        "operationId": "list_feedback_feedback_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "listing_key",
+            "required": true,
+            "schema": {
+              "title": "Listing Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ShowingFeedback"
+                  },
+                  "title": "Response List Feedback Feedback Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Feedback",
+        "tags": [
+          "calls"
+        ]
+      }
+    },
+    "/files": {
+      "get": {
+        "description": "Browse a named office folder (read-only; an unknown folder is empty).",
+        "operationId": "list_files_files_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "folder",
+            "required": true,
+            "schema": {
+              "title": "Folder",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FileRef"
+                  },
+                  "title": "Response List Files Files Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Files",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/healthz": {
+      "get": {
+        "operationId": "healthz_healthz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Healthz Healthz Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Healthz"
+      }
+    },
+    "/internal/cron/milestones": {
+      "post": {
+        "operationId": "run_milestone_checks_internal_cron_milestones_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-cron-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cron-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Run Milestone Checks Internal Cron Milestones Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Milestone Checks",
+        "tags": [
+          "cron"
+        ]
+      }
+    },
+    "/listings": {
+      "get": {
+        "operationId": "search_listings_listings_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ListingStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "city",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "City"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_price",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Price"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max_price",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Price"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_bedrooms",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Bedrooms"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Listing"
+                  },
+                  "title": "Response Search Listings Listings Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Listings",
+        "tags": [
+          "listings"
+        ]
+      }
+    },
+    "/listings/{listing_key}": {
+      "get": {
+        "operationId": "get_listing_listings__listing_key__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "listing_key",
+            "required": true,
+            "schema": {
+              "title": "Listing Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Listing"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Listing",
+        "tags": [
+          "listings"
+        ]
+      }
+    },
+    "/messages": {
+      "get": {
+        "description": "The outbound comms history, newest first \u2014 read-open like the audit trail.",
+        "operationId": "list_messages_messages_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "contact_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Contact Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Message"
+                  },
+                  "title": "Response List Messages Messages Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Messages",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
+    "/messages/send": {
+      "post": {
+        "operationId": "send_message_messages_send_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendMessageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Send Message",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
+    "/messages/{message_id}": {
+      "get": {
+        "operationId": "get_message_messages__message_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "title": "Message Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Message",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "readyz_readyz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Readyz Readyz Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Readyz"
+      }
+    },
+    "/transactions": {
+      "get": {
+        "operationId": "list_transactions_transactions_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TransactionDetail"
+                  },
+                  "title": "Response List Transactions Transactions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Transactions",
+        "tags": [
+          "transactions"
+        ]
+      },
+      "post": {
+        "description": "Open an escrow for a listing and generate its milestone timeline.\n\nIdempotent per listing: the id is derived from the listing key, so a repeat\nwith the same terms returns the existing transaction (200) instead of opening\na second (201); a repeat with different terms is a 409. Invalid escrow dates\nare rejected (422) before anything is persisted. V1 assumes one transaction\nper listing.",
+        "operationId": "open_transaction_transactions_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenTransaction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Open Transaction",
+        "tags": [
+          "transactions"
+        ]
+      }
+    },
+    "/transactions/{transaction_id}": {
+      "get": {
+        "operationId": "get_transaction_transactions__transaction_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "transaction_id",
+            "required": true,
+            "schema": {
+              "title": "Transaction Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Transaction",
+        "tags": [
+          "transactions"
+        ]
+      }
+    },
+    "/transactions/{transaction_id}/documents": {
+      "get": {
+        "operationId": "list_documents_transactions__transaction_id__documents_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "transaction_id",
+            "required": true,
+            "schema": {
+              "title": "Transaction Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Document"
+                  },
+                  "title": "Response List Documents Transactions  Transaction Id  Documents Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Documents",
+        "tags": [
+          "documents"
+        ]
+      },
+      "post": {
+        "operationId": "attach_document_transactions__transaction_id__documents_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "transaction_id",
+            "required": true,
+            "schema": {
+              "title": "Transaction Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttachDocument"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Document"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Attach Document",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/transactions/{transaction_id}/documents/upload": {
+      "post": {
+        "description": "Store new content in the office file store and attach it in one step.\n\nThe `put` goes through the recording + idempotency seams, so the external\nwrite is audited; only the resulting pointer is persisted here.",
+        "operationId": "upload_document_transactions__transaction_id__documents_upload_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "transaction_id",
+            "required": true,
+            "schema": {
+              "title": "Transaction Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadDocument"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Document"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Document",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/webhooks/twilio-sms": {
+      "post": {
+        "operationId": "twilio_sms_webhook_webhooks_twilio_sms_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-twilio-signature",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Twilio-Signature"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Twilio Sms Webhook Webhooks Twilio Sms Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Twilio Sms Webhook",
+        "tags": [
+          "webhooks"
+        ]
+      }
+    },
+    "/webhooks/vapi": {
+      "post": {
+        "operationId": "vapi_webhook_webhooks_vapi_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-vapi-secret",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Vapi-Secret"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Vapi Webhook Webhooks Vapi Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Vapi Webhook",
+        "tags": [
+          "webhooks"
+        ]
+      }
+    },
+    "/workflows/listing-to-contract/start": {
+      "post": {
+        "operationId": "start_listing_to_contract_workflows_listing_to_contract_start_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartListingToContract"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRunResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Listing To Contract",
+        "tags": [
+          "workflows"
+        ]
+      }
+    }
+  }
+}

@@ -1,4 +1,4 @@
-.PHONY: dev test frontend-test lint demo migrate gcp-bootstrap gcp-images deploy secrets
+.PHONY: dev test frontend-test lint generate demo migrate gcp-bootstrap gcp-images deploy secrets
 
 TF := terraform -chdir=infra
 
@@ -30,6 +30,14 @@ lint:
 		integrations/vapi/src integrations/vapi/tests \
 		orchestration/langgraph/src orchestration/langgraph/tests \
 		orchestration/adk/src orchestration/adk/tests
+
+# Regenerate the API contract artifacts after any backend wire-shape change:
+# export the OpenAPI spec from the Pydantic models, then regenerate the TS
+# client from it. Both outputs are committed; CI re-runs this and fails on any
+# diff (ADR-0018).
+generate:
+	uv run python scripts/export_openapi.py
+	cd frontend && npm run generate
 
 migrate:
 	uv run alembic -c api/alembic.ini upgrade head
