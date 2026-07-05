@@ -2,7 +2,7 @@ import httpx
 import pytest
 
 from brokerops_core.models.message import Message, MessageChannel
-from brokerops_twilio_sms.adapter import TwilioSMSAdapter
+from brokerops_twilio_sms.adapter import TwilioApiError, TwilioSMSAdapter
 from brokerops_twilio_sms.stub import create_stub_app
 
 ACCOUNT_SID = "ACstub00000000000000000000000000"
@@ -94,3 +94,51 @@ async def test_send_prints_the_sms_to_stdout(capsys: pytest.CaptureFixture[str])
     out = capsys.readouterr().out
     assert "to: +15551230101" in out
     assert "Hi Sam, thanks for touring 412 Alder Court!" in out
+
+
+def _failing_adapter(response: httpx.Response) -> TwilioSMSAdapter:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return response
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://sms.test")
+    return TwilioSMSAdapter(
+        account_sid=ACCOUNT_SID,
+        auth_token="stub-token",
+        from_number="+15005550006",
+        base_url="http://sms.test",
+        client=client,
+    )
+
+
+async def test_twilio_error_envelope_is_surfaced() -> None:
+    # Twilio's documented failure envelope: the vendor code + message must reach
+    # the audit failure record / route error, not a flattened "HTTP 400".
+    adapter = _failing_adapter(
+        httpx.Response(
+            400,
+            json={
+                "code": 21211,
+                "message": "The 'To' number +15551230101 is not a valid phone number.",
+                "more_info": "https://www.twilio.com/docs/errors/21211",
+                "status": 400,
+            },
+        )
+    )
+    with pytest.raises(TwilioApiError) as exc_info:
+        await adapter.send(_message())
+    err = exc_info.value
+    assert err.status_code == 400
+    assert err.error_code == 21211
+    assert "not a valid phone number" in err.error_message
+    assert "Twilio error 21211" in str(err)
+
+
+async def test_non_envelope_failure_falls_back_to_http_status() -> None:
+    # A proxy/HTML body isn't Twilio's envelope: the failure still names itself.
+    adapter = _failing_adapter(httpx.Response(502, text="<html>Bad Gateway</html>"))
+    with pytest.raises(TwilioApiError) as exc_info:
+        await adapter.send(_message())
+    err = exc_info.value
+    assert err.status_code == 502
+    assert err.error_code is None
+    assert "HTTP 502" in str(err)

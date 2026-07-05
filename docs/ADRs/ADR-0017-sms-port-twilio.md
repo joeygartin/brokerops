@@ -31,7 +31,12 @@ brand/campaign registration — a real-world compliance step no adapter can abso
    create, basic auth, `MessagingServiceSid` or `From`) — **no Twilio SDK**; the
    two calls we make don't earn a dependency — plus a recorded-shape stub
    (Twilio's create-response shape: `SM…` sid, `"queued"`, `error_code: null`,
-   printed to stdout for compose logs) and an MCP server exposing `send_sms`.
+   printed to stdout for compose logs) and an MCP server exposing `send_sms`
+   (fail-loud config against the real API host, the sierra MCP posture).
+   Failures raise `TwilioApiError` carrying the vendor envelope's `code` +
+   `message` (the SierraApiError precedent) so audit failure records keep the
+   reason — bad To-number vs STOP-listed recipient vs unregistered campaign —
+   with an HTTP-status fallback when the body isn't Twilio's envelope.
 3. **Explicit, closed selector:** `SMS_PROVIDER ∈ {stub, twilio}`, mirroring
    EMAIL_PROVIDER (ADR-0014 posture). Unset → the in-process stub over the
    `internal` sentinel (zero-credential demo). `twilio` fails loud at wiring

@@ -18,15 +18,16 @@ COPY integrations/email_stub/ ./integrations/email_stub/
 COPY integrations/llm_extraction/ ./integrations/llm_extraction/
 COPY integrations/pydantic_ai_extraction/ ./integrations/pydantic_ai_extraction/
 COPY integrations/sierra_crm/ ./integrations/sierra_crm/
+COPY integrations/twilio_sms/ ./integrations/twilio_sms/
 COPY integrations/vapi/ ./integrations/vapi/
 COPY orchestration/langgraph/ ./orchestration/langgraph/
 COPY orchestration/adk/ ./orchestration/adk/
 COPY api/ ./api/
 RUN pip install --no-cache-dir ./core ./integrations/mls_reso ./integrations/followupboss \
     ./integrations/google_drive ./integrations/google_oidc ./integrations/email_sendgrid \
-    ./integrations/email_ses \
-    ./integrations/email_smtp ./integrations/email_stub ./integrations/llm_extraction \
-    ./integrations/pydantic_ai_extraction ./integrations/sierra_crm ./integrations/vapi \
+    ./integrations/email_ses ./integrations/email_smtp ./integrations/email_stub \
+    ./integrations/llm_extraction ./integrations/pydantic_ai_extraction \
+    ./integrations/sierra_crm ./integrations/twilio_sms ./integrations/vapi \
     ./orchestration/langgraph ./orchestration/adk ./api
 
 EXPOSE 8000

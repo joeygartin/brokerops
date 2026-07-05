@@ -7,11 +7,48 @@ recorded-shape stub — swapping is a base-URL change. Twilio payload shapes nev
 leave this module.
 """
 
+from typing import Any
+
 import httpx
 
 from brokerops_core.models.message import Message
 
 TWILIO_API_BASE = "https://api.twilio.com"
+
+
+class TwilioApiError(RuntimeError):
+    """A Twilio API call failed. Carries the vendor's error envelope (``code`` +
+    ``message``) so audit failure records and route errors keep the *reason* —
+    a bad To-number (21211), a STOP-listed recipient (21610), or an unregistered
+    10DLC campaign are operationally different failures, and a bare "HTTP 400"
+    flattens them all. The SierraApiError precedent.
+    """
+
+    def __init__(self, status_code: int, error_code: int | None, message: str) -> None:
+        prefix = f"Twilio error {error_code}" if error_code is not None else "Twilio API error"
+        super().__init__(f"{prefix} (HTTP {status_code}): {message}")
+        self.status_code = status_code
+        self.error_code = error_code
+        self.error_message = message
+
+
+def _check(response: httpx.Response) -> Any:
+    """Return the JSON body, or raise TwilioApiError with the vendor's reason.
+
+    Twilio's documented failure envelope is ``{"code": <int>, "message": <str>,
+    "status": <http>}``; when the body isn't that envelope (proxy HTML, an empty
+    body), fall back to the HTTP status so the failure still names itself.
+    """
+    try:
+        body: Any = response.json()
+    except ValueError:
+        body = None
+    if response.status_code >= 300:
+        envelope: dict[str, Any] = body if isinstance(body, dict) else {}
+        code = envelope.get("code")
+        message = str(envelope.get("message") or f"HTTP {response.status_code}")
+        raise TwilioApiError(response.status_code, code if isinstance(code, int) else None, message)
+    return body
 
 
 class TwilioSMSAdapter:
@@ -51,5 +88,4 @@ class TwilioSMSAdapter:
         response = await self._client.post(
             f"/2010-04-01/Accounts/{self._account_sid}/Messages.json", data=data
         )
-        response.raise_for_status()
-        return str(response.json()["sid"])
+        return str(_check(response)["sid"])
