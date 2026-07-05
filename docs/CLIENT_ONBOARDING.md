@@ -150,7 +150,6 @@ per-client):
 | "Due soon" lead time (how many days out a reminder fires) | `core/services/milestone_engine.py → DUE_SOON_DAYS` (currently 3) **[code]** |
 | Escalation behavior for overdue milestones | `milestone_engine.py` + `transaction_coordination` workflow **[code]** |
 | Daily check time (cron) | `cron_schedule` tfvar (default `0 13 * * *`) **[config]** |
-| Workflow engine preference | `orchestrator` = `langgraph`/`adk` **[config]** |
 
 ## 5. Data sources & triggers (answer these first — they gate everything)
 
@@ -180,7 +179,7 @@ The bridge from a listing going under contract to a tracked escrow **now exists*
 - **Operator trigger** — `POST /transactions` (operator role) validates the escrow
   dates, generates the timeline, and persists it. Idempotent per listing (a
   same-terms repeat returns the existing transaction; different terms → 409). The
-  existing `transaction_coordination` cron then drives it on either engine.
+  existing `transaction_coordination` cron then drives it.
 
 **Follow-ups (not yet built):**
 

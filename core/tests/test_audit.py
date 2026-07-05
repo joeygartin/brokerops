@@ -1,7 +1,7 @@
 """Unit coverage for the audit seam: redaction and the recording port wrappers.
 
-Engine-independent — the wrappers carry all the recording logic, so both engines
-inherit identical behavior by construction (architecture rule #5).
+Engine-independent — the wrappers carry all the recording logic, so it holds below
+the engine by construction (architecture rule #5).
 """
 
 from datetime import date

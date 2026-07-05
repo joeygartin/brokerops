@@ -1,7 +1,7 @@
 """Unit coverage for the idempotency seam: the key convention and the port wrappers.
 
-Engine-independent — the wrappers carry all the dedupe logic, so both engines inherit
-identical behavior by construction (architecture rule #5), exactly like the audit seam.
+Engine-independent — the wrappers carry all the dedupe logic, so it holds below the
+engine by construction (architecture rule #5), exactly like the audit seam.
 """
 
 from datetime import date

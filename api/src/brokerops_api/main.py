@@ -81,14 +81,15 @@ from brokerops_core.services.scoped_stores import (
     ScopedTransactionStore,
 )
 from brokerops_core.services.egress import guard_tool_ports
-from brokerops_adk.engine import build_engine as build_adk_engine
 from brokerops_langgraph.engine import build_engine as build_langgraph_engine
 
-# Both engines honor the same WorkflowEngine protocol over the same MCP
-# adapters, stores, and ApprovalRequest spine — the switch is wiring only.
+# LangGraph is the sole orchestrator (ADR-0019). The API depends only on the
+# WorkflowEngine protocol; the engine lives behind it in its own package, so the
+# seam that once made a second-engine port mechanical is retained. The selector stays
+# fail-loud and single-valued — a stray ORCHESTRATOR raises at startup rather than
+# silently doing anything (the EXTRACTION_BACKEND / EMAIL_PROVIDER posture).
 ENGINE_FACTORIES = {
     "langgraph": build_langgraph_engine,
-    "adk": build_adk_engine,
 }
 
 
@@ -186,8 +187,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # engine performs is first deduped (IdempotentCRM/Voice — at most once per
     # workflow run, ADR-0011) and then recorded (RecordingCRM/Voice — the audit
     # ledger, ADR-0010). Idempotency wraps recording, so a deduped replay performs no
-    # side effect and writes no second mutation record. Both engines inherit this
-    # identically (architecture rule #5). The raw adapters stay on app.state for the
+    # side effect and writes no second mutation record. This sits below the engine,
+    # so it holds with no engine-specific code (architecture rule #5). The raw
+    # adapters stay on app.state for the
     # operator-driven direct routes, which are not workflow writes.
     #
     # BOP-011 + BOP-012: the both-directions tool guard is the OUTERMOST wrapper on every

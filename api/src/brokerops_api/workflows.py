@@ -1,9 +1,9 @@
 """The workflow-engine seam the API depends on.
 
-Routes and deps type against the WorkflowEngine protocol only; concrete
-engines live with their frameworks (brokerops_langgraph.engine, and the ADK
-counterpart) and are selected at startup. The shared vocabulary —
-workflow names, WorkflowRunResult — lives framework-free in core.
+Routes and deps type against the WorkflowEngine protocol only; the concrete
+engine lives with its framework (brokerops_langgraph.engine) behind this seam
+and is selected at startup (ADR-0019). The shared vocabulary — workflow names,
+WorkflowRunResult — lives framework-free in core.
 """
 
 from typing import Any, Protocol

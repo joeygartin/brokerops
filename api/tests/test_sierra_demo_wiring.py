@@ -1,4 +1,4 @@
-"""All three workflows, BOTH engines, over the Sierra stub in demo wiring (BOP-022).
+"""All three workflows over the Sierra stub in demo wiring (BOP-022).
 
 The CRM adapter comes from `build_crm_adapter()` under CRM_VENDOR=sierra +
 SIERRA_BASE_URL=internal — the exact zero-credential path a Sierra demo deploy
@@ -22,7 +22,6 @@ from brokerops_api.workflows import (
     VAPI_FOLLOWUP,
     WorkflowEngine,
 )
-from brokerops_adk.engine import build_engine as build_adk_engine
 from brokerops_core.models.approval import ApprovalDecision, ApprovalStatus
 from brokerops_core.models.call import CallRecord
 from brokerops_core.models.feedback import ShowingFeedback
@@ -188,7 +187,6 @@ class FakeFeedbackStore:
 EngineFactory = Callable[..., AbstractAsyncContextManager[WorkflowEngine]]
 ENGINE_FACTORIES: dict[str, EngineFactory] = {
     "langgraph": build_langgraph_engine,
-    "adk": build_adk_engine,
 }
 
 
@@ -202,7 +200,7 @@ def sierra_internal_env(monkeypatch: pytest.MonkeyPatch) -> None:
 Harness = tuple[WorkflowEngine, InMemoryApprovalRepo, InMemoryAuditLog]
 
 
-@pytest.fixture(params=["langgraph", "adk"])
+@pytest.fixture(params=["langgraph"])
 async def harness(request: pytest.FixtureRequest) -> AsyncIterator[Harness]:
     audit_log = InMemoryAuditLog()
     repo = InMemoryApprovalRepo()

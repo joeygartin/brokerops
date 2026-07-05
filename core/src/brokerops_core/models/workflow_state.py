@@ -1,9 +1,9 @@
-"""State schemas for the workflow runs — shared by every orchestrator.
+"""State schemas for the workflow runs — owned by core, not the engine.
 
 State carries IDs and decisions, not entity blobs — nodes re-fetch entities
 through core services so persisted workflow state stays small and never goes
-stale. Plain Pydantic by rule: orchestration frameworks (LangGraph, ADK)
-consume these schemas; none of them leak in.
+stale. Plain Pydantic by rule: the orchestration framework (LangGraph) consumes
+these schemas without leaking into them, which is what keeps the engine swappable.
 """
 
 from enum import StrEnum

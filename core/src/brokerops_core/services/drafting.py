@@ -51,8 +51,8 @@ def edited_draft_fields(edited: Mapping[str, Any] | None) -> tuple[str, str]:
     "" means "not edited — keep the draft". A present-but-blank body is refused
     loudly: the inbox card promises the visible text is exactly what sends, so an
     empty edit must never silently fall back to the original draft — the right
-    move for "don't send this" is rejecting the gate. Both engines' gate nodes
-    share this rule (rules in core, nodes thin).
+    move for "don't send this" is rejecting the gate. The gate nodes share this
+    rule from core (rules in core, nodes thin).
     """
     if not edited:
         return "", ""

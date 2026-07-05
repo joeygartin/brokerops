@@ -36,10 +36,6 @@ resource "google_cloud_run_v2_service" "api" {
         mount_path = "/cloudsql"
       }
 
-      env {
-        name  = "ORCHESTRATOR"
-        value = var.orchestrator
-      }
       # The deploy's tenant identity (BOP-006). Each client deploy binds its own
       # client_name as the tenant below the agent, so a turned agent's blast radius
       # is this one client — never the fleet. Without this a client deploy would run
