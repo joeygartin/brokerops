@@ -19,6 +19,13 @@ seeded=$(curl -sf -X POST "${API}/demo/seed" -H 'Content-Type: application/json'
   -d '{"reset": true}' | jget "d['transactions']")
 [ "${seeded}" = "3" ] || fail "expected 3 seeded transactions, got ${seeded}"
 
+say "drain pending approvals left by earlier runs (seed reset keeps them)"
+for approval_id in $(curl -sf "${API}/approvals" | jget "'\n'.join(a['id'] for a in d)"); do
+  curl -sf -X POST "${API}/approvals/${approval_id}/decide" -H 'Content-Type: application/json' \
+    -d '{"decision": "rejected", "decided_by": "e2e-drain"}' >/dev/null || true
+done
+[ "$(curl -sf "${API}/approvals" | jget "len(d)")" = "0" ] || fail "could not drain approvals"
+
 say "listings served from the mock RESO MLS"
 count=$(curl -sf "${API}/listings" | jget "len(d)")
 [ "${count}" = "12" ] || fail "expected 12 listings, got ${count}"
@@ -51,17 +58,22 @@ echo "${audit}" | jget "all(r['tool']=='create_task' and r['integration']=='foll
   and r['outcome']=='success' and r['approval_id']=='${approval_id}' for r in d)" \
   | grep -qi true || fail "audit records not linked/clean"
 
-say "milestone cron: overdue escalates, others fan out"
+say "milestone cron: overdue escalates, due-soon drafts a reminder email, blocker queues a call"
 cron=$(curl -sf -X POST "${API}/internal/cron/milestones")
 checked=$(echo "${cron}" | jget "d['checked']")
 [ "${checked}" = "3" ] || fail "cron checked ${checked}, expected 3"
-esc_id=$(echo "${cron}" | jget "[r['approval_id'] for r in d['results'] if r['status']=='awaiting_approval'][0]")
+pending=$(curl -sf "${API}/approvals")
+esc_id=$(echo "${pending}" | jget "[a['id'] for a in d if a['kind']=='approve_escalation'][0]")
 [ -n "${esc_id}" ] || fail "no escalation approval from cron"
+msg_id=$(echo "${pending}" | jget "[a['id'] for a in d if a['kind']=='approve_outbound_message'][0]")
+[ -n "${msg_id}" ] || fail "no drafted reminder-email approval from cron (BOP-019)"
+recipient=$(echo "${pending}" | jget "[a['payload']['recipient'] for a in d if a['id']=='${msg_id}'][0]")
+[ "${recipient}" = "dana.whitfield@example.test" ] || fail "reminder drafted to ${recipient}"
 
-say "cron dedup: pending escalation is skipped on rerun"
+say "cron dedup: pending gates are skipped on rerun (escalation + drafted email)"
 skipped=$(curl -sf -X POST "${API}/internal/cron/milestones" \
   | jget "d['skipped_pending_escalation']")
-[ "${skipped}" -ge 1 ] || fail "expected pending escalation to be skipped"
+[ "${skipped}" -ge 2 ] || fail "expected both pending gates to be skipped, got ${skipped}"
 
 say "approve escalation → URGENT task + level ratchet"
 outcome=$(curl -sf -X POST "${API}/approvals/${esc_id}/decide" \
@@ -72,6 +84,29 @@ outcome=$(curl -sf -X POST "${API}/approvals/${esc_id}/decide" \
 level=$(curl -sf "${API}/transactions/TXN-1001" \
   | jget "[m for m in d['milestones'] if m['type']=='inspection'][0]['escalation_level']")
 [ "${level}" -ge 1 ] || fail "escalation level not ratcheted"
+
+say "approve drafted reminder (edited body) → stub send + outbound_messages row"
+msg_run_id=$(curl -sf "${API}/approvals/${msg_id}" | jget "d['graph_thread_id']")
+decided=$(curl -sf -X POST "${API}/approvals/${msg_id}/decide" \
+  -H 'Content-Type: application/json' \
+  -d '{"decision": "approved", "decided_by": "e2e", "edited_payload": {"body": "Edited by e2e before send."}}')
+msg_outcome=$(echo "${decided}" | jget "d['workflow']['output']['outcome']")
+[ "${msg_outcome}" = "reminder_email_sent" ] || fail "reminder outcome was ${msg_outcome}"
+message_id=$(echo "${decided}" | jget "d['workflow']['output']['reminder_message_id']")
+message=$(curl -sf "${API}/messages/${message_id}")
+[ "$(echo "${message}" | jget "d['status']")" = "sent" ] || fail "message row not sent"
+[ "$(echo "${message}" | jget "d['body']")" = "Edited by e2e before send." ] \
+  || fail "edited body did not ship"
+[ -n "$(echo "${message}" | jget "d['provider_message_id']")" ] || fail "no provider message id"
+
+say "the approved send is in the audit ledger, linked to its approval"
+email_audit=$(curl -sf "${API}/audit?workflow_run_id=${msg_run_id}" \
+  | jget "[r for r in d if r['tool']=='send_email']")
+echo "${email_audit}" | grep -q "send_email" || fail "send_email not in audit ledger"
+curl -sf "${API}/audit?workflow_run_id=${msg_run_id}" \
+  | jget "all(r['outcome']=='success' and r['approval_id']=='${msg_id}' \
+  for r in d if r['tool']=='send_email')" | grep -qi true \
+  || fail "send_email audit record not linked/clean"
 
 say "voice feedback call (hot) → webhook → extraction → hot-lead gate"
 curl -sf -X POST "${API}/calls/outbound" -H 'Content-Type: application/json' \
@@ -89,15 +124,28 @@ hot_outcome=$(curl -sf -X POST "${API}/approvals/${hot_id}/decide" \
   | jget "d['workflow']['output']['outcome']")
 [ "${hot_outcome}" = "agent_notified" ] || fail "hot outcome was ${hot_outcome}"
 
-say "cool call syncs without a gate"
-pending_before=$(curl -sf "${API}/approvals" | jget "len(d)")
+say "cool call syncs, then pauses at the drafted follow-up gate (BOP-019)"
 curl -sf -X POST "${API}/calls/outbound" -H 'Content-Type: application/json' \
   -d '{"listing_key": "RM1002", "contact_id": "102", "scenario": "cool"}' >/dev/null
 sleep 3
 sentiment=$(curl -sf "${API}/feedback?listing_key=RM1002" | jget "d[0]['sentiment']")
 [ "${sentiment}" = "negative" ] || fail "cool-call sentiment was ${sentiment}"
-pending_after=$(curl -sf "${API}/approvals" | jget "len(d)")
-[ "${pending_after}" = "${pending_before}" ] || fail "cool call should not create approvals"
+followup_id=$(curl -sf "${API}/approvals" \
+  | jget "[a['id'] for a in d if a['kind']=='approve_outbound_message'][0]")
+[ -n "${followup_id}" ] || fail "no drafted follow-up approval after cool call"
+
+say "reject drafted follow-up → no send, decision recorded"
+sent_before=$(curl -sf "${API}/messages" | jget "len([m for m in d if m['status']=='sent'])")
+rejected=$(curl -sf -X POST "${API}/approvals/${followup_id}/decide" \
+  -H 'Content-Type: application/json' \
+  -d '{"decision": "rejected", "decided_by": "e2e"}')
+[ "$(echo "${rejected}" | jget "d['workflow']['status']")" = "followup_dismissed" ] \
+  || fail "rejected follow-up did not end as followup_dismissed"
+followup_message_id=$(echo "${rejected}" | jget "d['workflow']['output']['followup_message_id']")
+[ "$(curl -sf "${API}/messages/${followup_message_id}" | jget "d['status']")" = "rejected" ] \
+  || fail "rejected message row not marked rejected"
+sent_after=$(curl -sf "${API}/messages" | jget "len([m for m in d if m['status']=='sent'])")
+[ "${sent_after}" = "${sent_before}" ] || fail "a rejected draft must never send"
 
 say "frontend serves"
 curl -sf "${FRONTEND}/" | grep -q "<title>brokerops</title>" || fail "frontend not serving"

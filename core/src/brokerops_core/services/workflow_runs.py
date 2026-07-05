@@ -29,6 +29,8 @@ OUTPUT_KEYS = (
     "note_id",
     "call_log_id",
     "hot_task_id",
+    "reminder_message_id",
+    "followup_message_id",
 )
 # Stage/outcome values that mean "the run did what it set out to do".
 COMPLETED_VALUES = {
@@ -39,6 +41,8 @@ COMPLETED_VALUES = {
     "call_queued",
     "synced",
     "agent_notified",
+    "reminder_email_sent",
+    "followup_sent",
 }
 
 

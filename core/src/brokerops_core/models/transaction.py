@@ -23,6 +23,10 @@ class TransactionParty(BaseModel):
     role: str
     name: str
     contact_id: str | None = None
+    # Direct reach for parties that aren't CRM contacts (escrow officers,
+    # lenders, co-op agents). Empty = no email on file; the drafted-comms rules
+    # (BOP-019) skip such parties rather than guessing an address.
+    email: str = ""
 
 
 class Transaction(BaseModel):

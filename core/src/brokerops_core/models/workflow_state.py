@@ -50,6 +50,13 @@ class VapiFollowupState(BaseModel):
     call_log_id: str = ""
     hot_approval: ApprovalOutcome | None = None
     hot_task_id: str = ""
+    # Drafted follow-up tail (BOP-019): the id of the PENDING_APPROVAL Message
+    # row — nodes re-fetch the row itself — plus the gate decision and any
+    # approver-edited text carried from the gate to the post-decision send.
+    followup_message_id: str = ""
+    followup_approval: ApprovalOutcome | None = None
+    followup_edited_subject: str = ""
+    followup_edited_body: str = ""
     outcome: str = ""
 
 
@@ -63,3 +70,9 @@ class TransactionCoordinationState(BaseModel):
     escalation_approval: ApprovalOutcome | None = None
     escalated_task_ids: list[str] = Field(default_factory=list)
     planned_calls: list[str] = Field(default_factory=list)
+    # Drafted reminder-email tail on the due-soon path (BOP-019); same shape
+    # as the vapi follow-up tail.
+    reminder_message_id: str = ""
+    reminder_approval: ApprovalOutcome | None = None
+    reminder_edited_subject: str = ""
+    reminder_edited_body: str = ""

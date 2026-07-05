@@ -51,6 +51,14 @@ export type ApprovalPayload = {
   call_id?: string;
   reason?: string;
   summary?: string;
+  // approve_outbound_message (BOP-019): a drafted email awaiting the human
+  // decision — the body is editable in the card and the edited text is what sends.
+  message_id?: string;
+  channel?: string;
+  recipient?: string;
+  subject?: string;
+  body?: string;
+  template_ref?: string;
 };
 
 export type ApprovalRequest = {

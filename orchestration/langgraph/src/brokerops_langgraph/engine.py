@@ -23,6 +23,7 @@ from brokerops_core.ports.feedback import FeedbackStore
 from brokerops_core.ports.mls import MLSPort
 from brokerops_core.ports.transactions import TransactionStore
 from brokerops_core.ports.voice import VoicePort
+from brokerops_core.services.message_send import MessageSendService
 from brokerops_core.services.workflow_runs import (
     LISTING_TO_CONTRACT,
     TRANSACTION_COORDINATION,
@@ -107,6 +108,7 @@ async def build_engine(
     transaction_store: TransactionStore,
     feedback_store: FeedbackStore,
     approval_repo: ApprovalRepo,
+    message_service: MessageSendService,
     database_url: str | None,
 ) -> AsyncIterator[LangGraphWorkflowEngine]:
     """Wire the three graphs to a checkpointer and yield a ready engine.
@@ -118,7 +120,15 @@ async def build_engine(
     if database_url:
         async with postgres_checkpointer(database_url) as saver:
             yield _engine(
-                mls, crm, voice, extraction, transaction_store, feedback_store, approval_repo, saver
+                mls,
+                crm,
+                voice,
+                extraction,
+                transaction_store,
+                feedback_store,
+                approval_repo,
+                message_service,
+                saver,
             )
     else:
         yield _engine(
@@ -129,6 +139,7 @@ async def build_engine(
             transaction_store,
             feedback_store,
             approval_repo,
+            message_service,
             InMemorySaver(),
         )
 
@@ -141,11 +152,16 @@ def _engine(
     transaction_store: TransactionStore,
     feedback_store: FeedbackStore,
     approval_repo: ApprovalRepo,
+    message_service: MessageSendService,
     saver: Any,
 ) -> LangGraphWorkflowEngine:
     graphs = {
         LISTING_TO_CONTRACT: build_listing_to_contract(mls, crm, saver),
-        TRANSACTION_COORDINATION: build_transaction_coordination(transaction_store, crm, saver),
-        VAPI_FOLLOWUP: build_vapi_followup(voice, crm, feedback_store, extraction, saver),
+        TRANSACTION_COORDINATION: build_transaction_coordination(
+            transaction_store, crm, message_service, saver
+        ),
+        VAPI_FOLLOWUP: build_vapi_followup(
+            voice, crm, feedback_store, extraction, message_service, saver
+        ),
     }
     return LangGraphWorkflowEngine(graphs, approval_repo)

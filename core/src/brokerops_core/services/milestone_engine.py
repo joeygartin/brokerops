@@ -11,8 +11,11 @@ from enum import StrEnum
 from pydantic import BaseModel
 
 from brokerops_core.models.document import Document
+from brokerops_core.models.drafting import DraftContext
+from brokerops_core.models.message_templates import MILESTONE_REMINDER_V1
 from brokerops_core.models.milestone import Milestone, MilestoneStatus
 from brokerops_core.models.transaction import Transaction
+from brokerops_core.services.drafting import SENDER_NAME
 
 DUE_SOON_DAYS = 3
 
@@ -91,6 +94,39 @@ def draft_milestone_reminder(txn: Transaction, milestone: Milestone, days_until_
         f"{milestone.due_date.isoformat()} — {days_until_due} day(s) out. "
         f"Owner: {milestone.owner or 'unassigned'}."
     )
+
+
+def plan_reminder_email(
+    txn: Transaction, due_soon: Sequence[tuple[Milestone, int]]
+) -> DraftContext | None:
+    """The drafted tail of the due-soon path (BOP-019): one reminder email per run.
+
+    Rule: take the most urgent due-soon milestone whose owner is a transaction
+    party with an email on file — the external party we can actually reach.
+    None means no such recipient exists; the CRM reminder tasks (already sent)
+    remain the whole outcome and the workflow skips the drafted tail.
+    """
+    for milestone, _days in sorted(due_soon, key=lambda pair: pair[1]):
+        party = next(
+            (p for p in txn.parties if p.name and p.name == milestone.owner and p.email), None
+        )
+        if party is None:
+            continue
+        return DraftContext(
+            recipient=party.email,
+            template_ref=MILESTONE_REMINDER_V1.ref,
+            params={
+                "recipient_name": party.name,
+                "milestone_title": milestone.title,
+                "listing_address": txn.listing_key,
+                "due_date": milestone.due_date.isoformat(),
+                "sender_name": SENDER_NAME,
+            },
+            contact_id=party.contact_id or "",
+            listing_key=txn.listing_key,
+            transaction_id=txn.id,
+        )
+    return None
 
 
 def draft_escalation_note(txn: Transaction, milestone: Milestone, days_overdue: int) -> str:

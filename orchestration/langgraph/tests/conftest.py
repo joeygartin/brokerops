@@ -5,9 +5,12 @@ from brokerops_core.models.call import CallRecord
 from brokerops_core.models.contact import Contact, ContactCreate, CrmTask
 from brokerops_core.models.feedback import ShowingFeedback
 from brokerops_core.models.listing import Listing, ListingMedia, ListingQuery, ListingStatus
+from brokerops_core.models.message import Message
 from brokerops_core.models.milestone import Milestone
 from brokerops_core.models.transaction import Transaction
 from brokerops_core.ports.transactions import TransactionAlreadyExists
+from brokerops_core.services.drafting import DeterministicDrafter
+from brokerops_core.services.message_send import MessageSendService
 
 LISTINGS = {
     "RM1001": Listing(
@@ -60,10 +63,13 @@ class GraphFakeCRM:
         self.created_tasks: list[CrmTask] = []
         self.notes: list[tuple[str, str, str]] = []
         self.logged_calls: list[tuple[str, str, str]] = []
+        # Seedable read-through contacts: the drafted follow-up tail (BOP-019)
+        # only fires when the contact resolves with an email on file.
+        self.contacts: dict[str, Contact] = {}
         self._ids = count(9000)
 
     async def get_contact(self, contact_id: str) -> Contact | None:
-        return None
+        return self.contacts.get(contact_id)
 
     async def search_contacts(self, query: str, limit: int = 20) -> list[Contact]:
         return []
@@ -126,6 +132,45 @@ class FakeFeedbackStore:
 
     async def list_feedback(self, listing_key: str) -> list[ShowingFeedback]:
         return [f for f in self.feedback.values() if f.listing_key == listing_key]
+
+
+class FakeEmail:
+    """EmailPort fake: records every provider-bound send."""
+
+    def __init__(self, fail: bool = False) -> None:
+        self.sent: list[Message] = []
+        self.fail = fail
+        self._ids = count(5000)
+
+    async def send(self, message: Message) -> str:
+        if self.fail:
+            raise RuntimeError("provider unavailable")
+        self.sent.append(message)
+        return f"provider-{next(self._ids)}"
+
+
+class DictMessageStore:
+    def __init__(self) -> None:
+        self.rows: dict[str, Message] = {}
+
+    async def save_message(self, message: Message) -> None:
+        self.rows[message.id] = message
+
+    async def get_message(self, message_id: str) -> Message | None:
+        return self.rows.get(message_id)
+
+    async def list_messages(self, contact_id: str | None = None, limit: int = 100) -> list[Message]:
+        return list(self.rows.values())[:limit]
+
+
+def make_message_service() -> tuple[MessageSendService, FakeEmail, DictMessageStore]:
+    email = FakeEmail()
+    store = DictMessageStore()
+    return (
+        MessageSendService(email=email, store=store, drafting=DeterministicDrafter()),
+        email,
+        store,
+    )
 
 
 class FakeTransactionStore:

@@ -4,7 +4,11 @@ Triggered on a schedule (Cloud Scheduler → the cron endpoint), not by a user.
 Routes on the worst milestone classification; all date math and rule logic
 lives in core's milestone_engine. Overdue milestones pause at a HITL
 escalation gate; approved escalations create URGENT CRM tasks and ratchet the
-milestone's escalation level.
+milestone's escalation level. The due-soon path additionally drafts a
+milestone-reminder email to the reachable external party (BOP-019): the draft
+pauses at an approve-outbound-message gate — the gate node reruns on resume
+and stays read-only; the send/reject side effects live in the post-decision
+nodes.
 """
 
 from collections.abc import AsyncGenerator
@@ -20,21 +24,26 @@ from brokerops_core.models.milestone import Milestone
 from brokerops_core.models.workflow_state import ApprovalOutcome, TransactionCoordinationState
 from brokerops_core.ports.crm import CRMPort
 from brokerops_core.ports.transactions import TransactionStore
+from brokerops_core.services.message_send import MessageSendService
 from brokerops_core.services.milestone_engine import (
     MilestoneClass,
     assess_milestones,
     draft_escalation_note,
     draft_milestone_reminder,
+    plan_reminder_email,
     worst_classification,
 )
 
 APPROVE_ESCALATION = "approve_escalation"
+APPROVE_OUTBOUND_MESSAGE = "approve_outbound_message"
 
 # A route value with no matching edge ends the run — the ADK spelling of END.
 STOP = "stop"
 
 
-def build_transaction_coordination(store: TransactionStore, crm: CRMPort) -> Workflow:
+def build_transaction_coordination(
+    store: TransactionStore, crm: CRMPort, messages: MessageSendService
+) -> Workflow:
     async def _milestones_by_class(
         transaction_id: str, assessments: list[dict[str, Any]], classification: MilestoneClass
     ) -> list[tuple[Milestone, int]]:
@@ -86,6 +95,68 @@ def build_transaction_coordination(store: TransactionStore, crm: CRMPort) -> Wor
         ]
         ctx.state["reminder_task_ids"] = task_ids
         ctx.state["outcome"] = "reminders_sent"
+
+    async def draft_reminder_email(
+        ctx: Context, transaction_id: str, assessments: list[dict[str, Any]]
+    ) -> None:
+        # Additive tail on the due-soon path (BOP-019): the CRM tasks above are
+        # unchanged; this drafts the reminder email when a reachable external
+        # party exists (plan_reminder_email owns that rule), else skips.
+        txn = await store.get_transaction(transaction_id)
+        assert txn is not None
+        due_soon = await _milestones_by_class(transaction_id, assessments, MilestoneClass.DUE_SOON)
+        context = plan_reminder_email(txn, due_soon)
+        if context is None:
+            ctx.route = STOP
+            return
+        message = await messages.draft_for_approval(context)
+        ctx.state["reminder_message_id"] = message.id
+        ctx.route = "drafted"
+
+    async def approve_reminder_email(
+        ctx: Context, transaction_id: str, reminder_message_id: str
+    ) -> AsyncGenerator[RequestInput, None]:
+        # Reruns on resume — reads only; the send/reject side effects live in
+        # the post-decision nodes below.
+        decision: dict[str, Any] | None = ctx.resume_inputs.get(APPROVE_OUTBOUND_MESSAGE)
+        if decision is None:
+            message = await messages.get_message(reminder_message_id)
+            assert message is not None
+            yield request_input(
+                APPROVE_OUTBOUND_MESSAGE,
+                payload={
+                    "kind": APPROVE_OUTBOUND_MESSAGE,
+                    "message_id": message.id,
+                    "channel": message.channel.value,
+                    "recipient": message.recipient,
+                    "subject": message.subject,
+                    "body": message.body,
+                    "template_ref": message.template_ref,
+                    "transaction_id": transaction_id,
+                    "listing_key": message.listing_key,
+                },
+            )
+            return
+        outcome = ApprovalOutcome.model_validate(decision)
+        ctx.state["reminder_approval"] = outcome.model_dump(mode="json")
+        edited = decision.get("edited_payload")
+        if edited and edited.get("subject"):
+            ctx.state["reminder_edited_subject"] = str(edited["subject"])
+        if edited and edited.get("body"):
+            ctx.state["reminder_edited_body"] = str(edited["body"])
+        ctx.route = "approved" if outcome.decision.value == "approved" else "dismissed"
+
+    async def send_reminder_email(ctx: Context, reminder_message_id: str) -> None:
+        await messages.send_approved(
+            reminder_message_id,
+            subject=str(ctx.state.get("reminder_edited_subject") or "") or None,
+            body=str(ctx.state.get("reminder_edited_body") or "") or None,
+        )
+        ctx.state["outcome"] = "reminder_email_sent"
+
+    async def dismiss_reminder_email(ctx: Context, reminder_message_id: str) -> None:
+        await messages.mark_rejected(reminder_message_id)
+        ctx.state["outcome"] = "reminder_email_dismissed"
 
     async def escalate(
         ctx: Context, transaction_id: str, assessments: list[dict[str, Any]]
@@ -157,6 +228,10 @@ def build_transaction_coordination(store: TransactionStore, crm: CRMPort) -> Wor
     n_on_track = FunctionNode(func=log_on_track)
     n_draft_reminders = FunctionNode(func=draft_reminders)
     n_send_reminders = FunctionNode(func=send_reminders)
+    n_draft_email = FunctionNode(func=draft_reminder_email)
+    n_approve_email = FunctionNode(func=approve_reminder_email, rerun_on_resume=True)
+    n_send_email = FunctionNode(func=send_reminder_email)
+    n_dismiss_email = FunctionNode(func=dismiss_reminder_email)
     n_escalate = FunctionNode(func=escalate, rerun_on_resume=True)
     n_notify = FunctionNode(func=notify)
     n_dismiss = FunctionNode(func=dismiss)
@@ -176,7 +251,8 @@ def build_transaction_coordination(store: TransactionStore, crm: CRMPort) -> Wor
                     MilestoneClass.ON_TRACK.value: n_on_track,
                 },
             ),
-            (n_draft_reminders, n_send_reminders),
+            (n_draft_reminders, n_send_reminders, n_draft_email, {"drafted": n_approve_email}),
+            (n_approve_email, {"approved": n_send_email, "dismissed": n_dismiss_email}),
             (n_escalate, {"approved": n_notify, "dismissed": n_dismiss}),
         ],
     )

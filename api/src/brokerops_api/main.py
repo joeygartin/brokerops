@@ -28,6 +28,7 @@ from brokerops_api.db import (
 from brokerops_api.deps import (
     FILES_INTEGRATION,
     build_crm_adapter,
+    build_drafting_port,
     build_email_port,
     build_extraction_port,
     build_files_adapter,
@@ -207,14 +208,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Outbound email and SMS sends flow through the identical seam (ADR-0015 /
     # BOP-018): deduped, then recorded, over the tenant-scoped message store. The
     # /messages/send route binds the run context the decorators read via audit_scope.
-    # Route-driven only today — when a workflow gains a send node (BOP-019), these
-    # ports must be authorization-wrapped and registered in engine_tool_ports below.
-    seam_email = IdempotentEmail(
-        RecordingEmail(email, app.state.audit_log), app.state.idempotency_store
+    # BOP-019 made the email seam ENGINE-REACHABLE (workflow send-on-approve nodes),
+    # so it is authorization-wrapped outermost like every other engine tool port and
+    # registered in engine_tool_ports below; its `send(message)` is tenant-bearing.
+    # The SMS seam stays route-driven only (no workflow drafts SMS in v1) — when a
+    # workflow gains an SMS send node, wrap and register it the same way.
+    seam_email = authorize_tool_ports(
+        IdempotentEmail(RecordingEmail(email, app.state.audit_log), app.state.idempotency_store),
+        audit=app.state.audit_log,
     )
     seam_sms = IdempotentSMS(RecordingSMS(sms, app.state.audit_log), app.state.idempotency_store)
+    # The drafting backend (BOP-019) hangs off the same service: workflow-drafted
+    # comms are persisted PENDING_APPROVAL and only a human decision sends them
+    # through the seam above — audited, deduped, tenant-scoped, authorized for free.
     app.state.message_service = MessageSendService(
-        email=seam_email, store=app.state.message_store, sms=seam_sms
+        email=seam_email,
+        store=app.state.message_store,
+        sms=seam_sms,
+        drafting=build_drafting_port(),
     )
     # File writes go through the same two seams (BOP-021). Unlike crm/voice, the
     # wrapped port IS the app.state instance: the only file writer today is the
@@ -235,6 +246,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         "transaction_store": app.state.transaction_store,
         "feedback_store": app.state.feedback_store,
         "approval_repo": app.state.approval_repo,
+        # BOP-019: the workflows' send-on-approve nodes reach the email seam.
+        "email": seam_email,
     }
     async with build_engine(
         mls=engine_mls,
@@ -244,6 +257,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         transaction_store=app.state.transaction_store,
         feedback_store=app.state.feedback_store,
         approval_repo=app.state.approval_repo,
+        message_service=app.state.message_service,
         database_url=database_url,
     ) as workflow_engine:
         app.state.workflow_engine = workflow_engine

@@ -48,6 +48,64 @@ function EscalationPreview({ approval }: { approval: ApprovalRequest }) {
   );
 }
 
+function OutboundMessagePreview({
+  approval,
+  editedBody,
+  onEditBody,
+  canEdit,
+}: {
+  approval: ApprovalRequest;
+  editedBody: string;
+  onEditBody: (body: string) => void;
+  canEdit: boolean;
+}) {
+  return (
+    <div style={{ margin: "0.6rem 0", fontSize: "0.9rem", textAlign: "left" }}>
+      <p style={{ margin: "0 0 0.3rem", color: "#24292f" }}>
+        To <strong>{approval.payload.recipient}</strong>
+        <span
+          style={{
+            display: "inline-block",
+            background: "#ddf4ff",
+            color: "#0969da",
+            borderRadius: 999,
+            padding: "0.1rem 0.6rem",
+            fontSize: "0.75rem",
+            marginLeft: "0.5rem",
+          }}
+        >
+          {approval.payload.channel}
+        </span>
+      </p>
+      {approval.payload.subject && (
+        <p style={{ margin: "0 0 0.3rem", fontWeight: 600 }}>{approval.payload.subject}</p>
+      )}
+      <textarea
+        aria-label="Draft body"
+        value={editedBody}
+        onChange={(event) => onEditBody(event.target.value)}
+        readOnly={!canEdit}
+        rows={7}
+        style={{
+          width: "100%",
+          boxSizing: "border-box",
+          fontFamily: "inherit",
+          fontSize: "0.9rem",
+          color: "#24292f",
+          border: "1px solid #d0d7de",
+          borderRadius: 6,
+          padding: "0.5rem",
+        }}
+      />
+      <p style={{ color: "#57606a", fontSize: "0.8rem", margin: "0.3rem 0 0" }}>
+        {canEdit
+          ? "Edit the draft before approving — the text above is exactly what sends."
+          : "The draft text above is what an admin can approve and send."}
+      </p>
+    </div>
+  );
+}
+
 function HotLeadPreview({ approval }: { approval: ApprovalRequest }) {
   return (
     <div style={{ margin: "0.6rem 0", fontSize: "0.9rem" }}>
@@ -73,19 +131,31 @@ function ApprovalCard({
   const { hasRole } = useAuth();
   const isEscalation = approval.kind === "approve_escalation";
   const isHotLead = approval.kind === "notify_agent";
+  const isOutboundMessage = approval.kind === "approve_outbound_message";
+  // The editable draft body (approve_outbound_message): approving carries any
+  // edits through as edited_payload, so the human decision includes the final text.
+  const [editedBody, setEditedBody] = useState(approval.payload.body ?? "");
   const subject = isEscalation
     ? `Escalate overdue milestones — ${approval.payload.transaction_id} (${approval.payload.listing_key})`
     : isHotLead
       ? `Hot lead — notify listing agent (${approval.payload.listing_key})`
-      : `Approve marketing — ${approval.payload.listing_key}`;
+      : isOutboundMessage
+        ? `Approve outbound ${approval.payload.channel ?? "message"} — ${approval.payload.recipient}`
+        : `Approve marketing — ${approval.payload.listing_key}`;
 
   const decide = async (decision: "approved" | "rejected") => {
     setBusy(true);
+    const editedPayload =
+      isOutboundMessage && decision === "approved" && editedBody !== (approval.payload.body ?? "")
+        ? { body: editedBody }
+        : undefined;
     try {
       const response = await apiFetch(`${API_BASE}/approvals/${approval.id}/decide`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ decision }),
+        body: JSON.stringify(
+          editedPayload ? { decision, edited_payload: editedPayload } : { decision },
+        ),
       });
       if (!response.ok) throw new Error(`api returned ${response.status}`);
       const outcome = (await response.json()) as {
@@ -103,7 +173,9 @@ function ApprovalCard({
         output?.fub_task_ids?.length ??
         output?.escalated_task_ids?.length ??
         (output?.hot_task_id ? 1 : undefined);
-      const target = approval.payload.transaction_id ?? approval.payload.listing_key;
+      const target = isOutboundMessage
+        ? (approval.payload.recipient ?? approval.payload.listing_key)
+        : (approval.payload.transaction_id ?? approval.payload.listing_key);
       onDecided(
         `${target} ${decision} — workflow status: ${outcome.workflow.status}` +
           (taskCount ? `, ${taskCount} CRM task(s) created.` : "."),
@@ -137,6 +209,13 @@ function ApprovalCard({
         <EscalationPreview approval={approval} />
       ) : isHotLead ? (
         <HotLeadPreview approval={approval} />
+      ) : isOutboundMessage ? (
+        <OutboundMessagePreview
+          approval={approval}
+          editedBody={editedBody}
+          onEditBody={setEditedBody}
+          canEdit={hasRole("admin") && !busy}
+        />
       ) : (
         <MarketingPreview approval={approval} />
       )}

@@ -18,8 +18,10 @@ the id is random and the send runs undeduped, mirroring `_Deduper`'s contract.
 """
 
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
+from brokerops_core.models.drafting import DraftContext
 from brokerops_core.models.message import (
     Message,
     MessageChannel,
@@ -27,6 +29,7 @@ from brokerops_core.models.message import (
     semantic_send_args,
 )
 from brokerops_core.models.message_templates import get_template
+from brokerops_core.ports.drafting import DraftingPort
 from brokerops_core.ports.messaging import EmailPort, MessageStore, SMSPort
 from brokerops_core.services.audit import current_audit_context
 from brokerops_core.services.idempotency import idempotency_key
@@ -46,12 +49,35 @@ def _message_id(draft: Message) -> str:
 
 
 class MessageSendService:
-    """Send a templated message (email or SMS) and record it in the comms history."""
+    """Send a templated message (email or SMS) and record it in the comms history.
 
-    def __init__(self, email: EmailPort, store: MessageStore, sms: SMSPort | None = None) -> None:
+    Two entry points share one lifecycle: `send_email`/`send_sms` are the direct
+    path (render → DRAFTED → send → SENT/FAILED, BOP-015/018); the
+    workflow-drafted path (BOP-019) is `draft_for_approval` → human gate →
+    `send_approved` (possibly with the approver's edited text) or
+    `mark_rejected`. The drafting backend is a `DraftingPort` — deterministic
+    template rendering by default; nothing it produces is sent without the gate.
+    """
+
+    def __init__(
+        self,
+        email: EmailPort,
+        store: MessageStore,
+        sms: SMSPort | None = None,
+        drafting: DraftingPort | None = None,
+    ) -> None:
         self._email = email
         self._sms = sms
         self._store = store
+        self._drafting = drafting
+
+    def _port_for(self, channel: MessageChannel) -> EmailPort | SMSPort:
+        """The wired seam port for `channel`; fails loud when none is wired."""
+        if channel is MessageChannel.EMAIL:
+            return self._email
+        if self._sms is None:
+            raise RuntimeError("no SMS provider is wired (SMS_PROVIDER)")
+        return self._sms
 
     async def send_email(
         self,
@@ -168,3 +194,111 @@ class MessageSendService:
         # one representation whether they read the send response or the history.
         stored = await self._store.get_message(sent.id)
         return stored if stored is not None else sent
+
+    async def get_message(self, message_id: str) -> Message | None:
+        """Read-through to the comms history (gate nodes re-fetch the draft row)."""
+        return await self._store.get_message(message_id)
+
+    async def draft_for_approval(self, context: DraftContext) -> Message:
+        """Draft via the DraftingPort and persist the row as PENDING_APPROVAL.
+
+        Nothing is sent here — the row waits for the approve-outbound-message
+        gate. The id is the same deterministic within-a-run identity as sends,
+        so a replayed draft node lands on the original row (even one already
+        decided) instead of minting a duplicate.
+        """
+        if self._drafting is None:
+            raise RuntimeError("no drafting backend wired (DraftingPort is required to draft)")
+        drafted = await self._drafting.draft(context)
+        draft = Message(
+            id="",  # excluded from semantic identity; assigned below
+            channel=drafted.channel,
+            recipient=drafted.recipient,
+            # Empty for channels that have no subject line (the Message contract).
+            subject=drafted.subject if drafted.channel is MessageChannel.EMAIL else "",
+            body=drafted.body,
+            template_ref=drafted.template_ref,
+            contact_id=drafted.contact_id,
+            listing_key=drafted.listing_key,
+            transaction_id=drafted.transaction_id,
+            status=MessageStatus.PENDING_APPROVAL,
+            created_at=datetime.now(UTC),
+        )
+        message = draft.model_copy(update={"id": _message_id(draft)})
+        existing = await self._store.get_message(message.id)
+        if existing is not None:
+            return existing
+        await self._store.save_message(message)
+        stored = await self._store.get_message(message.id)
+        return stored if stored is not None else message
+
+    async def send_approved(
+        self, message_id: str, *, subject: str | None = None, body: str | None = None
+    ) -> Message:
+        """Send a pending-approval message — the human decision just happened.
+
+        `subject`/`body` carry the approver's edits (the edited-payload
+        convention): the row is updated *before* the send so the history — and
+        a FAILED row — always shows the exact text that shipped or was
+        attempted. A blank edited body is refused loudly: the card promises the
+        visible text is exactly what sends, so it must never silently fall back
+        to the original draft.
+
+        Sends only from PENDING_APPROVAL (or FAILED, the same decision being
+        driven to completion after a provider error). Every other status
+        returns the row untouched: SENT/DELIVERED is the replay short-circuit —
+        DELIVERED counts as sent and is never downgraded (BOP-018's
+        forward-only rule) — and REJECTED is a terminal human "no" that a
+        stray approve must not overturn.
+        """
+        if body is not None and not body.strip():
+            raise ValueError(
+                "edited draft body is blank — reject the draft instead of sending an empty message"
+            )
+        row = await self._store.get_message(message_id)
+        if row is None:
+            raise LookupError(f"no outbound message {message_id!r} to send")
+        if row.status not in (MessageStatus.PENDING_APPROVAL, MessageStatus.FAILED):
+            return row
+        port = self._port_for(row.channel)
+        updates: dict[str, Any] = {}
+        if subject is not None and subject != row.subject:
+            updates["subject"] = subject
+        if body is not None and body != row.body:
+            updates["body"] = body
+        message = row.model_copy(update=updates)
+        if updates:
+            await self._store.save_message(message)
+        try:
+            provider_id = await port.send(message)
+        except Exception:
+            await self._store.save_message(
+                message.model_copy(update={"status": MessageStatus.FAILED})
+            )
+            raise
+        sent = message.model_copy(
+            update={
+                "status": MessageStatus.SENT,
+                "provider_message_id": provider_id,
+                "sent_at": datetime.now(UTC),
+            }
+        )
+        await self._store.save_message(sent)
+        stored = await self._store.get_message(sent.id)
+        return stored if stored is not None else sent
+
+    async def mark_rejected(self, message_id: str) -> Message:
+        """Record the human's 'no': the row reflects the decision; nothing sends.
+
+        Only a PENDING_APPROVAL row transitions — a replayed rejection (or a row
+        already terminal) returns as-is.
+        """
+        row = await self._store.get_message(message_id)
+        if row is None:
+            raise LookupError(f"no outbound message {message_id!r} to reject")
+        if row.status is not MessageStatus.PENDING_APPROVAL:
+            return row
+        rejected = row.model_copy(update={"status": MessageStatus.REJECTED})
+        await self._store.save_message(rejected)
+        stored = await self._store.get_message(rejected.id)
+        return stored if stored is not None else rejected

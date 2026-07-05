@@ -31,6 +31,7 @@ SELECTOR_VARS = (
     "SENDGRID_API_KEY",
     "SENDGRID_FROM_EMAIL",
     "SENDGRID_BASE_URL",
+    "DRAFTING_BACKEND",
     "SMS_PROVIDER",
     "SMS_BASE_URL",
     # Not a selector, but the SMS delivery webhook's fail-closed signing key

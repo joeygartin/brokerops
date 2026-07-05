@@ -1,12 +1,15 @@
 from typing import Any
 from uuid import uuid4
 
-from conftest import FakeFeedbackStore, FakeVoice, GraphFakeCRM
+from conftest import FakeFeedbackStore, FakeVoice, GraphFakeCRM, make_message_service
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
 from brokerops_core.models.call import CallRecord
+from brokerops_core.models.contact import Contact
+from brokerops_core.models.message import MessageStatus
 from brokerops_core.services.feedback_extraction import DeterministicExtractor
+from brokerops_core.services.message_send import MessageSendService
 from brokerops_langgraph.graphs.vapi_followup import build_vapi_followup
 
 HOT_TRANSCRIPT = (
@@ -33,10 +36,26 @@ def _input(transcript: str, call_id: str = "call-1") -> dict[str, Any]:
     }
 
 
-def _build(crm: GraphFakeCRM, store: FakeFeedbackStore, voice: FakeVoice | None = None) -> Any:
+def _build(
+    crm: GraphFakeCRM,
+    store: FakeFeedbackStore,
+    voice: FakeVoice | None = None,
+    messages: MessageSendService | None = None,
+) -> Any:
     return build_vapi_followup(
-        voice or FakeVoice(), crm, store, DeterministicExtractor(), InMemorySaver()
+        voice or FakeVoice(),
+        crm,
+        store,
+        DeterministicExtractor(),
+        messages or make_message_service()[0],
+        InMemorySaver(),
     )
+
+
+def _crm_with_contact() -> GraphFakeCRM:
+    crm = GraphFakeCRM()
+    crm.contacts["101"] = Contact(crm_id="101", name="Jordan Pike", email="jordan@example.test")
+    return crm
 
 
 async def test_cool_call_syncs_feedback_and_crm_without_hitl() -> None:
@@ -89,6 +108,61 @@ async def test_hot_signal_dismissed_creates_no_task() -> None:
     )
     assert result["outcome"] == "hot_signal_dismissed"
     assert crm.created_tasks == []
+
+
+async def test_cool_call_with_reachable_contact_drafts_followup_gate() -> None:
+    crm, store = _crm_with_contact(), FakeFeedbackStore()
+    messages, email, message_store = make_message_service()
+    graph = _build(crm, store, messages=messages)
+    config = _config(uuid4().hex)
+
+    paused = await graph.ainvoke(_input(COOL_TRANSCRIPT, "call-6"), config)
+    # the CRM sync happened before the gate, unchanged
+    assert len(crm.notes) == 1 and len(crm.logged_calls) == 1
+    payload = paused["__interrupt__"][0].value
+    assert payload["kind"] == "approve_outbound_message"
+    assert payload["channel"] == "email"
+    assert payload["recipient"] == "jordan@example.test"
+    assert "RM1001" in payload["subject"]
+    assert message_store.rows[payload["message_id"]].status is MessageStatus.PENDING_APPROVAL
+    assert email.sent == []
+
+    result = await graph.ainvoke(
+        Command(
+            resume={
+                "decision": "approved",
+                "decided_by": "demo-operator",
+                "edited_payload": {"body": "Edited follow-up body."},
+            }
+        ),
+        config,
+    )
+    assert result["outcome"] == "followup_sent"
+    # resuming past the gate must not replay the pre-gate CRM sync
+    assert len(crm.notes) == 1 and len(crm.logged_calls) == 1
+    assert [m.body for m in email.sent] == ["Edited follow-up body."]
+    sent_row = message_store.rows[payload["message_id"]]
+    assert sent_row.status is MessageStatus.SENT
+    assert sent_row.body == "Edited follow-up body."
+
+
+async def test_rejected_followup_email_sends_nothing() -> None:
+    crm, store = _crm_with_contact(), FakeFeedbackStore()
+    messages, email, message_store = make_message_service()
+    graph = _build(crm, store, messages=messages)
+    config = _config(uuid4().hex)
+
+    paused = await graph.ainvoke(_input(COOL_TRANSCRIPT, "call-7"), config)
+    payload = paused["__interrupt__"][0].value
+    result = await graph.ainvoke(
+        Command(resume={"decision": "rejected", "decided_by": "demo-operator"}), config
+    )
+    assert result["outcome"] == "followup_dismissed"
+    assert email.sent == []
+    assert message_store.rows[payload["message_id"]].status is MessageStatus.REJECTED
+    # the feedback + CRM sync from before the gate stand
+    assert store.feedback["FB-call-7"].sentiment.value == "negative"
+    assert len(crm.notes) == 1
 
 
 async def test_missing_transcript_falls_back_to_voice_port() -> None:

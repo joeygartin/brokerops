@@ -4,7 +4,10 @@ Triggered on a schedule (Cloud Scheduler → the cron endpoint), not by a user.
 Routes on the worst milestone classification; all date math and rule logic
 lives in core's milestone_engine. Overdue milestones pause at a HITL
 escalation gate; approved escalations create URGENT CRM tasks and ratchet the
-milestone's escalation level.
+milestone's escalation level. The due-soon path additionally drafts a
+milestone-reminder email to the reachable external party (BOP-019): the draft
+pauses at an approve-outbound-message gate, and only the human decision — with
+any edited text — sends it through the seam-wrapped EmailPort.
 """
 
 from datetime import date
@@ -18,20 +21,26 @@ from langgraph.types import interrupt
 from brokerops_core.models.milestone import Milestone
 from brokerops_core.ports.crm import CRMPort
 from brokerops_core.ports.transactions import TransactionStore
+from brokerops_core.services.message_send import MessageSendService
 from brokerops_core.services.milestone_engine import (
     MilestoneClass,
     assess_milestones,
     draft_escalation_note,
     draft_milestone_reminder,
+    plan_reminder_email,
     worst_classification,
 )
 from brokerops_langgraph.state import ApprovalOutcome, TransactionCoordinationState
 
 APPROVE_ESCALATION = "approve_escalation"
+APPROVE_OUTBOUND_MESSAGE = "approve_outbound_message"
 
 
 def build_transaction_coordination(
-    store: TransactionStore, crm: CRMPort, checkpointer: BaseCheckpointSaver[Any]
+    store: TransactionStore,
+    crm: CRMPort,
+    messages: MessageSendService,
+    checkpointer: BaseCheckpointSaver[Any],
 ) -> CompiledStateGraph[Any, Any, Any, Any]:
     async def _milestones_by_class(
         state: TransactionCoordinationState, classification: MilestoneClass
@@ -73,6 +82,55 @@ def build_transaction_coordination(
             for text, (milestone, _) in zip(state.reminders, due_soon, strict=True)
         ]
         return {"reminder_task_ids": task_ids, "outcome": "reminders_sent"}
+
+    async def draft_reminder_email(state: TransactionCoordinationState) -> dict[str, Any]:
+        # Additive tail on the due-soon path (BOP-019): the CRM tasks above are
+        # unchanged; this drafts the reminder email when a reachable external
+        # party exists (plan_reminder_email owns that rule), else skips.
+        txn = await store.get_transaction(state.transaction_id)
+        assert txn is not None
+        due_soon = await _milestones_by_class(state, MilestoneClass.DUE_SOON)
+        context = plan_reminder_email(txn, due_soon)
+        if context is None:
+            return {}
+        message = await messages.draft_for_approval(context)
+        return {"reminder_message_id": message.id}
+
+    async def approve_reminder_email(state: TransactionCoordinationState) -> dict[str, Any]:
+        message = await messages.get_message(state.reminder_message_id)
+        assert message is not None
+        decision: dict[str, Any] = interrupt(
+            {
+                "kind": APPROVE_OUTBOUND_MESSAGE,
+                "message_id": message.id,
+                "channel": message.channel.value,
+                "recipient": message.recipient,
+                "subject": message.subject,
+                "body": message.body,
+                "template_ref": message.template_ref,
+                "transaction_id": state.transaction_id,
+                "listing_key": message.listing_key,
+            }
+        )
+        updates: dict[str, Any] = {"reminder_approval": ApprovalOutcome.model_validate(decision)}
+        edited = decision.get("edited_payload")
+        if edited and edited.get("subject"):
+            updates["reminder_edited_subject"] = str(edited["subject"])
+        if edited and edited.get("body"):
+            updates["reminder_edited_body"] = str(edited["body"])
+        return updates
+
+    async def send_reminder_email(state: TransactionCoordinationState) -> dict[str, Any]:
+        await messages.send_approved(
+            state.reminder_message_id,
+            subject=state.reminder_edited_subject or None,
+            body=state.reminder_edited_body or None,
+        )
+        return {"outcome": "reminder_email_sent"}
+
+    async def dismiss_reminder_email(state: TransactionCoordinationState) -> dict[str, Any]:
+        await messages.mark_rejected(state.reminder_message_id)
+        return {"outcome": "reminder_email_dismissed"}
 
     async def escalate(state: TransactionCoordinationState) -> dict[str, Any]:
         txn = await store.get_transaction(state.transaction_id)
@@ -137,12 +195,24 @@ def build_transaction_coordination(
         assert state.escalation_approval is not None
         return "notify" if state.escalation_approval.decision.value == "approved" else "dismiss"
 
+    def route_after_draft_email(state: TransactionCoordinationState) -> str:
+        return APPROVE_OUTBOUND_MESSAGE if state.reminder_message_id else END
+
+    def route_after_message_gate(state: TransactionCoordinationState) -> str:
+        assert state.reminder_approval is not None
+        approved = state.reminder_approval.decision.value == "approved"
+        return "send_reminder_email" if approved else "dismiss_reminder_email"
+
     graph = StateGraph(TransactionCoordinationState)
     graph.add_node("load_txn", load_txn)
     graph.add_node("evaluate_milestones", evaluate_milestones)
     graph.add_node("log_on_track", log_on_track)
     graph.add_node("draft_reminders", draft_reminders)
     graph.add_node("send_reminders", send_reminders)
+    graph.add_node("draft_reminder_email", draft_reminder_email)
+    graph.add_node(APPROVE_OUTBOUND_MESSAGE, approve_reminder_email)
+    graph.add_node("send_reminder_email", send_reminder_email)
+    graph.add_node("dismiss_reminder_email", dismiss_reminder_email)
     graph.add_node("escalate", escalate)
     graph.add_node("notify", notify)
     graph.add_node("dismiss", dismiss)
@@ -156,8 +226,24 @@ def build_transaction_coordination(
         ["escalate", "draft_reminders", "queue_vapi_call", "log_on_track"],
     )
     graph.add_edge("draft_reminders", "send_reminders")
+    graph.add_edge("send_reminders", "draft_reminder_email")
+    graph.add_conditional_edges(
+        "draft_reminder_email", route_after_draft_email, [APPROVE_OUTBOUND_MESSAGE, END]
+    )
+    graph.add_conditional_edges(
+        APPROVE_OUTBOUND_MESSAGE,
+        route_after_message_gate,
+        ["send_reminder_email", "dismiss_reminder_email"],
+    )
     graph.add_conditional_edges("escalate", route_after_escalation, ["notify", "dismiss"])
-    for terminal in ("log_on_track", "send_reminders", "notify", "dismiss", "queue_vapi_call"):
+    for terminal in (
+        "log_on_track",
+        "send_reminder_email",
+        "dismiss_reminder_email",
+        "notify",
+        "dismiss",
+        "queue_vapi_call",
+    ):
         graph.add_edge(terminal, END)
 
     return graph.compile(checkpointer=checkpointer)

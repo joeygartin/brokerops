@@ -54,13 +54,18 @@ state), and approving it resumes the workflow in the new process.
    timelines — one has an **overdue** home inspection (red), one a **due-soon**
    inspection (amber), one is **blocked** on a lender (purple).
 2. Click **Run milestone check (cron)** — this is what Cloud Scheduler calls daily
-   in a real deploy. The banner reports: 1 escalation waiting, reminders sent, a
-   call intent queued.
+   in a real deploy. The banner reports: 1 escalation waiting, reminder tasks sent
+   (plus a drafted reminder email waiting), a call intent queued.
 3. **Approvals** tab → the escalation card shows the overdue milestone. **Approve**
    it → an `URGENT:` task lands in the CRM and the milestone's escalation level
    ratchets (visible back on the Transactions tab).
-4. Click **Run milestone check** again — note it *skips* the transaction rather
-   than stacking duplicate escalations while one is pending… and since the
+4. The due-soon transaction produced a second card: a **drafted reminder email**
+   to the listing agent. The body is **editable** — tweak it and **Approve** →
+   exactly your text sends through the email provider (watch
+   `docker compose logs api` for the stub's printout) and lands in the
+   `outbound_messages` history and the audit ledger.
+5. Click **Run milestone check** again — note it *skips* transactions rather
+   than stacking duplicate gates while one is pending… and since the
    milestone is still overdue, a fresh escalation appears at the next level.
 
 ## 3. Voice feedback call — webhook-driven workflow (1 min)
@@ -79,7 +84,9 @@ curl -s "http://localhost:8000/feedback?listing_key=RM1001" | python3 -m json.to
 ```
 
 Click **Feedback call** on another listing for the contrasting path: a lukewarm
-transcript syncs feedback + a CRM note automatically, with no human gate.
+transcript syncs feedback + a CRM note automatically, then drafts a follow-up
+email to the toured buyer and pauses at an **outbound-message card** — edit the
+draft and approve to send it, or reject and nothing ever leaves the system.
 
 ## 4. Tear down
 

@@ -27,11 +27,14 @@ from brokerops_core.models.approval import ApprovalDecision, ApprovalStatus
 from brokerops_core.models.call import CallRecord
 from brokerops_core.models.feedback import ShowingFeedback
 from brokerops_core.models.listing import Listing, ListingMedia, ListingQuery, ListingStatus
+from brokerops_core.models.message import Message
 from brokerops_core.models.milestone import Milestone, MilestoneType
 from brokerops_core.models.transaction import Transaction, TransactionStage
-from brokerops_core.services.audit import RecordingCRM
+from brokerops_core.services.audit import RecordingCRM, RecordingEmail
+from brokerops_core.services.drafting import DeterministicDrafter
 from brokerops_core.services.feedback_extraction import DeterministicExtractor
-from brokerops_core.services.idempotency import IdempotentCRM
+from brokerops_core.services.idempotency import IdempotentCRM, IdempotentEmail
+from brokerops_core.services.message_send import MessageSendService
 from brokerops_langgraph.engine import build_engine as build_langgraph_engine
 
 TODAY = date.today()
@@ -124,6 +127,25 @@ class FakeTransactionStore:
         self.milestones[milestone_id] = existing.model_copy(update={"escalation_level": level})
 
 
+class FakeEmail:
+    async def send(self, message: Message) -> str:
+        return "provider-1"
+
+
+class DictMessageStore:
+    def __init__(self) -> None:
+        self.rows: dict[str, Message] = {}
+
+    async def save_message(self, message: Message) -> None:
+        self.rows[message.id] = message
+
+    async def get_message(self, message_id: str) -> Message | None:
+        return self.rows.get(message_id)
+
+    async def list_messages(self, contact_id: str | None = None, limit: int = 100) -> list[Message]:
+        return list(self.rows.values())[:limit]
+
+
 class FakeFeedbackStore:
     def __init__(self) -> None:
         self.call_records: dict[str, CallRecord] = {}
@@ -167,9 +189,17 @@ Harness = tuple[WorkflowEngine, InMemoryApprovalRepo, InMemoryAuditLog]
 async def harness(request: pytest.FixtureRequest) -> AsyncIterator[Harness]:
     audit_log = InMemoryAuditLog()
     repo = InMemoryApprovalRepo()
+    idempotency = InMemoryIdempotencyStore()
     engine_crm = IdempotentCRM(
         RecordingCRM(build_crm_adapter(), audit_log, integration="sierra"),
-        InMemoryIdempotencyStore(),
+        idempotency,
+    )
+    # Same seam main.py wires for outbound email (BOP-019): approved drafted
+    # sends are deduped and audited exactly like the CRM writes.
+    message_service = MessageSendService(
+        email=IdempotentEmail(RecordingEmail(FakeEmail(), audit_log), idempotency),
+        store=DictMessageStore(),
+        drafting=DeterministicDrafter(),
     )
     async with ENGINE_FACTORIES[request.param](
         mls=FakeMLS(),
@@ -179,6 +209,7 @@ async def harness(request: pytest.FixtureRequest) -> AsyncIterator[Harness]:
         transaction_store=FakeTransactionStore(),
         feedback_store=FakeFeedbackStore(),
         approval_repo=repo,
+        message_service=message_service,
         database_url=None,
     ) as engine:
         yield engine, repo, audit_log
@@ -220,7 +251,7 @@ async def test_transaction_coordination_sends_reminders_via_sierra(harness: Harn
 
 
 async def test_vapi_followup_syncs_note_and_call_log_to_sierra(harness: Harness) -> None:
-    engine, _repo, audit = harness
+    engine, repo, audit = harness
     result = await engine.start(
         VAPI_FOLLOWUP,
         {
@@ -231,11 +262,22 @@ async def test_vapi_followup_syncs_note_and_call_log_to_sierra(harness: Harness)
             "call_outcome": "customer-ended-call",
         },
     )
-    assert result.status == "completed"
-    assert result.output is not None
-    assert result.output["outcome"] == "synced"
-    assert result.output["note_id"]
-    assert result.output["call_log_id"]
+    # The Sierra stub lead has an email on file, so the synced path drafts a
+    # follow-up and pauses at the outbound-message gate (BOP-019).
+    assert result.status == "awaiting_approval"
+    assert result.approval is not None
+    assert result.approval.kind == "approve_outbound_message"
+    assert result.approval.payload["recipient"] == "morgan.ellis@example.test"
+
+    decided = await _approve(engine, repo, result.approval.id)
+    assert decided.status == "completed"
+    assert decided.output is not None
+    assert decided.output["outcome"] == "followup_sent"
+    assert decided.output["note_id"]
+    assert decided.output["call_log_id"]
     mutations = await audit.list()
-    assert {m.tool for m in mutations} == {"add_note", "log_call"}
-    assert {m.integration for m in mutations} == {"sierra"}
+    assert {m.tool for m in mutations} == {"add_note", "log_call", "send_email"}
+    # CRM writes attribute to sierra; the email send crossed its own seam
+    assert {m.integration for m in mutations if m.tool != "send_email"} == {"sierra"}
+    (email_write,) = [m for m in mutations if m.tool == "send_email"]
+    assert email_write.integration == "email" and email_write.approval_id == result.approval.id

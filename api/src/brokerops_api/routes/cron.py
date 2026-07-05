@@ -35,13 +35,16 @@ async def run_milestone_checks(
     if secret and x_cron_key != secret:
         raise HTTPException(status_code=401, detail="bad or missing X-Cron-Key")
 
-    # Don't stack duplicate escalation gates: skip transactions that already
-    # have a pending escalation approval in the inbox.
+    # Don't stack duplicate gates: skip transactions that already have a
+    # pending approval in the inbox — an escalation gate or a drafted
+    # reminder-email gate (BOP-019); the vapi follow-up gates carry no
+    # transaction_id and never match here.
     pending = await repo.list(ApprovalStatus.PENDING)
     awaiting = {
         str(approval.payload.get("transaction_id"))
         for approval in pending
-        if approval.kind == "approve_escalation"
+        if approval.kind in ("approve_escalation", "approve_outbound_message")
+        and approval.payload.get("transaction_id")
     }
 
     results: list[dict[str, Any]] = []

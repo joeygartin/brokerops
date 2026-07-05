@@ -2,12 +2,22 @@
 
 from typing import Any
 
-from workflow_fixtures import FakeFeedbackStore, FakeVoice, GraphFakeCRM, final_state, make_engine
+from workflow_fixtures import (
+    FakeFeedbackStore,
+    FakeVoice,
+    GraphFakeCRM,
+    final_state,
+    make_engine,
+    make_message_service,
+)
 
 from brokerops_adk.workflows.vapi_followup import build_vapi_followup
 from brokerops_core.models.approval import ApprovalDecision, ApprovalStatus
 from brokerops_core.models.call import CallRecord
+from brokerops_core.models.contact import Contact
+from brokerops_core.models.message import MessageStatus
 from brokerops_core.services.feedback_extraction import DeterministicExtractor
+from brokerops_core.services.message_send import MessageSendService
 from brokerops_core.services.workflow_runs import VAPI_FOLLOWUP
 
 HOT_TRANSCRIPT = (
@@ -30,13 +40,38 @@ def _input(transcript: str, call_id: str = "call-1") -> dict[str, Any]:
     }
 
 
-def _decision(decision: ApprovalStatus) -> ApprovalDecision:
-    return ApprovalDecision(decision=decision, decided_by="demo-operator")
+def _decision(
+    decision: ApprovalStatus, edited_payload: dict[str, Any] | None = None
+) -> ApprovalDecision:
+    return ApprovalDecision(
+        decision=decision, decided_by="demo-operator", edited_payload=edited_payload
+    )
+
+
+def _workflow(
+    crm: GraphFakeCRM,
+    store: FakeFeedbackStore,
+    voice: FakeVoice | None = None,
+    messages: MessageSendService | None = None,
+) -> Any:
+    return build_vapi_followup(
+        voice or FakeVoice(),
+        crm,
+        store,
+        DeterministicExtractor(),
+        messages or make_message_service()[0],
+    )
+
+
+def _crm_with_contact() -> GraphFakeCRM:
+    crm = GraphFakeCRM()
+    crm.contacts["101"] = Contact(crm_id="101", name="Jordan Pike", email="jordan@example.test")
+    return crm
 
 
 async def test_cool_call_syncs_feedback_and_crm_without_hitl() -> None:
     crm, store = GraphFakeCRM(), FakeFeedbackStore()
-    engine, _ = make_engine(build_vapi_followup(FakeVoice(), crm, store, DeterministicExtractor()))
+    engine, _ = make_engine(_workflow(crm, store))
     run = await engine.start(VAPI_FOLLOWUP, _input(COOL_TRANSCRIPT))
     assert run.status == "completed"
     assert run.output is not None and run.output["outcome"] == "synced"
@@ -56,9 +91,7 @@ async def test_cool_call_syncs_feedback_and_crm_without_hitl() -> None:
 
 async def test_hot_call_pauses_then_creates_hot_task_on_approval() -> None:
     crm, store = GraphFakeCRM(), FakeFeedbackStore()
-    engine, sessions = make_engine(
-        build_vapi_followup(FakeVoice(), crm, store, DeterministicExtractor())
-    )
+    engine, sessions = make_engine(_workflow(crm, store))
     run = await engine.start(VAPI_FOLLOWUP, _input(HOT_TRANSCRIPT, "call-2"))
     assert run.status == "awaiting_approval"
     assert run.approval is not None
@@ -83,13 +116,65 @@ async def test_hot_call_pauses_then_creates_hot_task_on_approval() -> None:
 
 async def test_hot_signal_dismissed_creates_no_task() -> None:
     crm, store = GraphFakeCRM(), FakeFeedbackStore()
-    engine, _ = make_engine(build_vapi_followup(FakeVoice(), crm, store, DeterministicExtractor()))
+    engine, _ = make_engine(_workflow(crm, store))
     run = await engine.start(VAPI_FOLLOWUP, _input(HOT_TRANSCRIPT, "call-3"))
     assert run.approval is not None
 
     result = await engine.decide(run.approval, _decision(ApprovalStatus.REJECTED))
     assert result.status == "hot_signal_dismissed"
     assert crm.created_tasks == []
+
+
+async def test_cool_call_with_reachable_contact_drafts_followup_gate() -> None:
+    crm, store = _crm_with_contact(), FakeFeedbackStore()
+    messages, email, message_store = make_message_service()
+    engine, sessions = make_engine(_workflow(crm, store, messages=messages))
+
+    run = await engine.start(VAPI_FOLLOWUP, _input(COOL_TRANSCRIPT, "call-6"))
+    assert run.status == "awaiting_approval"
+    assert run.approval is not None
+    payload = run.approval.payload
+    assert payload["kind"] == "approve_outbound_message"
+    assert payload["channel"] == "email"
+    assert payload["recipient"] == "jordan@example.test"
+    assert "RM1001" in payload["subject"]
+    # the CRM sync happened before the gate; the draft is pending, unsent
+    assert len(crm.notes) == 1 and len(crm.logged_calls) == 1
+    assert message_store.rows[payload["message_id"]].status is MessageStatus.PENDING_APPROVAL
+    assert email.sent == []
+
+    result = await engine.decide(
+        run.approval,
+        _decision(ApprovalStatus.APPROVED, edited_payload={"body": "Edited follow-up body."}),
+    )
+    assert result.status == "completed"
+    state = await final_state(sessions, VAPI_FOLLOWUP, run.thread_id)
+    assert state["outcome"] == "followup_sent"
+    # only the gate node reruns on resume — the pre-gate CRM sync must not
+    assert len(crm.notes) == 1 and len(crm.logged_calls) == 1
+    # the edited text is exactly what shipped, and the row records the send
+    assert [m.body for m in email.sent] == ["Edited follow-up body."]
+    sent_row = message_store.rows[payload["message_id"]]
+    assert sent_row.status is MessageStatus.SENT
+    assert sent_row.body == "Edited follow-up body."
+
+
+async def test_rejected_followup_email_sends_nothing() -> None:
+    crm, store = _crm_with_contact(), FakeFeedbackStore()
+    messages, email, message_store = make_message_service()
+    engine, _ = make_engine(_workflow(crm, store, messages=messages))
+
+    run = await engine.start(VAPI_FOLLOWUP, _input(COOL_TRANSCRIPT, "call-7"))
+    assert run.approval is not None
+    payload = run.approval.payload
+
+    result = await engine.decide(run.approval, _decision(ApprovalStatus.REJECTED))
+    assert result.status == "followup_dismissed"
+    assert email.sent == []
+    assert message_store.rows[payload["message_id"]].status is MessageStatus.REJECTED
+    # the feedback + CRM sync from before the gate stand
+    assert store.feedback["FB-call-7"].sentiment.value == "negative"
+    assert len(crm.notes) == 1
 
 
 async def test_missing_transcript_falls_back_to_voice_port() -> None:
@@ -105,7 +190,7 @@ async def test_missing_transcript_falls_back_to_voice_port() -> None:
             )
         }
     )
-    engine, _ = make_engine(build_vapi_followup(voice, crm, store, DeterministicExtractor()))
+    engine, _ = make_engine(_workflow(crm, store, voice))
     run = await engine.start(VAPI_FOLLOWUP, {"call_id": "call-4"})
     assert run.status == "completed"
     assert run.output is not None and run.output["outcome"] == "synced"
@@ -114,7 +199,7 @@ async def test_missing_transcript_falls_back_to_voice_port() -> None:
 
 async def test_no_transcript_anywhere_ends_cleanly() -> None:
     crm, store = GraphFakeCRM(), FakeFeedbackStore()
-    engine, _ = make_engine(build_vapi_followup(FakeVoice(), crm, store, DeterministicExtractor()))
+    engine, _ = make_engine(_workflow(crm, store))
     run = await engine.start(VAPI_FOLLOWUP, {"call_id": "call-x"})
     assert run.status == "no_transcript"
     assert store.feedback == {}

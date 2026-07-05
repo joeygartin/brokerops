@@ -2,12 +2,14 @@ from datetime import date, timedelta
 from typing import Any
 from uuid import uuid4
 
-from conftest import FakeTransactionStore, GraphFakeCRM
+from conftest import FakeTransactionStore, GraphFakeCRM, make_message_service
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
+from brokerops_core.models.message import MessageStatus
 from brokerops_core.models.milestone import Milestone, MilestoneType
-from brokerops_core.models.transaction import Transaction, TransactionStage
+from brokerops_core.models.transaction import Transaction, TransactionParty, TransactionStage
+from brokerops_core.services.message_send import MessageSendService
 from brokerops_core.services.milestone_schedule import generate_milestones
 from brokerops_langgraph.graphs.transaction_coordination import build_transaction_coordination
 
@@ -19,6 +21,18 @@ TXN = Transaction(
     stage=TransactionStage.UNDER_CONTRACT,
     contract_date=TODAY - timedelta(days=10),
     close_date=TODAY + timedelta(days=20),
+)
+
+# The same transaction with a reachable external party: the due-soon path's
+# drafted reminder (BOP-019) only fires when the milestone owner is a party
+# with an email on file.
+TXN_WITH_PARTY = TXN.model_copy(
+    update={
+        "parties": [
+            TransactionParty(role="buyer", name="Jordan Pike", contact_id="101"),
+            TransactionParty(role="escrow", name="TC Team", email="tc@example.test"),
+        ]
+    }
 )
 
 
@@ -39,8 +53,14 @@ def _config(thread_id: str) -> dict[str, Any]:
     return {"configurable": {"thread_id": thread_id}}
 
 
-def _build(store: FakeTransactionStore, crm: GraphFakeCRM | None = None) -> Any:
-    return build_transaction_coordination(store, crm or GraphFakeCRM(), InMemorySaver())
+def _build(
+    store: FakeTransactionStore,
+    crm: GraphFakeCRM | None = None,
+    messages: MessageSendService | None = None,
+) -> Any:
+    return build_transaction_coordination(
+        store, crm or GraphFakeCRM(), messages or make_message_service()[0], InMemorySaver()
+    )
 
 
 async def test_all_on_track_just_logs() -> None:
@@ -111,6 +131,75 @@ async def test_unknown_transaction_ends_not_found() -> None:
     store = FakeTransactionStore([], [])
     result = await _build(store).ainvoke({"transaction_id": "TXN-9999"}, _config(uuid4().hex))
     assert result["outcome"] == "not_found"
+
+
+async def test_due_soon_with_reachable_party_drafts_reminder_email_gate() -> None:
+    crm = GraphFakeCRM()
+    messages, email, message_store = make_message_service()
+    store = FakeTransactionStore([TXN_WITH_PARTY], [_milestone("M-1", 2), _milestone("M-2", 30)])
+    graph = _build(store, crm, messages)
+    config = _config(uuid4().hex)
+
+    paused = await graph.ainvoke({"transaction_id": "TXN-1001"}, config)
+    # CRM reminder task behavior is unchanged — the drafted email is additive
+    assert len(paused["reminder_task_ids"]) == 1
+    payload = paused["__interrupt__"][0].value
+    assert payload["kind"] == "approve_outbound_message"
+    assert payload["channel"] == "email"
+    assert payload["recipient"] == "tc@example.test"
+    assert "Milestone M-1" in payload["subject"]
+    assert payload["transaction_id"] == "TXN-1001"
+    # the draft row is persisted and pending — nothing has been sent
+    row = message_store.rows[payload["message_id"]]
+    assert row.status is MessageStatus.PENDING_APPROVAL
+    assert email.sent == []
+
+    result = await graph.ainvoke(
+        Command(
+            resume={
+                "decision": "approved",
+                "decided_by": "tc-lead",
+                "edited_payload": {"body": "Edited reminder body."},
+            }
+        ),
+        config,
+    )
+    assert result["outcome"] == "reminder_email_sent"
+    # the edited text is exactly what shipped, and the row records the send
+    assert [m.body for m in email.sent] == ["Edited reminder body."]
+    sent_row = message_store.rows[payload["message_id"]]
+    assert sent_row.status is MessageStatus.SENT
+    assert sent_row.body == "Edited reminder body."
+    assert sent_row.recipient == "tc@example.test"
+
+
+async def test_rejected_reminder_email_sends_nothing() -> None:
+    messages, email, message_store = make_message_service()
+    store = FakeTransactionStore([TXN_WITH_PARTY], [_milestone("M-1", 2)])
+    graph = _build(store, None, messages)
+    config = _config(uuid4().hex)
+
+    paused = await graph.ainvoke({"transaction_id": "TXN-1001"}, config)
+    payload = paused["__interrupt__"][0].value
+    result = await graph.ainvoke(
+        Command(resume={"decision": "rejected", "decided_by": "tc-lead"}), config
+    )
+    assert result["outcome"] == "reminder_email_dismissed"
+    assert email.sent == []
+    assert message_store.rows[payload["message_id"]].status is MessageStatus.REJECTED
+
+
+async def test_due_soon_without_reachable_party_skips_the_drafted_tail() -> None:
+    # Owner "TC Team" is not a transaction party → no recipient → the run ends
+    # exactly as before BOP-019 (CRM tasks only, no gate, no message row).
+    messages, email, message_store = make_message_service()
+    store = FakeTransactionStore([TXN], [_milestone("M-1", 2)])
+    result = await _build(store, None, messages).ainvoke(
+        {"transaction_id": "TXN-1001"}, _config(uuid4().hex)
+    )
+    assert result["outcome"] == "reminders_sent"
+    assert "__interrupt__" not in result
+    assert message_store.rows == {} and email.sent == []
 
 
 async def test_transaction_opened_via_new_path_is_assessed() -> None:

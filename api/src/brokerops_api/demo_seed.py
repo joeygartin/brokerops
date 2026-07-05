@@ -1,5 +1,7 @@
 """Synthetic demo transactions, dated relative to today so the demo always
 shows one overdue inspection, one near deadline, and one external blocker.
+Listing agents carry a synthetic email so the due-soon path has a reachable
+external party for its drafted reminder tail (BOP-019).
 Some milestones declare an expected document (BOP-021) so the Documents tab
 has an attached-vs-expected story out of the box — the matching synthetic
 paperwork is seeded in the bundled Drive stub under each listing key."""
@@ -39,7 +41,9 @@ def demo_transactions(today: date) -> list[tuple[Transaction, list[Milestone]]]:
         stage=TransactionStage.CONTINGENCIES,
         parties=[
             TransactionParty(role="buyer", name="Jordan Pike", contact_id="101"),
-            TransactionParty(role="listing_agent", name="Dana Whitfield"),
+            TransactionParty(
+                role="listing_agent", name="Dana Whitfield", email="dana.whitfield@example.test"
+            ),
         ],
         contract_date=today - timedelta(days=10),
         close_date=today + timedelta(days=25),
@@ -65,7 +69,9 @@ def demo_transactions(today: date) -> list[tuple[Transaction, list[Milestone]]]:
         stage=TransactionStage.UNDER_CONTRACT,
         parties=[
             TransactionParty(role="buyer", name="Casey Romero", contact_id="102"),
-            TransactionParty(role="listing_agent", name="Dana Whitfield"),
+            TransactionParty(
+                role="listing_agent", name="Dana Whitfield", email="dana.whitfield@example.test"
+            ),
         ],
         contract_date=today - timedelta(days=5),
         close_date=today + timedelta(days=30),
@@ -90,7 +96,9 @@ def demo_transactions(today: date) -> list[tuple[Transaction, list[Milestone]]]:
         stage=TransactionStage.CLEAR_TO_CLOSE,
         parties=[
             TransactionParty(role="buyer", name="Alex Yuen", contact_id="103"),
-            TransactionParty(role="listing_agent", name="Marcus Bell"),
+            TransactionParty(
+                role="listing_agent", name="Marcus Bell", email="marcus.bell@example.test"
+            ),
         ],
         contract_date=today - timedelta(days=20),
         close_date=today + timedelta(days=12),

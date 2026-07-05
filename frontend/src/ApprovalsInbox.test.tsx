@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ApprovalRequest, Role } from "./types";
 
 // Control the operator's role per-test and stub the data fetch. Both modules
@@ -37,6 +37,50 @@ const MARKETING_APPROVAL: ApprovalRequest = {
   decided_at: null,
 };
 
+const OUTBOUND_MESSAGE_APPROVAL: ApprovalRequest = {
+  id: "ap-2",
+  workflow: "vapi_followup",
+  graph_thread_id: "thread-abcdef02",
+  kind: "approve_outbound_message",
+  payload: {
+    kind: "approve_outbound_message",
+    message_id: "msg-1",
+    channel: "email",
+    recipient: "jordan@example.test",
+    subject: "Following up on your tour of RM1001",
+    body: "Hi Jordan,\n\nThank you for touring RM1001.",
+    template_ref: "showing_followup:v1",
+    listing_key: "RM1001",
+  },
+  status: "pending",
+  decided_by: null,
+  created_at: "2026-07-04T00:00:00Z",
+  decided_at: null,
+};
+
+function mockInbox(approvals: ApprovalRequest[]) {
+  apiFetchMock.mockReset();
+  apiFetchMock.mockImplementation((url: string, init?: RequestInit) => {
+    if (init?.method === "POST") {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            approval: approvals[0],
+            workflow: { status: "completed", output: { outcome: "followup_sent" } },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    }
+    return Promise.resolve(
+      new Response(JSON.stringify(approvals), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+  });
+}
+
 beforeEach(() => {
   roleState.role = "admin";
   apiFetchMock.mockReset();
@@ -50,6 +94,65 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks();
+});
+
+describe("Outbound-message card (approve_outbound_message)", () => {
+  it("shows recipient, channel, and an editable draft body", async () => {
+    mockInbox([OUTBOUND_MESSAGE_APPROVAL]);
+    render(<ApprovalsInbox />);
+
+    expect(
+      await screen.findByText("Approve outbound email — jordan@example.test"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("jordan@example.test")).toBeInTheDocument();
+    const body = screen.getByLabelText("Draft body") as HTMLTextAreaElement;
+    expect(body.value).toContain("Thank you for touring RM1001");
+    expect(body.readOnly).toBe(false);
+  });
+
+  it("sends the edited body as edited_payload on approve", async () => {
+    mockInbox([OUTBOUND_MESSAGE_APPROVAL]);
+    render(<ApprovalsInbox />);
+
+    const body = await screen.findByLabelText("Draft body");
+    fireEvent.change(body, { target: { value: "Edited before send." } });
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+    await waitFor(() => {
+      const post = apiFetchMock.mock.calls.find(([, init]) => init?.method === "POST");
+      expect(post).toBeTruthy();
+      expect(String(post?.[0])).toContain("/approvals/ap-2/decide");
+      expect(JSON.parse(String(post?.[1]?.body))).toEqual({
+        decision: "approved",
+        edited_payload: { body: "Edited before send." },
+      });
+    });
+  });
+
+  it("omits edited_payload when the body is untouched or on reject", async () => {
+    mockInbox([OUTBOUND_MESSAGE_APPROVAL]);
+    render(<ApprovalsInbox />);
+
+    const body = await screen.findByLabelText("Draft body");
+    fireEvent.change(body, { target: { value: "Would-be edit, then rejected." } });
+    fireEvent.click(screen.getByRole("button", { name: "Reject" }));
+
+    await waitFor(() => {
+      const post = apiFetchMock.mock.calls.find(([, init]) => init?.method === "POST");
+      expect(post).toBeTruthy();
+      expect(JSON.parse(String(post?.[1]?.body))).toEqual({ decision: "rejected" });
+    });
+  });
+
+  it("renders the draft read-only for a non-admin", async () => {
+    roleState.role = "operator";
+    mockInbox([OUTBOUND_MESSAGE_APPROVAL]);
+    render(<ApprovalsInbox />);
+
+    const body = (await screen.findByLabelText("Draft body")) as HTMLTextAreaElement;
+    expect(body.readOnly).toBe(true);
+    expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+  });
 });
 
 describe("ApprovalsInbox role gating", () => {

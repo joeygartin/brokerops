@@ -3,6 +3,10 @@
 ingest → structured extraction (Pydantic-validated, core service) → persist
 feedback → sync the CRM (note + call log) → if the buyer signaled offer
 intent, pause at a HITL notify-agent gate; approval creates a hot-lead task.
+On the synced (non-hot) path the run additionally drafts a showing-feedback
+follow-up email to the toured contact (BOP-019): the draft pauses at an
+approve-outbound-message gate, and only the human decision — with any edited
+text — sends it through the seam-wrapped EmailPort.
 """
 
 from datetime import UTC, date, datetime
@@ -19,10 +23,13 @@ from brokerops_core.ports.crm import CRMPort
 from brokerops_core.ports.extraction import ExtractionPort
 from brokerops_core.ports.feedback import FeedbackStore
 from brokerops_core.ports.voice import VoicePort
+from brokerops_core.services.drafting import plan_showing_followup_email
 from brokerops_core.services.feedback_extraction import ExtractedFeedback
+from brokerops_core.services.message_send import MessageSendService
 from brokerops_langgraph.state import ApprovalOutcome, VapiFollowupState
 
 NOTIFY_AGENT = "notify_agent"
+APPROVE_OUTBOUND_MESSAGE = "approve_outbound_message"
 
 
 def build_vapi_followup(
@@ -30,6 +37,7 @@ def build_vapi_followup(
     crm: CRMPort,
     feedback_store: FeedbackStore,
     extraction: ExtractionPort,
+    messages: MessageSendService,
     checkpointer: BaseCheckpointSaver[Any],
 ) -> CompiledStateGraph[Any, Any, Any, Any]:
     async def ingest_call(state: VapiFollowupState) -> dict[str, Any]:
@@ -132,17 +140,72 @@ def build_vapi_followup(
     async def dismiss_hot(state: VapiFollowupState) -> dict[str, Any]:
         return {"outcome": "hot_signal_dismissed"}
 
+    async def draft_followup_email(state: VapiFollowupState) -> dict[str, Any]:
+        # Additive tail on the synced path (BOP-019): the CRM note + call log
+        # above are unchanged; this drafts the follow-up email when the contact
+        # has an email on file (plan_showing_followup_email owns that rule).
+        contact = await crm.get_contact(state.contact_id) if state.contact_id else None
+        context = plan_showing_followup_email(contact, state.listing_key)
+        if context is None:
+            return {}
+        message = await messages.draft_for_approval(context)
+        return {"followup_message_id": message.id}
+
+    async def approve_followup_email(state: VapiFollowupState) -> dict[str, Any]:
+        message = await messages.get_message(state.followup_message_id)
+        assert message is not None
+        decision: dict[str, Any] = interrupt(
+            {
+                "kind": APPROVE_OUTBOUND_MESSAGE,
+                "message_id": message.id,
+                "channel": message.channel.value,
+                "recipient": message.recipient,
+                "subject": message.subject,
+                "body": message.body,
+                "template_ref": message.template_ref,
+                "contact_id": state.contact_id,
+                "listing_key": message.listing_key,
+            }
+        )
+        updates: dict[str, Any] = {"followup_approval": ApprovalOutcome.model_validate(decision)}
+        edited = decision.get("edited_payload")
+        if edited and edited.get("subject"):
+            updates["followup_edited_subject"] = str(edited["subject"])
+        if edited and edited.get("body"):
+            updates["followup_edited_body"] = str(edited["body"])
+        return updates
+
+    async def send_followup_email(state: VapiFollowupState) -> dict[str, Any]:
+        await messages.send_approved(
+            state.followup_message_id,
+            subject=state.followup_edited_subject or None,
+            body=state.followup_edited_body or None,
+        )
+        return {"outcome": "followup_sent"}
+
+    async def dismiss_followup_email(state: VapiFollowupState) -> dict[str, Any]:
+        await messages.mark_rejected(state.followup_message_id)
+        return {"outcome": "followup_dismissed"}
+
     def route_after_ingest(state: VapiFollowupState) -> str:
         return END if state.outcome == "no_transcript" else "extract_structured"
 
     def route_after_sync(state: VapiFollowupState) -> str:
         extracted = ExtractedFeedback.model_validate(state.extracted)
-        return "notify_agent" if extracted.hot_signal else "finish_synced"
+        return "notify_agent" if extracted.hot_signal else "draft_followup_email"
 
     def route_after_notify(state: VapiFollowupState) -> str:
         assert state.hot_approval is not None
         approved = state.hot_approval.decision.value == "approved"
         return "create_hot_task" if approved else "dismiss_hot"
+
+    def route_after_draft_email(state: VapiFollowupState) -> str:
+        return APPROVE_OUTBOUND_MESSAGE if state.followup_message_id else "finish_synced"
+
+    def route_after_message_gate(state: VapiFollowupState) -> str:
+        assert state.followup_approval is not None
+        approved = state.followup_approval.decision.value == "approved"
+        return "send_followup_email" if approved else "dismiss_followup_email"
 
     graph = StateGraph(VapiFollowupState)
     graph.add_node("ingest_call", ingest_call)
@@ -153,16 +216,38 @@ def build_vapi_followup(
     graph.add_node("create_hot_task", create_hot_task)
     graph.add_node("finish_synced", finish_synced)
     graph.add_node("dismiss_hot", dismiss_hot)
+    graph.add_node("draft_followup_email", draft_followup_email)
+    graph.add_node(APPROVE_OUTBOUND_MESSAGE, approve_followup_email)
+    graph.add_node("send_followup_email", send_followup_email)
+    graph.add_node("dismiss_followup_email", dismiss_followup_email)
 
     graph.add_edge(START, "ingest_call")
     graph.add_conditional_edges("ingest_call", route_after_ingest, ["extract_structured", END])
     graph.add_edge("extract_structured", "upsert_feedback")
     graph.add_edge("upsert_feedback", "sync_crm")
-    graph.add_conditional_edges("sync_crm", route_after_sync, [NOTIFY_AGENT, "finish_synced"])
+    graph.add_conditional_edges(
+        "sync_crm", route_after_sync, [NOTIFY_AGENT, "draft_followup_email"]
+    )
     graph.add_conditional_edges(
         NOTIFY_AGENT, route_after_notify, ["create_hot_task", "dismiss_hot"]
     )
-    for terminal in ("create_hot_task", "finish_synced", "dismiss_hot"):
+    graph.add_conditional_edges(
+        "draft_followup_email",
+        route_after_draft_email,
+        [APPROVE_OUTBOUND_MESSAGE, "finish_synced"],
+    )
+    graph.add_conditional_edges(
+        APPROVE_OUTBOUND_MESSAGE,
+        route_after_message_gate,
+        ["send_followup_email", "dismiss_followup_email"],
+    )
+    for terminal in (
+        "create_hot_task",
+        "finish_synced",
+        "dismiss_hot",
+        "send_followup_email",
+        "dismiss_followup_email",
+    ):
         graph.add_edge(terminal, END)
 
     return graph.compile(checkpointer=checkpointer)

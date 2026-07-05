@@ -31,6 +31,7 @@ from brokerops_core.ports.feedback import FeedbackStore
 from brokerops_core.ports.mls import MLSPort
 from brokerops_core.ports.transactions import TransactionStore
 from brokerops_core.ports.voice import VoicePort
+from brokerops_core.services.message_send import MessageSendService
 from brokerops_core.services.workflow_runs import (
     LISTING_TO_CONTRACT,
     TRANSACTION_COORDINATION,
@@ -168,6 +169,7 @@ async def build_engine(
     transaction_store: TransactionStore,
     feedback_store: FeedbackStore,
     approval_repo: ApprovalRepo,
+    message_service: MessageSendService,
     database_url: str | None,
 ) -> AsyncIterator[AdkWorkflowEngine]:
     """Wire the three workflows to a session service and yield a ready engine.
@@ -180,8 +182,10 @@ async def build_engine(
     sessions = build_session_service(database_url)
     workflows = {
         LISTING_TO_CONTRACT: build_listing_to_contract(mls, crm),
-        TRANSACTION_COORDINATION: build_transaction_coordination(transaction_store, crm),
-        VAPI_FOLLOWUP: build_vapi_followup(voice, crm, feedback_store, extraction),
+        TRANSACTION_COORDINATION: build_transaction_coordination(
+            transaction_store, crm, message_service
+        ),
+        VAPI_FOLLOWUP: build_vapi_followup(voice, crm, feedback_store, extraction, message_service),
     }
     runners = {
         name: Runner(

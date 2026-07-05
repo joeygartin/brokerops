@@ -22,11 +22,13 @@ class MessageChannel(StrEnum):
 class MessageStatus(StrEnum):
     """Lifecycle of an outbound message.
 
-    DRAFTED → SENT | FAILED is the whole V1 path. PENDING_APPROVAL is reserved for
-    LLM-drafted comms (BOP-019/020), which insert a human gate between draft and send.
-    DELIVERED is set only by a provider delivery-status webhook (BOP-018): SENT means
-    the provider accepted the message; DELIVERED means the provider confirmed the
-    handset got it. A delivery callback can also move SENT → FAILED.
+    DRAFTED → SENT | FAILED is the direct-send path (BOP-015). Workflow-drafted
+    comms (BOP-019) insert a human gate between draft and send:
+    PENDING_APPROVAL → SENT | FAILED | REJECTED — no drafted text leaves the
+    boundary without a human decision. DELIVERED is set only by a provider
+    delivery-status webhook (BOP-018): SENT means the provider accepted the
+    message; DELIVERED means the provider confirmed the handset got it. A
+    delivery callback can also move SENT → FAILED.
     """
 
     DRAFTED = "drafted"
@@ -34,6 +36,7 @@ class MessageStatus(StrEnum):
     SENT = "sent"
     DELIVERED = "delivered"
     FAILED = "failed"
+    REJECTED = "rejected"
 
 
 # How far along the send lifecycle each status is. Delivery callbacks may arrive
@@ -46,6 +49,10 @@ STATUS_RANK: dict[MessageStatus, int] = {
     MessageStatus.SENT: 2,
     MessageStatus.DELIVERED: 3,
     MessageStatus.FAILED: 3,
+    # Terminal like FAILED: a human said no (BOP-019). Ranked so a stray
+    # delivery callback naming a rejected message's sid is a clean no-op
+    # instead of a KeyError → 500.
+    MessageStatus.REJECTED: 3,
 }
 
 

@@ -17,6 +17,7 @@ from brokerops_core.ports.audit import AuditLog
 from brokerops_core.ports.auth import MagicTokenStore
 from brokerops_core.ports.crm import CRMPort
 from brokerops_core.ports.documents import DocumentStore
+from brokerops_core.ports.drafting import DraftingPort
 from brokerops_core.ports.email import EmailSender
 from brokerops_core.ports.extraction import ExtractionPort
 from brokerops_core.ports.feedback import FeedbackStore
@@ -25,6 +26,7 @@ from brokerops_core.ports.identity import AuthError, IdentityVerifier, Principal
 from brokerops_core.ports.messaging import EmailPort, MessageStore, SMSPort
 from brokerops_core.ports.transactions import TransactionStore
 from brokerops_core.ports.voice import VoicePort
+from brokerops_core.services.drafting import DeterministicDrafter
 from brokerops_core.services.email import ConsoleEmailSender
 from brokerops_core.services.feedback_extraction import DeterministicExtractor
 from brokerops_core.services.identity import DemoIdentityVerifier, EmailAllowlist, RoleResolver
@@ -341,6 +343,28 @@ def build_sms_port() -> SMSPort:
         )
     raise RuntimeError(
         f"unknown SMS_PROVIDER {provider!r}; expected one of {sorted(SMS_PROVIDERS)}"
+    )
+
+
+DRAFTING_BACKENDS = ("deterministic", "llm")
+
+
+def build_drafting_port() -> DraftingPort:
+    """Outbound-message drafting backend (BOP-019) — closed, explicit selector
+    in the ADR-0014 posture. Unset → deterministic template rendering, so demo
+    mode stays zero-credential; `llm` is declared-but-unwired until BOP-020
+    lands its adapter, and naming it fails loud rather than silently
+    downgrading; an unknown value raises at wiring."""
+    backend = os.environ.get("DRAFTING_BACKEND", "").strip().lower() or "deterministic"
+    if backend == "deterministic":
+        return DeterministicDrafter()
+    if backend == "llm":
+        raise RuntimeError(
+            "DRAFTING_BACKEND='llm' is not yet wired (its adapter lands in BOP-020); "
+            "use DRAFTING_BACKEND=deterministic until then"
+        )
+    raise RuntimeError(
+        f"unknown DRAFTING_BACKEND {backend!r}; expected one of {sorted(DRAFTING_BACKENDS)}"
     )
 
 
