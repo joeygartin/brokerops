@@ -32,8 +32,10 @@ from typing import Any
 from brokerops_core.models.call import CallRecord
 from brokerops_core.models.contact import Contact, ContactCreate, CrmTask
 from brokerops_core.models.idempotency import ClaimStatus, IdempotencyClaim
+from brokerops_core.models.message import Message, semantic_send_args
 from brokerops_core.ports.crm import CRMPort
 from brokerops_core.ports.idempotency import IdempotencyStore
+from brokerops_core.ports.messaging import EmailPort
 from brokerops_core.ports.voice import VoicePort
 from brokerops_core.services.audit import current_audit_context
 
@@ -192,3 +194,26 @@ class IdempotentVoice:
 
     async def get_call(self, call_id: str) -> CallRecord | None:
         return await self._inner.get_call(call_id)
+
+
+class IdempotentEmail:
+    """EmailPort decorator: dedupes the send so a retry never emails a person twice.
+
+    The key is derived from the message's *semantic* fields (`semantic_send_args`) —
+    per-attempt fields like the row id and timestamps are excluded, so a re-issued
+    send of the same logical message within one run maps to the same key even when
+    the caller rebuilt the Message object.
+    """
+
+    def __init__(self, inner: EmailPort, store: IdempotencyStore) -> None:
+        self._inner = inner
+        self._dedupe = _Deduper(store)
+
+    async def send(self, message: Message) -> str:
+        args = semantic_send_args(message)
+        key, claim = await self._dedupe.claim("send_email", args)
+        if claim is not None and claim.status is ClaimStatus.COMPLETED:
+            return _require(claim.result)
+        provider_id = await self._inner.send(message)
+        await self._dedupe.record(key, provider_id)
+        return provider_id

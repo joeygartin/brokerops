@@ -2,7 +2,7 @@
 
 Both orchestration engines reach external systems through the same ports, wired
 once in the API. Wrapping the write-capable ports here — `RecordingCRM`,
-`RecordingVoice` — records every external mutation in one place, so the two
+`RecordingVoice`, `RecordingEmail` — records every external mutation in one place, so the two
 engines behave identically with no engine-specific code (architecture rule #5).
 The ADK `before_tool_callback`/LangGraph node-wrapper that the task sketched only
 fire for LlmAgent tool calls; these workflows are deterministic zero-LLM
@@ -26,9 +26,11 @@ from uuid import uuid4
 
 from brokerops_core.models.call import CallRecord
 from brokerops_core.models.contact import Contact, ContactCreate, CrmTask
+from brokerops_core.models.message import Message
 from brokerops_core.models.mutation import MutationOutcome, MutationRecord
 from brokerops_core.ports.audit import AuditLog
 from brokerops_core.ports.crm import CRMPort
+from brokerops_core.ports.messaging import EmailPort
 from brokerops_core.ports.voice import VoicePort
 
 # Substrings that mark an argument key as sensitive; matched case-insensitively so
@@ -219,3 +221,26 @@ class RecordingVoice:
 
     async def get_call(self, call_id: str) -> CallRecord | None:
         return await self._inner.get_call(call_id)
+
+
+class RecordingEmail:
+    """EmailPort decorator: records the one external write (sending a message).
+
+    Same seam as RecordingCRM/RecordingVoice (ADR-0010). The outcome-bearing fields
+    live in the record itself (external_id = the provider message id, error on
+    failure), so they are excluded from the argument snapshot.
+    """
+
+    def __init__(self, inner: EmailPort, audit: AuditLog) -> None:
+        self._inner = inner
+        self._rec = _Recorder(audit, "email")
+
+    async def send(self, message: Message) -> str:
+        args = message.model_dump(mode="json", exclude={"status", "provider_message_id", "sent_at"})
+        try:
+            provider_id = await self._inner.send(message)
+        except Exception as exc:
+            await self._rec.emit("send_email", args, MutationOutcome.FAILURE, error=str(exc))
+            raise
+        await self._rec.emit("send_email", args, MutationOutcome.SUCCESS, external_id=provider_id)
+        return provider_id

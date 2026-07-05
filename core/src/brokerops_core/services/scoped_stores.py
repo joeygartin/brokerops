@@ -31,11 +31,13 @@ from typing import Protocol
 from brokerops_core.models.approval import ApprovalRequest, ApprovalStatus
 from brokerops_core.models.call import CallRecord
 from brokerops_core.models.feedback import ShowingFeedback
+from brokerops_core.models.message import Message
 from brokerops_core.models.milestone import Milestone
 from brokerops_core.models.transaction import Transaction
 from brokerops_core.ports.approvals import ApprovalRepo
 from brokerops_core.ports.audit import AuditLog
 from brokerops_core.ports.feedback import FeedbackStore
+from brokerops_core.ports.messaging import MessageStore
 from brokerops_core.ports.transactions import TransactionStore
 from brokerops_core.services.tenancy import (
     CrossTenantError,
@@ -191,6 +193,46 @@ class ScopedFeedbackStore:
         except CrossTenantError as err:
             await record_cross_tenant_attempt(self._audit, err, tool=tool)
             raise
+
+    async def _audit_foreign(self, tool: str, attempted: str, bound: str) -> None:
+        await record_cross_tenant_attempt(
+            self._audit, CrossTenantError(attempted, bound), tool=tool
+        )
+
+
+class ScopedMessageStore:
+    """MessageStore decorator that confines the comms history to the bound tenant."""
+
+    def __init__(self, inner: MessageStore, audit: AuditLog) -> None:
+        self._inner = inner
+        self._audit = audit
+
+    async def save_message(self, message: Message) -> None:
+        try:
+            tenant = enforce_tenant(message.tenant_id)
+        except CrossTenantError as err:
+            await record_cross_tenant_attempt(self._audit, err, tool="save_message")
+            raise
+        # Reject a write that targets an existing message owned by another tenant
+        # (reuse-a-foreign-id vector), not just a foreign claimed tenant on the model.
+        existing = await self._inner.get_message(message.id)
+        if existing is not None and _is_foreign(existing.tenant_id, tenant):
+            await self._audit_foreign("save_message", existing.tenant_id, tenant)
+            raise CrossTenantError(existing.tenant_id, tenant)
+        await self._inner.save_message(message.model_copy(update={"tenant_id": tenant}))
+
+    async def get_message(self, message_id: str) -> Message | None:
+        ambient = require_tenant()
+        message = await self._inner.get_message(message_id)
+        if message is not None and _is_foreign(message.tenant_id, ambient):
+            await self._audit_foreign("get_message", message.tenant_id, ambient)
+            return None
+        return message
+
+    async def list_messages(self, contact_id: str | None = None, limit: int = 100) -> list[Message]:
+        ambient = require_tenant()
+        rows = await self._inner.list_messages(contact_id, limit)
+        return [m for m in rows if not _is_foreign(m.tenant_id, ambient)]
 
     async def _audit_foreign(self, tool: str, attempted: str, bound: str) -> None:
         await record_cross_tenant_attempt(

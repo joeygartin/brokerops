@@ -18,6 +18,7 @@ from brokerops_core.ports.email import EmailSender
 from brokerops_core.ports.extraction import ExtractionPort
 from brokerops_core.ports.feedback import FeedbackStore
 from brokerops_core.ports.identity import AuthError, IdentityVerifier, Principal, Role
+from brokerops_core.ports.messaging import EmailPort, MessageStore
 from brokerops_core.ports.transactions import TransactionStore
 from brokerops_core.ports.voice import VoicePort
 from brokerops_core.services.email import ConsoleEmailSender
@@ -25,6 +26,8 @@ from brokerops_core.services.feedback_extraction import DeterministicExtractor
 from brokerops_core.services.identity import DemoIdentityVerifier, EmailAllowlist, RoleResolver
 from brokerops_core.services.listing_service import ListingService
 from brokerops_core.services.magic_link import MagicLinkService
+from brokerops_core.services.message_send import MessageSendService
+from brokerops_email_stub.adapter import StubEmailAdapter
 from brokerops_followupboss.adapter import FUB_API_BASE, FUBCRMAdapter
 from brokerops_mls_reso.adapter import ResoMLSAdapter
 from brokerops_vapi.adapter import VAPI_API_BASE, VapiVoiceAdapter
@@ -113,6 +116,42 @@ def build_voice_adapter() -> VapiVoiceAdapter:
         api_key=api_key,
         base_url=base_url,
         phone_number_id=os.environ.get("VAPI_PHONE_NUMBER_ID") or None,
+    )
+
+
+EMAIL_PROVIDERS = ("stub", "ses", "sendgrid")
+
+
+def build_email_port() -> EmailPort:
+    """The outbound business-email provider (EmailPort, ADR-0015) — NOT the
+    magic-link EmailSender (ADR-0008), which keeps its own SMTP config.
+
+    Closed, explicit selector in the ADR-0014 posture: EMAIL_PROVIDER names the
+    provider; nothing is inferred from key presence. Unset → the stub, so demo
+    mode stays zero-credential; an unknown value raises at wiring; ses/sendgrid
+    are declared-but-unwired until BOP-016/017 land their adapters, and naming
+    them fails loud rather than silently downgrading to the stub.
+    """
+    provider = os.environ.get("EMAIL_PROVIDER", "").strip().lower() or "stub"
+    if provider == "stub":
+        # The stub's default base URL is the `internal` sentinel (unlike real
+        # integrations, there is no external counterpart to default to), so
+        # `docker compose up` exercises the email flow with zero configuration.
+        base_url = os.environ.get("EMAIL_BASE_URL", INTERNAL)
+        if base_url == INTERNAL:
+            from brokerops_email_stub.stub import create_stub_app
+
+            return StubEmailAdapter(
+                base_url="http://stub.internal", client=_internal_client(create_stub_app())
+            )
+        return StubEmailAdapter(base_url=base_url)
+    if provider in ("ses", "sendgrid"):
+        raise RuntimeError(
+            f"EMAIL_PROVIDER={provider!r} is not yet wired (its adapter lands in "
+            "BOP-016/017); use EMAIL_PROVIDER=stub until then"
+        )
+    raise RuntimeError(
+        f"unknown EMAIL_PROVIDER {provider!r}; expected one of {sorted(EMAIL_PROVIDERS)}"
     )
 
 
@@ -395,3 +434,11 @@ def get_feedback_store(request: Request) -> FeedbackStore:
 
 def get_audit_log(request: Request) -> AuditLog:
     return cast(AuditLog, request.app.state.audit_log)
+
+
+def get_message_store(request: Request) -> MessageStore:
+    return cast(MessageStore, request.app.state.message_store)
+
+
+def get_message_service(request: Request) -> MessageSendService:
+    return cast(MessageSendService, request.app.state.message_service)

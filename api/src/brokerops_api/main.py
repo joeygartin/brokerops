@@ -11,18 +11,21 @@ from brokerops_api.db import (
     InMemoryFeedbackStore,
     InMemoryIdempotencyStore,
     InMemoryMagicTokenStore,
+    InMemoryMessageStore,
     InMemoryTransactionStore,
     SqlApprovalRepo,
     SqlAuditLog,
     SqlFeedbackStore,
     SqlIdempotencyStore,
     SqlMagicTokenStore,
+    SqlMessageStore,
     SqlTransactionStore,
     TenantScopedEngine,
     create_engine,
 )
 from brokerops_api.deps import (
     build_crm_adapter,
+    build_email_port,
     build_extraction_port,
     build_identity_verifier,
     build_magic_link_service,
@@ -42,15 +45,18 @@ from brokerops_api.routes.contacts import router as contacts_router
 from brokerops_api.routes.cron import router as cron_router
 from brokerops_api.routes.demo import router as demo_router
 from brokerops_api.routes.listings import router as listings_router
+from brokerops_api.routes.messages import router as messages_router
 from brokerops_api.routes.transactions import router as transactions_router
 from brokerops_api.routes.webhooks import router as webhooks_router
 from brokerops_api.routes.workflows import router as workflows_router
 from brokerops_core.ports.auth import MagicTokenStore
-from brokerops_core.services.audit import RecordingCRM, RecordingVoice
-from brokerops_core.services.idempotency import IdempotentCRM, IdempotentVoice
+from brokerops_core.services.audit import RecordingCRM, RecordingEmail, RecordingVoice
+from brokerops_core.services.idempotency import IdempotentCRM, IdempotentEmail, IdempotentVoice
+from brokerops_core.services.message_send import MessageSendService
 from brokerops_core.services.scoped_stores import (
     ScopedApprovalRepo,
     ScopedFeedbackStore,
+    ScopedMessageStore,
     ScopedTransactionStore,
 )
 from brokerops_adk.engine import build_engine as build_adk_engine
@@ -77,8 +83,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     crm = build_crm_adapter()
     voice = build_voice_adapter()
     extraction = build_extraction_port()
+    # The outbound business-email provider (ADR-0015). An unknown or unwired
+    # EMAIL_PROVIDER raises right here — misconfiguration is a startup error.
+    email = build_email_port()
     app.state.crm = crm
     app.state.voice = voice
+    app.state.email = email
     engine = create_engine(database_url) if database_url else None
     magic_store: MagicTokenStore
     if engine is not None:
@@ -99,6 +109,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.feedback_store = ScopedFeedbackStore(
             SqlFeedbackStore(scoped_engine), app.state.audit_log
         )
+        app.state.message_store = ScopedMessageStore(
+            SqlMessageStore(scoped_engine), app.state.audit_log
+        )
         app.state.idempotency_store = SqlIdempotencyStore(engine)
         magic_store = SqlMagicTokenStore(engine)
     else:
@@ -111,6 +124,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             InMemoryTransactionStore(), app.state.audit_log
         )
         app.state.feedback_store = ScopedFeedbackStore(InMemoryFeedbackStore(), app.state.audit_log)
+        app.state.message_store = ScopedMessageStore(InMemoryMessageStore(), app.state.audit_log)
         app.state.idempotency_store = InMemoryIdempotencyStore()
         magic_store = InMemoryMagicTokenStore()
     # Magic-link service is None unless the "magic" method is enabled; routes
@@ -130,6 +144,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     engine_voice = IdempotentVoice(
         RecordingVoice(voice, app.state.audit_log), app.state.idempotency_store
     )
+    # Outbound email sends flow through the identical seam (ADR-0015): deduped,
+    # then recorded, over the tenant-scoped message store. The /messages/send
+    # route binds the run context the decorators read via audit_scope.
+    seam_email = IdempotentEmail(
+        RecordingEmail(email, app.state.audit_log), app.state.idempotency_store
+    )
+    app.state.message_service = MessageSendService(email=seam_email, store=app.state.message_store)
     async with build_engine(
         mls=mls,
         crm=engine_crm,
@@ -178,6 +199,7 @@ app.include_router(contacts_router, dependencies=operator_auth)
 app.include_router(transactions_router, dependencies=operator_auth)
 app.include_router(workflows_router, dependencies=operator_auth)
 app.include_router(calls_router, dependencies=operator_auth)
+app.include_router(messages_router, dependencies=operator_auth)
 
 # Machine + public surfaces keep their own controls: webhooks verify their
 # provider signature, cron its X-Cron-Key, and /auth bootstraps the SPA.

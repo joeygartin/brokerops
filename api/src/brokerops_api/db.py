@@ -24,6 +24,7 @@ from brokerops_core.ports.auth import ConsumedToken
 from brokerops_core.ports.idempotency import IdempotencyStore as IdempotencyStore
 from brokerops_core.models.feedback import ShowingFeedback
 from brokerops_core.models.idempotency import ClaimStatus, IdempotencyClaim
+from brokerops_core.models.message import Message
 from brokerops_core.models.milestone import Milestone
 from brokerops_core.models.mutation import MutationRecord
 from brokerops_core.models.transaction import ACTIVE_STAGES, Transaction
@@ -105,6 +106,30 @@ showing_feedback = sa.Table(
     sa.Column("sentiment", sa.String(16), nullable=False, server_default="neutral"),
     sa.Column("structured_answers", sa.JSON(), nullable=False),
     sa.Column("created_at", sa.DateTime(timezone=True)),
+)
+
+
+outbound_messages = sa.Table(
+    "outbound_messages",
+    metadata,
+    # The outbound comms history (BOP-015): one row per message, all channels.
+    # Domain data like call_records — the audit ledger separately records the send
+    # crossing the provider boundary. Authoritative DDL (GUC default + RLS) is in
+    # migration 0008; server_default="" here only keeps query building valid.
+    sa.Column("id", sa.String(64), primary_key=True),
+    sa.Column("tenant_id", sa.String(64), nullable=False, server_default="", index=True),
+    sa.Column("channel", sa.String(16), nullable=False, server_default="email"),
+    sa.Column("recipient", sa.String(254), nullable=False),
+    sa.Column("subject", sa.String(500), nullable=False, server_default=""),
+    sa.Column("body", sa.Text(), nullable=False, server_default=""),
+    sa.Column("template_ref", sa.String(120), nullable=False, server_default=""),
+    sa.Column("contact_id", sa.String(36), nullable=False, server_default="", index=True),
+    sa.Column("listing_key", sa.String(36), nullable=False, server_default="", index=True),
+    sa.Column("transaction_id", sa.String(36), nullable=False, server_default=""),
+    sa.Column("status", sa.String(24), nullable=False, server_default="drafted"),
+    sa.Column("provider_message_id", sa.String(120), nullable=False, server_default=""),
+    sa.Column("created_at", sa.DateTime(timezone=True)),
+    sa.Column("sent_at", sa.DateTime(timezone=True)),
 )
 
 
@@ -507,6 +532,66 @@ class InMemoryFeedbackStore:
 
     async def list_feedback(self, listing_key: str) -> list[ShowingFeedback]:
         return [f for f in self._feedback.values() if f.listing_key == listing_key]
+
+
+class SqlMessageStore:
+    def __init__(self, engine: TenantAwareEngine) -> None:
+        self._engine = engine
+
+    async def save_message(self, message: Message) -> None:
+        values = message.model_dump(mode="json")
+        values["created_at"] = message.created_at
+        values["sent_at"] = message.sent_at
+        async with self._engine.begin() as conn:
+            existing = await conn.execute(
+                outbound_messages.select().where(outbound_messages.c.id == message.id)
+            )
+            if existing.first() is None:
+                await conn.execute(outbound_messages.insert().values(**values))
+            else:
+                await conn.execute(
+                    outbound_messages.update()
+                    .where(outbound_messages.c.id == message.id)
+                    .values(**values)
+                )
+
+    async def get_message(self, message_id: str) -> Message | None:
+        async with self._engine.connect() as conn:
+            result = await conn.execute(
+                outbound_messages.select().where(outbound_messages.c.id == message_id)
+            )
+            row = result.first()
+        return Message.model_validate(dict(row._mapping)) if row is not None else None
+
+    async def list_messages(self, contact_id: str | None = None, limit: int = 100) -> list[Message]:
+        query = (
+            outbound_messages.select().order_by(outbound_messages.c.created_at.desc()).limit(limit)
+        )
+        if contact_id is not None:
+            query = query.where(outbound_messages.c.contact_id == contact_id)
+        async with self._engine.connect() as conn:
+            result = await conn.execute(query)
+            rows = result.all()
+        return [Message.model_validate(dict(row._mapping)) for row in rows]
+
+
+class InMemoryMessageStore:
+    def __init__(self) -> None:
+        self._messages: dict[str, Message] = {}
+
+    async def save_message(self, message: Message) -> None:
+        self._messages[message.id] = message
+
+    async def get_message(self, message_id: str) -> Message | None:
+        return self._messages.get(message_id)
+
+    async def list_messages(self, contact_id: str | None = None, limit: int = 100) -> list[Message]:
+        found = [
+            m for m in self._messages.values() if contact_id is None or m.contact_id == contact_id
+        ]
+        epoch = datetime.min.replace(tzinfo=UTC)
+        found.sort(key=lambda m: m.created_at or epoch, reverse=True)
+        return found[:limit]
 
 
 class InMemoryApprovalRepo:

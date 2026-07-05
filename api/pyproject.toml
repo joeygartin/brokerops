@@ -8,6 +8,7 @@ dependencies = [
     "brokerops-adk",
     "brokerops-core",
     "brokerops-email-smtp",
+    "brokerops-email-stub",
     "brokerops-followupboss",
     "brokerops-google-oidc",
     "brokerops-langgraph",
@@ -36,6 +37,7 @@ dev = [
 brokerops-adk = { workspace = true }
 brokerops-core = { workspace = true }
 brokerops-email-smtp = { workspace = true }
+brokerops-email-stub = { workspace = true }
 brokerops-followupboss = { workspace = true }
 brokerops-google-oidc = { workspace = true }
 brokerops-langgraph = { workspace = true }
