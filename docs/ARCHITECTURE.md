@@ -262,7 +262,11 @@ table, and `Pii` field annotations on the response models — never per-tool cod
 directions ride one wrapper (`guard_tool_ports`) on every port in
 `app.state.engine_tool_ports`, and the enumeration test asserts both markers on every
 registered port, so a new tool entry point cannot ship unguarded in either direction.
-Per-agent least-privilege accounts remain the follow-on.
+The covered surface is the engine tool seam: HTTP route responses are RBAC-scoped
+(`require_role`, ADR-0009), not egress-role-scoped — store-backed routes read through
+ports filtered at the pinned OPERATOR tier regardless of the caller's actual role, and
+filtering route responses per the caller's role is a follow-on. Per-agent
+least-privilege accounts remain the other follow-on.
 
 ## Data
 

@@ -38,7 +38,15 @@ The engine seam's recipient is the agent, wired as ``Role.OPERATOR``: the agent 
 (drafts comms, places calls) but never *decides*, matching ADR-0009's operator tier — so
 contact-reach PII (``min_role=OPERATOR``) stays available to the workflows that legitimately
 need it, while any admin-only field and every secret shape is filtered even from the agent.
-A viewer-facing surface passes ``Role.VIEWER`` and gets contact PII redacted too.
+
+**Covered surface (be precise):** the engine tool seam (``app.state.engine_tool_ports``)
+is the surface this filter is wired on. HTTP route responses are RBAC-scoped
+(``require_role``, ADR-0009), not egress-role-scoped — a route that returns data does so
+at the route's privilege bar, and the store-backed routes read through ports filtered at
+the pinned OPERATOR tier regardless of the caller's actual role. Filtering route
+responses per the *caller's* role (``recipient_role=principal.role``) is a follow-on;
+``filter_tool_response`` already takes the role as a parameter, so wiring it is
+mechanical when a viewer-facing surface needs it.
 """
 
 import functools
@@ -83,6 +91,9 @@ FINDING_PII = "restricted_pii"
 # deliberately tight — each pattern needs a credential-specific anchor (a scheme with an
 # embedded password, a vendor key prefix, a PEM header), never bare entropy, so listing
 # remarks / transcripts / drafted bodies are not mangled on false positives.
+# Order is load-bearing for overlap semantics: patterns apply sequentially, so a broader
+# shape listed first consumes the whole span (e.g. bearer before sk- is why "Bearer sk-…"
+# redacts as one credential, not a marker with a dangling prefix).
 SECRET_VALUE_PATTERNS: tuple[re.Pattern[str], ...] = (
     # PEM-style private key blocks.
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]+?-----END [A-Z ]*PRIVATE KEY-----"),
