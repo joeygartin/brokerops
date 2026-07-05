@@ -97,4 +97,8 @@ class MessageSendService:
             }
         )
         await self._store.save_message(sent)
-        return sent
+        # Return the row as stored, not the in-flight object: the scoped data layer
+        # stamps tenant_id onto the persisted copy (ADR-0012), and callers should see
+        # one representation whether they read the send response or the history.
+        stored = await self._store.get_message(sent.id)
+        return stored if stored is not None else sent

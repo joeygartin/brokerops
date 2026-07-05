@@ -34,13 +34,14 @@ def test_stub_send_persists_sent_message_and_lands_in_the_audit_ledger() -> None
         assert message["provider_message_id"].startswith("stub-email-")
         assert message["template_ref"] == "showing_followup:v1"
         assert message["subject"] == "Following up on your tour of 412 Alder Court"
+        # The send response is the stored row: tenant stamped by the scoped store
+        # (ADR-0012), identical to what the history returns.
+        assert message["tenant_id"] == "demo"
 
-        # Persisted to the comms history and readable back — with the tenant
-        # stamped onto the stored row by the scoped store (ADR-0012).
+        # Persisted to the comms history and readable back.
         fetched = client.get(f"/messages/{message['id']}")
         assert fetched.status_code == 200
-        assert fetched.json()["provider_message_id"] == message["provider_message_id"]
-        assert fetched.json()["tenant_id"] == "demo"
+        assert fetched.json() == message
 
         # The send crossed the provider boundary once — and the audit ledger saw it.
         trail = client.get("/audit?workflow_run_id=req-audit-1").json()

@@ -6,6 +6,10 @@ row → EmailPort send that is deduped (ADR-0011) and recorded in the audit ledg
 (`audit_scope`) the seam decorators read: a caller-supplied `request_id` makes a
 retried request the *same* logical send — replays return the original message
 without emailing twice — while omitting it makes each request a fresh send.
+
+Note the at-most-once posture (ADR-0011) cuts both ways: a FAILED send is not
+retryable under the same `request_id` (its idempotency claim stays pending → a
+permanent 409); recovery is a new `request_id`, i.e. a new logical send.
 """
 
 from typing import Annotated

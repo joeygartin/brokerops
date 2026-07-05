@@ -93,3 +93,8 @@ the ADR-0011 at-most-once posture, unchanged.
 - (−) The `outbound_messages` history and the audit ledger both mention every
   send (as domain fact and as mutation record respectively); reviewers must know
   which surface answers which question.
+- (−) At-most-once cuts both ways: a FAILED send is not retryable under the same
+  `request_id` (its pending idempotency claim makes the replay a permanent 409);
+  recovery is a new `request_id` — a new logical send. This is the ADR-0011
+  posture applied to the retry-token flow, accepted deliberately over the risk
+  of double-emailing a client.

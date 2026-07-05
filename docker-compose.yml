@@ -68,6 +68,14 @@ services:
       EXTRACTION_BACKEND: ${EXTRACTION_BACKEND:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-}
+      # Outbound business email: explicit closed selector (ADR-0015). Unset =
+      # the bundled in-process stub (zero-credential demo). Every closed
+      # selector the api reads MUST be passed through here, or a .env value
+      # would be silently ignored inside the container — the exact silent
+      # downgrade the fail-loud selectors exist to prevent (parity is pinned
+      # by api/tests/test_compose_selector_parity.py).
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-}
+      EMAIL_BASE_URL: ${EMAIL_BASE_URL:-}
       # Demo seed/reset routes (/demo/*): on for the local demo so the "Seed demo
       # transactions" button works; off by default everywhere else (the route can wipe
       # tenant data). Real client deploys never set this.
