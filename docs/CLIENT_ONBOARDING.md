@@ -37,11 +37,34 @@ mechanism yet, must be built for this client.
 | **MLS (RESO Web API)** | OData service-root URL + bearer token | `reso_base_url` **[config]** + `reso-auth-token` secret |
 | **CRM (FollowUpBoss)** | API key + base URL | `fub_base_url` **[config]** + `fub-api-key` secret |
 | **Voice (Vapi)** | API key, assistant id, phone-number id, webhook secret | `vapi_*` vars **[config]** + `vapi-api-key`/`vapi-webhook-secret` secrets |
+| **Office files (Google Drive)** | Auth mode + folder convention — see §2a | `FILES_PROVIDER` **[config]** + drive-credentials secret |
 | **LLM feedback extraction** (optional) | Use Claude vs. deterministic? model id? | `enable_llm_extraction`, `llm_model` **[config]** + `llm-api-key` secret |
 | **Email delivery** (for magic-link) | SMTP host/port/from/username | `smtp_*` **[config]** + `smtp-password` secret — for AWS SES, `scripts/setup_ses.sh <client> <domain>` automates the identity + IAM user + password push (prints the DKIM records and deploy `-var`s) |
 
 If a system isn't ready, leave it on the bundled stub (`*_base_url = "internal"`)
 and turn it on later.
+
+### 2a. Office files — Google Drive auth mode (BOP-021)
+
+Transaction documents (purchase agreement, disclosures, inspection reports)
+live in the brokerage's own Drive; brokerops stores **pointers only** (the
+`documents` table holds metadata, never bytes) and reads/uploads through the
+`FilesPort`. Selection is the explicit `FILES_PROVIDER` env: unset/`stub` runs
+the bundled in-memory Drive double (the demo default — zero credentials);
+`google_drive` talks to the real API and **fails loud at startup without
+credentials** — it never silently falls back to the stub.
+
+Capture at intake:
+
+| Capture | Lands in |
+|---|---|
+| **Auth mode.** Recommended: a **per-client service account** — create it in the client's GCP project, enable the Drive API, and have the brokerage *share their transactions folder (or Shared Drive) with the service-account email*. No user consent flow, no token expiry babysitting. | Service-account JSON → Secret Manager (e.g. `drive-credentials`), mounted into the container; path in `GOOGLE_DRIVE_CREDENTIALS_FILE` **[config]** |
+| **OAuth alternative** — for a brokerage that won't share folders with a service account: a Workspace admin grants the app access (domain-wide delegation) or an operator completes a one-time consent; the resulting refresh token would live in Secret Manager the same way. | **[unbuilt]** — the adapter currently loads service-account credentials only |
+| **Folder convention** — where the paperwork for one transaction lives. brokerops' convention (and the stub's seed shape): **one folder named after the listing key**. If the brokerage organizes differently (per-address, per-client), capture the mapping. | Adapter folder lookup (name-based); custom mapping **[unbuilt]** |
+| **Upload policy** — may brokerops write new files into the folder (the upload path), or attach-existing only? Every upload is recorded in the action audit-ledger. | Route stays enabled; policy is operational **[config-ish]** |
+
+Never put the service-account JSON in the repo or a tfvars file — Secret
+Manager only, like every other integration credential.
 
 ## 3. Listing intake checklist ("taking a listing")
 

@@ -22,12 +22,14 @@ from brokerops_core.ports.approvals import ApprovalRepo as ApprovalRepo
 from brokerops_core.ports.audit import AuditLog as AuditLog
 from brokerops_core.ports.auth import ConsumedToken
 from brokerops_core.ports.idempotency import IdempotencyStore as IdempotencyStore
+from brokerops_core.models.document import Document
 from brokerops_core.models.feedback import ShowingFeedback
 from brokerops_core.models.idempotency import ClaimStatus, IdempotencyClaim
 from brokerops_core.models.message import Message
 from brokerops_core.models.milestone import Milestone
 from brokerops_core.models.mutation import MutationRecord
 from brokerops_core.models.transaction import ACTIVE_STAGES, Transaction
+from brokerops_core.ports.documents import DocumentAlreadyExists
 from brokerops_core.ports.transactions import TransactionAlreadyExists
 
 metadata = sa.MetaData()
@@ -78,6 +80,24 @@ milestones = sa.Table(
     sa.Column("owner", sa.String(120), nullable=False, server_default=""),
     sa.Column("escalation_level", sa.Integer(), nullable=False, server_default="0"),
     sa.Column("blocked_reason", sa.String(300)),
+    sa.Column("expected_document", sa.String(32)),
+)
+
+
+documents = sa.Table(
+    "documents",
+    metadata,
+    # Metadata/pointers only (BOP-021): the FileRef JSON points into the office
+    # file store; no file bytes are ever stored here.
+    sa.Column("id", sa.String(64), primary_key=True),
+    sa.Column("tenant_id", sa.String(64), nullable=False, server_default="", index=True),
+    sa.Column("transaction_id", sa.String(36), nullable=False, index=True),
+    sa.Column("milestone_id", sa.String(64)),
+    sa.Column("kind", sa.String(32), nullable=False, server_default="other"),
+    sa.Column("title", sa.String(300), nullable=False, server_default=""),
+    sa.Column("file", sa.JSON(), nullable=False),
+    sa.Column("uploaded_by", sa.String(254), nullable=False, server_default=""),
+    sa.Column("created_at", sa.DateTime(timezone=True)),
 )
 
 
@@ -448,6 +468,58 @@ class InMemoryTransactionStore:
             k: v for k, v in self._transactions.items() if v.tenant_id not in owned
         }
         self._milestones = {k: v for k, v in self._milestones.items() if v.tenant_id not in owned}
+
+
+def _document_to_row(document: Document) -> dict[str, Any]:
+    row = document.model_dump(mode="json")
+    row["created_at"] = document.created_at
+    return row
+
+
+class SqlDocumentStore:
+    def __init__(self, engine: TenantAwareEngine) -> None:
+        self._engine = engine
+
+    async def add(self, document: Document) -> None:
+        try:
+            async with self._engine.begin() as conn:
+                await conn.execute(documents.insert().values(**_document_to_row(document)))
+        except IntegrityError as exc:
+            # Primary-key conflict: another writer already attached this file.
+            raise DocumentAlreadyExists(document.id) from exc
+
+    async def get(self, document_id: str) -> Document | None:
+        async with self._engine.connect() as conn:
+            result = await conn.execute(documents.select().where(documents.c.id == document_id))
+            row = result.first()
+        return Document.model_validate(dict(row._mapping)) if row is not None else None
+
+    async def list_for_transaction(self, transaction_id: str) -> list[Document]:
+        async with self._engine.connect() as conn:
+            result = await conn.execute(
+                documents.select()
+                .where(documents.c.transaction_id == transaction_id)
+                .order_by(documents.c.created_at)
+            )
+            rows = result.all()
+        return [Document.model_validate(dict(row._mapping)) for row in rows]
+
+
+class InMemoryDocumentStore:
+    def __init__(self) -> None:
+        self._documents: dict[str, Document] = {}
+
+    async def add(self, document: Document) -> None:
+        if document.id in self._documents:
+            raise DocumentAlreadyExists(document.id)
+        self._documents[document.id] = document
+
+    async def get(self, document_id: str) -> Document | None:
+        return self._documents.get(document_id)
+
+    async def list_for_transaction(self, transaction_id: str) -> list[Document]:
+        found = [d for d in self._documents.values() if d.transaction_id == transaction_id]
+        return sorted(found, key=lambda d: d.created_at)
 
 
 class SqlFeedbackStore:

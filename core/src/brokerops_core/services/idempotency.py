@@ -31,13 +31,15 @@ from typing import Any
 
 from brokerops_core.models.call import CallRecord
 from brokerops_core.models.contact import Contact, ContactCreate, CrmTask
+from brokerops_core.models.files import FileRef
 from brokerops_core.models.idempotency import ClaimStatus, IdempotencyClaim
 from brokerops_core.models.message import Message, semantic_send_args
 from brokerops_core.ports.crm import CRMPort
+from brokerops_core.ports.files import FilesPort
 from brokerops_core.ports.idempotency import IdempotencyStore
 from brokerops_core.ports.messaging import EmailPort
 from brokerops_core.ports.voice import VoicePort
-from brokerops_core.services.audit import current_audit_context
+from brokerops_core.services.audit import current_audit_context, file_write_args
 
 
 def idempotency_key(workflow_run_id: str, tool: str, args: dict[str, Any]) -> str:
@@ -170,6 +172,32 @@ class IdempotentCRM:
         call_id = await self._inner.log_call(contact_id, outcome, note, duration_seconds)
         await self._dedupe.record(key, call_id)
         return call_id
+
+
+class IdempotentFiles:
+    """FilesPort decorator: dedupes the one external write (`put`) so a retry
+    never stores the same file twice. The key hashes the content digest — the
+    same args the recording seam logs — never the bytes themselves.
+    """
+
+    def __init__(self, inner: FilesPort, store: IdempotencyStore) -> None:
+        self._inner = inner
+        self._dedupe = _Deduper(store)
+
+    async def list(self, folder: str) -> list[FileRef]:
+        return await self._inner.list(folder)
+
+    async def get(self, file_id: str) -> FileRef | None:
+        return await self._inner.get(file_id)
+
+    async def put(self, name: str, content: bytes, folder: str) -> FileRef:
+        args = file_write_args(name, content, folder)
+        key, claim = await self._dedupe.claim("put_file", args)
+        if claim is not None and claim.status is ClaimStatus.COMPLETED:
+            return FileRef.model_validate_json(_require(claim.result))
+        ref = await self._inner.put(name, content, folder)
+        await self._dedupe.record(key, ref.model_dump_json())
+        return ref
 
 
 class IdempotentVoice:

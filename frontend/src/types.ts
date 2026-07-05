@@ -112,11 +112,48 @@ export type MilestoneView = {
   blocked_reason: string | null;
   classification: string;
   days_until_due: number;
+  // BOP-021: the document kind this milestone expects, and whether one is
+  // attached. document_satisfied is null when nothing is expected.
+  expected_document: string | null;
+  document_satisfied: boolean | null;
+};
+
+// A storage-neutral pointer into the office file store — mirrors core's FileRef.
+export type FileRef = {
+  file_id: string;
+  name: string;
+  mime_type: string;
+  size_bytes: number | null;
+  web_url: string;
+};
+
+export const DOCUMENT_KINDS = [
+  "purchase_agreement",
+  "disclosures",
+  "inspection_report",
+  "appraisal_report",
+  "loan_approval",
+  "closing_statement",
+  "other",
+] as const;
+
+// Document metadata attached to a transaction — mirrors core's Document.
+// Pointers only; the bytes stay in the office file store.
+export type DocumentRecord = {
+  id: string;
+  transaction_id: string;
+  milestone_id: string | null;
+  kind: string;
+  title: string;
+  file: FileRef;
+  uploaded_by: string;
+  created_at: string;
 };
 
 export type TransactionDetail = {
   transaction: Transaction;
   milestones: MilestoneView[];
+  documents: DocumentRecord[];
 };
 
 // Operator authorization level (mirrors core's Role). Hierarchical:

@@ -9,9 +9,10 @@ import pytest
 from fastapi.testclient import TestClient
 from langgraph.checkpoint.memory import InMemorySaver
 
-from brokerops_api.db import InMemoryApprovalRepo, InMemoryTransactionStore
+from brokerops_api.db import InMemoryApprovalRepo, InMemoryDocumentStore, InMemoryTransactionStore
 from brokerops_api.deps import (
     get_approval_repo,
+    get_document_store,
     get_transaction_store,
     get_transaction_store_admin,
     get_workflow_engine,
@@ -35,6 +36,7 @@ def _stub_crm() -> FUBCRMAdapter:
 
 
 store = InMemoryTransactionStore()
+documents = InMemoryDocumentStore()
 repo = InMemoryApprovalRepo()
 engine = LangGraphWorkflowEngine(
     {TRANSACTION_COORDINATION: build_transaction_coordination(store, _stub_crm(), InMemorySaver())},
@@ -50,6 +52,7 @@ def _wire_overrides() -> Iterator[None]:
     app.dependency_overrides[get_approval_repo] = lambda: repo
     app.dependency_overrides[get_transaction_store] = lambda: store
     app.dependency_overrides[get_transaction_store_admin] = lambda: store
+    app.dependency_overrides[get_document_store] = lambda: documents
     yield
     app.dependency_overrides.clear()
 

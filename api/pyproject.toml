@@ -10,6 +10,7 @@ dependencies = [
     "brokerops-email-smtp",
     "brokerops-email-stub",
     "brokerops-followupboss",
+    "brokerops-google-drive",
     "brokerops-google-oidc",
     "brokerops-langgraph",
     "brokerops-llm-extraction",
@@ -39,6 +40,7 @@ brokerops-core = { workspace = true }
 brokerops-email-smtp = { workspace = true }
 brokerops-email-stub = { workspace = true }
 brokerops-followupboss = { workspace = true }
+brokerops-google-drive = { workspace = true }
 brokerops-google-oidc = { workspace = true }
 brokerops-langgraph = { workspace = true }
 brokerops-llm-extraction = { workspace = true }

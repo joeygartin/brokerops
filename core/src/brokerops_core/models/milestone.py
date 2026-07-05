@@ -3,6 +3,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel
 
+from brokerops_core.models.document import DocumentKind
+
 
 class MilestoneType(StrEnum):
     INSPECTION = "inspection"
@@ -30,6 +32,10 @@ class Milestone(BaseModel):
     owner: str = ""
     escalation_level: int = 0
     blocked_reason: str | None = None
+    # The document kind this milestone expects attached (BOP-021), copied from its
+    # template. Read-only signal: the engine *reports* attached-vs-expected; no
+    # workflow routes on it.
+    expected_document: DocumentKind | None = None
 
 
 class DueRule(StrEnum):
@@ -52,3 +58,7 @@ class MilestoneTemplate(BaseModel):
     owner: str = ""
     rule: DueRule
     days: int = 0  # offset magnitude; the sign/anchor is set by `rule`
+    # A template step may declare the document kind that proves it (purchase
+    # agreement, disclosures, …) so transaction_coordination has a real artifact
+    # to check for, not only a date (BOP-021).
+    expected_document: DocumentKind | None = None

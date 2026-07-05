@@ -4,11 +4,13 @@ The transaction_coordination graph only routes on these results; it contains
 no deadline rules of its own.
 """
 
+from collections.abc import Sequence
 from datetime import date
 from enum import StrEnum
 
 from pydantic import BaseModel
 
+from brokerops_core.models.document import Document
 from brokerops_core.models.milestone import Milestone, MilestoneStatus
 from brokerops_core.models.transaction import Transaction
 
@@ -63,6 +65,24 @@ def worst_classification(assessments: list[MilestoneAssessment]) -> MilestoneCla
         if classification in present:
             return classification
     return MilestoneClass.ON_TRACK
+
+
+def expected_document_satisfied(milestone: Milestone, documents: Sequence[Document]) -> bool | None:
+    """Whether the milestone's expected document is attached (BOP-021).
+
+    Read-only report: None when the milestone expects no document; otherwise True
+    iff a document of the expected kind is attached to this milestone or at the
+    transaction level (a document pinned to a *different* milestone doesn't count).
+    No workflow routes on this — it gives transaction_coordination a real artifact
+    to report on instead of only dates.
+    """
+    if milestone.expected_document is None:
+        return None
+    return any(
+        document.kind is milestone.expected_document
+        and document.milestone_id in (None, milestone.id)
+        for document in documents
+    )
 
 
 def draft_milestone_reminder(txn: Transaction, milestone: Milestone, days_until_due: int) -> str:

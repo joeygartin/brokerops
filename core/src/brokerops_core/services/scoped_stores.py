@@ -30,12 +30,14 @@ from typing import Protocol
 
 from brokerops_core.models.approval import ApprovalRequest, ApprovalStatus
 from brokerops_core.models.call import CallRecord
+from brokerops_core.models.document import Document
 from brokerops_core.models.feedback import ShowingFeedback
 from brokerops_core.models.message import Message
 from brokerops_core.models.milestone import Milestone
 from brokerops_core.models.transaction import Transaction
 from brokerops_core.ports.approvals import ApprovalRepo
 from brokerops_core.ports.audit import AuditLog
+from brokerops_core.ports.documents import DocumentStore
 from brokerops_core.ports.feedback import FeedbackStore
 from brokerops_core.ports.messaging import MessageStore
 from brokerops_core.ports.transactions import TransactionStore
@@ -233,6 +235,47 @@ class ScopedMessageStore:
         ambient = require_tenant()
         rows = await self._inner.list_messages(contact_id, limit)
         return [m for m in rows if not _is_foreign(m.tenant_id, ambient)]
+
+    async def _audit_foreign(self, tool: str, attempted: str, bound: str) -> None:
+        await record_cross_tenant_attempt(
+            self._audit, CrossTenantError(attempted, bound), tool=tool
+        )
+
+
+class ScopedDocumentStore:
+    """DocumentStore decorator that confines document metadata to the bound tenant
+    (BOP-021, same contract as the other wrappers)."""
+
+    def __init__(self, inner: DocumentStore, audit: AuditLog) -> None:
+        self._inner = inner
+        self._audit = audit
+
+    async def add(self, document: Document) -> None:
+        try:
+            tenant = enforce_tenant(document.tenant_id)
+        except CrossTenantError as err:
+            await record_cross_tenant_attempt(self._audit, err, tool="add_document")
+            raise
+        # Reject a write that targets an existing document owned by another tenant
+        # (reuse-a-foreign-id vector), not just a foreign claimed tenant on the model.
+        existing = await self._inner.get(document.id)
+        if existing is not None and _is_foreign(existing.tenant_id, tenant):
+            await self._audit_foreign("add_document", existing.tenant_id, tenant)
+            raise CrossTenantError(existing.tenant_id, tenant)
+        await self._inner.add(document.model_copy(update={"tenant_id": tenant}))
+
+    async def get(self, document_id: str) -> Document | None:
+        ambient = require_tenant()
+        document = await self._inner.get(document_id)
+        if document is not None and _is_foreign(document.tenant_id, ambient):
+            await self._audit_foreign("get_document", document.tenant_id, ambient)
+            return None
+        return document
+
+    async def list_for_transaction(self, transaction_id: str) -> list[Document]:
+        ambient = require_tenant()
+        rows = await self._inner.list_for_transaction(transaction_id)
+        return [d for d in rows if not _is_foreign(d.tenant_id, ambient)]
 
     async def _audit_foreign(self, tool: str, attempted: str, bound: str) -> None:
         await record_cross_tenant_attempt(

@@ -16,6 +16,7 @@ members = [
     "brokerops-email-smtp",
     "brokerops-email-stub",
     "brokerops-followupboss",
+    "brokerops-google-drive",
     "brokerops-google-oidc",
     "brokerops-langgraph",
     "brokerops-llm-extraction",
@@ -189,6 +190,7 @@ dependencies = [
     { name = "brokerops-email-smtp" },
     { name = "brokerops-email-stub" },
     { name = "brokerops-followupboss" },
+    { name = "brokerops-google-drive" },
     { name = "brokerops-google-oidc" },
     { name = "brokerops-langgraph" },
     { name = "brokerops-llm-extraction" },
@@ -220,6 +222,7 @@ requires-dist = [
     { name = "brokerops-email-smtp", editable = "integrations/email_smtp" },
     { name = "brokerops-email-stub", editable = "integrations/email_stub" },
     { name = "brokerops-followupboss", editable = "integrations/followupboss" },
+    { name = "brokerops-google-drive", editable = "integrations/google_drive" },
     { name = "brokerops-google-oidc", editable = "integrations/google_oidc" },
     { name = "brokerops-langgraph", editable = "orchestration/langgraph" },
     { name = "brokerops-llm-extraction", editable = "integrations/llm_extraction" },
@@ -302,6 +305,29 @@ dependencies = [
 requires-dist = [
     { name = "brokerops-core", editable = "core" },
     { name = "fastapi", specifier = ">=0.115" },
+    { name = "httpx", specifier = ">=0.28" },
+    { name = "mcp", specifier = ">=1.2" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
+]
+
+[[package]]
+name = "brokerops-google-drive"
+version = "0.1.0"
+source = { editable = "integrations/google_drive" }
+dependencies = [
+    { name = "brokerops-core" },
+    { name = "fastapi" },
+    { name = "google-auth" },
+    { name = "httpx" },
+    { name = "mcp" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "brokerops-core", editable = "core" },
+    { name = "fastapi", specifier = ">=0.115" },
+    { name = "google-auth", specifier = ">=2.0" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "mcp", specifier = ">=1.2" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },

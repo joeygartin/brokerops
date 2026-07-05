@@ -14,9 +14,11 @@ from brokerops_api.workflows import WorkflowEngine
 from brokerops_core.ports.audit import AuditLog
 from brokerops_core.ports.auth import MagicTokenStore
 from brokerops_core.ports.crm import CRMPort
+from brokerops_core.ports.documents import DocumentStore
 from brokerops_core.ports.email import EmailSender
 from brokerops_core.ports.extraction import ExtractionPort
 from brokerops_core.ports.feedback import FeedbackStore
+from brokerops_core.ports.files import FilesPort
 from brokerops_core.ports.identity import AuthError, IdentityVerifier, Principal, Role
 from brokerops_core.ports.messaging import EmailPort, MessageStore
 from brokerops_core.ports.transactions import TransactionStore
@@ -152,6 +154,52 @@ def build_email_port() -> EmailPort:
         )
     raise RuntimeError(
         f"unknown EMAIL_PROVIDER {provider!r}; expected one of {sorted(EMAIL_PROVIDERS)}"
+    )
+
+
+FILES_PROVIDERS = ("stub", "google_drive")
+
+# The action-ledger label for file writes. Both providers are Drive-shaped in
+# V1 (the stub is a recorded double of the Drive API), so one label keeps the
+# trail queryable; a future Dropbox/OneDrive adapter brings its own.
+FILES_INTEGRATION = "google_drive"
+
+
+def build_files_adapter() -> FilesPort:
+    """Office-files backend — closed, explicit selector (the ADR-0014 posture).
+
+    FILES_PROVIDER ∈ {stub, google_drive}; unset → the bundled in-memory Drive
+    stub, so demo mode stays zero-credential. `google_drive` without credentials
+    fails loud at wiring (never silently downgrades to the stub); an unknown
+    value raises (mirrors the ORCHESTRATOR / EXTRACTION_BACKEND guards).
+    """
+    from brokerops_google_drive.adapter import DRIVE_API_BASE, GoogleDriveFilesAdapter
+
+    provider = os.environ.get("FILES_PROVIDER", "").strip().lower()
+    if not provider or provider == "stub":
+        base_url = os.environ.get("GOOGLE_DRIVE_BASE_URL", INTERNAL)
+        if base_url == INTERNAL:
+            from brokerops_google_drive.stub import create_stub_app
+
+            return GoogleDriveFilesAdapter(
+                base_url="http://stub.internal", client=_internal_client(create_stub_app())
+            )
+        # A separately running stub (compose: all api replicas share one tree,
+        # and its webViewLinks resolve from the operator's browser).
+        return GoogleDriveFilesAdapter(base_url=base_url)
+    if provider == "google_drive":
+        credentials_file = os.environ.get("GOOGLE_DRIVE_CREDENTIALS_FILE", "")
+        if not credentials_file or credentials_file == "unset":
+            raise RuntimeError(
+                "FILES_PROVIDER='google_drive' requires GOOGLE_DRIVE_CREDENTIALS_FILE "
+                "(a per-client service-account JSON mounted from Secret Manager)"
+            )
+        return GoogleDriveFilesAdapter(
+            credentials_file=credentials_file,
+            base_url=os.environ.get("GOOGLE_DRIVE_BASE_URL", DRIVE_API_BASE),
+        )
+    raise RuntimeError(
+        f"unknown FILES_PROVIDER {provider!r}; expected one of {sorted(FILES_PROVIDERS)}"
     )
 
 
@@ -430,6 +478,14 @@ def get_voice_port(request: Request) -> VoicePort:
 
 def get_feedback_store(request: Request) -> FeedbackStore:
     return cast(FeedbackStore, request.app.state.feedback_store)
+
+
+def get_files_port(request: Request) -> FilesPort:
+    return cast(FilesPort, request.app.state.files)
+
+
+def get_document_store(request: Request) -> DocumentStore:
+    return cast(DocumentStore, request.app.state.document_store)
 
 
 def get_audit_log(request: Request) -> AuditLog:

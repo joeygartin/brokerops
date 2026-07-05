@@ -12,6 +12,7 @@ client from their intake (`docs/CLIENT_ONBOARDING.md` §4).
 from collections.abc import Sequence
 from datetime import date, timedelta
 
+from brokerops_core.models.document import DocumentKind
 from brokerops_core.models.milestone import (
     DueRule,
     Milestone,
@@ -30,6 +31,7 @@ DEFAULT_TIMELINE: tuple[MilestoneTemplate, ...] = (
         owner="Buyer's agent",
         rule=DueRule.AFTER_CONTRACT,
         days=10,
+        expected_document=DocumentKind.INSPECTION_REPORT,
     ),
     MilestoneTemplate(
         type=MilestoneType.APPRAISAL,
@@ -44,6 +46,7 @@ DEFAULT_TIMELINE: tuple[MilestoneTemplate, ...] = (
         owner="Lender",
         rule=DueRule.AFTER_CONTRACT,
         days=21,
+        expected_document=DocumentKind.LOAN_APPROVAL,
     ),
     MilestoneTemplate(
         type=MilestoneType.CUSTOM,
@@ -99,6 +102,7 @@ def generate_milestones(
             title=entry.title,
             due_date=_due_date(transaction, entry),
             owner=entry.owner,
+            expected_document=entry.expected_document,
         )
         for index, entry in enumerate(template, start=1)
     ]

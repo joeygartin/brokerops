@@ -16,6 +16,7 @@ is copied into any child task the engine spawns, so writes inside a run always s
 their run's context.
 """
 
+import hashlib
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -26,10 +27,12 @@ from uuid import uuid4
 
 from brokerops_core.models.call import CallRecord
 from brokerops_core.models.contact import Contact, ContactCreate, CrmTask
+from brokerops_core.models.files import FileRef
 from brokerops_core.models.message import Message
 from brokerops_core.models.mutation import MutationOutcome, MutationRecord
 from brokerops_core.ports.audit import AuditLog
 from brokerops_core.ports.crm import CRMPort
+from brokerops_core.ports.files import FilesPort
 from brokerops_core.ports.messaging import EmailPort
 from brokerops_core.ports.voice import VoicePort
 
@@ -194,6 +197,43 @@ class RecordingCRM:
             raise
         await self._rec.emit("log_call", args, MutationOutcome.SUCCESS, external_id=call_id)
         return call_id
+
+
+def file_write_args(name: str, content: bytes, folder: str) -> dict[str, Any]:
+    """The auditable identity of one file write: never the bytes themselves —
+    only their digest and size — so the ledger stays metadata-only (BOP-021).
+    Shared with the idempotency seam so both agree on what "the same write" is."""
+    return {
+        "name": name,
+        "folder": folder,
+        "content_sha256": hashlib.sha256(content).hexdigest(),
+        "size_bytes": len(content),
+    }
+
+
+class RecordingFiles:
+    """FilesPort decorator: reads pass straight through; the one external write
+    (`put`) is recorded — success or failure — in the same action ledger."""
+
+    def __init__(self, inner: FilesPort, audit: AuditLog, integration: str) -> None:
+        self._inner = inner
+        self._rec = _Recorder(audit, integration)
+
+    async def list(self, folder: str) -> list[FileRef]:
+        return await self._inner.list(folder)
+
+    async def get(self, file_id: str) -> FileRef | None:
+        return await self._inner.get(file_id)
+
+    async def put(self, name: str, content: bytes, folder: str) -> FileRef:
+        args = file_write_args(name, content, folder)
+        try:
+            ref = await self._inner.put(name, content, folder)
+        except Exception as exc:
+            await self._rec.emit("put_file", args, MutationOutcome.FAILURE, error=str(exc))
+            raise
+        await self._rec.emit("put_file", args, MutationOutcome.SUCCESS, external_id=ref.file_id)
+        return ref
 
 
 class RecordingVoice:

@@ -1,5 +1,7 @@
 from brokerops_core.models.approval import ApprovalDecision, ApprovalRequest, ApprovalStatus
 from brokerops_core.models.contact import Contact, ContactCreate, CrmTask
+from brokerops_core.models.document import Document, DocumentKind
+from brokerops_core.models.files import FileRef
 from brokerops_core.models.idempotency import ClaimStatus, IdempotencyClaim
 from brokerops_core.models.listing import Listing, ListingMedia, ListingQuery, ListingStatus
 from brokerops_core.models.marketing import MarketingDraft
@@ -16,6 +18,9 @@ __all__ = [
     "Contact",
     "ContactCreate",
     "CrmTask",
+    "Document",
+    "DocumentKind",
+    "FileRef",
     "IdempotencyClaim",
     "Listing",
     "ListingMedia",

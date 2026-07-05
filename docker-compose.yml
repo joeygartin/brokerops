@@ -39,6 +39,17 @@ services:
     ports:
       - "8003:8003"
 
+  drive:
+    build:
+      context: .
+      dockerfile: integrations/google_drive/Dockerfile
+    environment:
+      # webViewLinks must resolve from the operator's browser, not the compose
+      # network, so the stub advertises its host-published address.
+      DRIVE_STUB_PUBLIC_URL: http://localhost:8004
+    ports:
+      - "8004:8004"
+
   api:
     build:
       context: .
@@ -58,6 +69,11 @@ services:
       FUB_API_KEY: ${FUB_API_KEY:-demo-stub-key}
       VAPI_BASE_URL: ${VAPI_BASE_URL:-http://vapi:8003}
       VAPI_API_KEY: ${VAPI_API_KEY:-demo-stub-key}
+      # Office files: explicit closed selector (BOP-021). stub = the bundled
+      # in-memory Drive double (zero credentials); google_drive needs a real
+      # service-account file and fails loud without one.
+      FILES_PROVIDER: ${FILES_PROVIDER:-stub}
+      GOOGLE_DRIVE_BASE_URL: ${GOOGLE_DRIVE_BASE_URL:-http://drive:8004}
       VAPI_ASSISTANT_ID: ${VAPI_ASSISTANT_ID:-demo-assistant}
       VAPI_PHONE_NUMBER_ID: ${VAPI_PHONE_NUMBER_ID:-}
       VAPI_WEBHOOK_SECRET: ${VAPI_WEBHOOK_SECRET:-demo-webhook-secret}
@@ -107,6 +123,8 @@ services:
       fub:
         condition: service_started
       vapi:
+        condition: service_started
+      drive:
         condition: service_started
 
   frontend:

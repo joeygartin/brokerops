@@ -19,6 +19,7 @@ lint:
 		integrations/email_stub/src integrations/email_stub/tests \
 		integrations/mls_reso/src integrations/mls_reso/tests \
 		integrations/followupboss/src integrations/followupboss/tests \
+		integrations/google_drive/src integrations/google_drive/tests \
 		integrations/google_oidc/src integrations/google_oidc/tests \
 		integrations/llm_extraction/src integrations/llm_extraction/tests \
 		integrations/pydantic_ai_extraction/src integrations/pydantic_ai_extraction/tests \

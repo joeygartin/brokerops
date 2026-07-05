@@ -10,8 +10,8 @@ from collections.abc import Iterator
 import pytest
 from fastapi.testclient import TestClient
 
-from brokerops_api.db import InMemoryTransactionStore
-from brokerops_api.deps import get_transaction_store
+from brokerops_api.db import InMemoryDocumentStore, InMemoryTransactionStore
+from brokerops_api.deps import get_document_store, get_transaction_store
 from brokerops_api.main import app
 from brokerops_core.models.milestone import Milestone
 from brokerops_core.models.transaction import Transaction
@@ -25,6 +25,8 @@ client = TestClient(app)
 def store() -> Iterator[InMemoryTransactionStore]:
     fresh = InMemoryTransactionStore()
     app.dependency_overrides[get_transaction_store] = lambda: fresh
+    documents = InMemoryDocumentStore()
+    app.dependency_overrides[get_document_store] = lambda: documents
     yield fresh
     app.dependency_overrides.clear()
 

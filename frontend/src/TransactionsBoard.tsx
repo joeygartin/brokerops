@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "./auth";
+import TransactionDocuments from "./TransactionDocuments";
 import { API_BASE, MilestoneView, TransactionDetail } from "./types";
 
 const CLASS_STYLES: Record<string, { color: string; background: string; label: string }> = {
@@ -44,6 +45,19 @@ function MilestoneRow({ milestone }: { milestone: MilestoneView }) {
             {" "}
             (escalation L{milestone.escalation_level})
           </strong>
+        )}
+        {milestone.expected_document && (
+          <span
+            style={{
+              marginLeft: "0.5rem",
+              fontSize: "0.75rem",
+              color: milestone.document_satisfied ? "#1a7f37" : "#9a6700",
+            }}
+          >
+            {milestone.document_satisfied
+              ? "📄 doc attached"
+              : `📄 needs ${milestone.expected_document.replace(/_/g, " ")}`}
+          </span>
         )}
       </span>
       <span style={{ color: "#57606a", fontSize: "0.8rem", whiteSpace: "nowrap" }}>
@@ -148,46 +162,87 @@ export default function TransactionsBoard() {
           {notice}
         </p>
       )}
-      {details.map(({ transaction, milestones }) => (
-        <article
-          key={transaction.id}
-          style={{
-            border: "1px solid #d0d7de",
-            borderRadius: 8,
-            padding: "1rem",
-            textAlign: "left",
-            background: "#fff",
-            maxWidth: 760,
-            margin: "0 auto 1rem",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-            <strong>
-              {transaction.id} — {transaction.listing_key}
-            </strong>
-            <span
-              style={{
-                background: "#eaeef2",
-                borderRadius: 999,
-                padding: "0.1rem 0.6rem",
-                fontSize: "0.75rem",
-                textTransform: "uppercase",
-              }}
-            >
-              {transaction.stage.replace(/_/g, " ")}
-            </span>
-          </div>
-          <div style={{ color: "#57606a", fontSize: "0.85rem", margin: "0.3rem 0 0.6rem" }}>
-            {transaction.parties.map((p) => `${p.name} (${p.role.replace(/_/g, " ")})`).join(" · ")}
-            {transaction.close_date ? ` — closes ${transaction.close_date}` : ""}
-          </div>
-          <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-            {milestones.map((m) => (
-              <MilestoneRow key={m.id} milestone={m} />
-            ))}
-          </ul>
-        </article>
+      {details.map((detail) => (
+        <TransactionCard key={detail.transaction.id} detail={detail} onChanged={refresh} />
       ))}
     </>
+  );
+}
+
+function TransactionCard({
+  detail,
+  onChanged,
+}: {
+  detail: TransactionDetail;
+  onChanged: () => void;
+}) {
+  const { transaction, milestones, documents } = detail;
+  const [view, setView] = useState<"timeline" | "documents">("timeline");
+
+  const viewTabStyle = (active: boolean) => ({
+    padding: "0.15rem 0.7rem",
+    borderRadius: 6,
+    border: "1px solid #d0d7de",
+    background: active ? "#24292f" : "#fff",
+    color: active ? "#fff" : "#24292f",
+    fontSize: "0.75rem",
+    cursor: "pointer",
+  });
+
+  return (
+    <article
+      style={{
+        border: "1px solid #d0d7de",
+        borderRadius: 8,
+        padding: "1rem",
+        textAlign: "left",
+        background: "#fff",
+        maxWidth: 760,
+        margin: "0 auto 1rem",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        <strong>
+          {transaction.id} — {transaction.listing_key}
+        </strong>
+        <span
+          style={{
+            background: "#eaeef2",
+            borderRadius: 999,
+            padding: "0.1rem 0.6rem",
+            fontSize: "0.75rem",
+            textTransform: "uppercase",
+          }}
+        >
+          {transaction.stage.replace(/_/g, " ")}
+        </span>
+      </div>
+      <div style={{ color: "#57606a", fontSize: "0.85rem", margin: "0.3rem 0 0.6rem" }}>
+        {transaction.parties.map((p) => `${p.name} (${p.role.replace(/_/g, " ")})`).join(" · ")}
+        {transaction.close_date ? ` — closes ${transaction.close_date}` : ""}
+      </div>
+      <div style={{ display: "flex", gap: "0.4rem", marginBottom: "0.6rem" }}>
+        <button style={viewTabStyle(view === "timeline")} onClick={() => setView("timeline")}>
+          Timeline
+        </button>
+        <button style={viewTabStyle(view === "documents")} onClick={() => setView("documents")}>
+          Documents ({documents.length})
+        </button>
+      </div>
+      {view === "timeline" ? (
+        <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+          {milestones.map((m) => (
+            <MilestoneRow key={m.id} milestone={m} />
+          ))}
+        </ul>
+      ) : (
+        <TransactionDocuments
+          transaction={transaction}
+          documents={documents}
+          milestones={milestones}
+          onChanged={onChanged}
+        />
+      )}
+    </article>
   );
 }

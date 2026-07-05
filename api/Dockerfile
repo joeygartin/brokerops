@@ -4,6 +4,7 @@ WORKDIR /app
 COPY core/ ./core/
 COPY integrations/mls_reso/ ./integrations/mls_reso/
 COPY integrations/followupboss/ ./integrations/followupboss/
+COPY integrations/google_drive/ ./integrations/google_drive/
 COPY integrations/google_oidc/ ./integrations/google_oidc/
 COPY integrations/email_smtp/ ./integrations/email_smtp/
 COPY integrations/email_stub/ ./integrations/email_stub/
@@ -14,9 +15,14 @@ COPY orchestration/langgraph/ ./orchestration/langgraph/
 COPY orchestration/adk/ ./orchestration/adk/
 COPY api/ ./api/
 RUN pip install --no-cache-dir ./core ./integrations/mls_reso ./integrations/followupboss \
+<<<<<<< HEAD
     ./integrations/google_oidc ./integrations/email_smtp ./integrations/email_stub \
     ./integrations/llm_extraction \
     ./integrations/pydantic_ai_extraction ./integrations/vapi \
+=======
+    ./integrations/google_drive ./integrations/google_oidc ./integrations/email_smtp \
+    ./integrations/llm_extraction ./integrations/pydantic_ai_extraction ./integrations/vapi \
+>>>>>>> c19d7c4 (feat: BOP-021 FilesPort + Google Drive adapter + documents table + transaction Documents tab)
     ./orchestration/langgraph ./orchestration/adk ./api
 
 EXPOSE 8000
