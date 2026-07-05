@@ -176,17 +176,22 @@ def build_files_adapter() -> FilesPort:
     from brokerops_google_drive.adapter import DRIVE_API_BASE, GoogleDriveFilesAdapter
 
     provider = os.environ.get("FILES_PROVIDER", "").strip().lower()
+    # Anchor folder lookup/creation under one Drive folder so a same-named
+    # folder elsewhere in the service account's corpus can't capture files.
+    root_folder_id = os.environ.get("GOOGLE_DRIVE_ROOT_FOLDER_ID") or None
     if not provider or provider == "stub":
         base_url = os.environ.get("GOOGLE_DRIVE_BASE_URL", INTERNAL)
         if base_url == INTERNAL:
             from brokerops_google_drive.stub import create_stub_app
 
             return GoogleDriveFilesAdapter(
-                base_url="http://stub.internal", client=_internal_client(create_stub_app())
+                base_url="http://stub.internal",
+                client=_internal_client(create_stub_app()),
+                root_folder_id=root_folder_id,
             )
         # A separately running stub (compose: all api replicas share one tree,
         # and its webViewLinks resolve from the operator's browser).
-        return GoogleDriveFilesAdapter(base_url=base_url)
+        return GoogleDriveFilesAdapter(base_url=base_url, root_folder_id=root_folder_id)
     if provider == "google_drive":
         credentials_file = os.environ.get("GOOGLE_DRIVE_CREDENTIALS_FILE", "")
         if not credentials_file or credentials_file == "unset":
@@ -197,6 +202,7 @@ def build_files_adapter() -> FilesPort:
         return GoogleDriveFilesAdapter(
             credentials_file=credentials_file,
             base_url=os.environ.get("GOOGLE_DRIVE_BASE_URL", DRIVE_API_BASE),
+            root_folder_id=root_folder_id,
         )
     raise RuntimeError(
         f"unknown FILES_PROVIDER {provider!r}; expected one of {sorted(FILES_PROVIDERS)}"

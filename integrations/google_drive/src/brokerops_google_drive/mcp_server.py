@@ -20,6 +20,7 @@ def _adapter() -> GoogleDriveFilesAdapter:
     return GoogleDriveFilesAdapter(
         credentials_file=os.environ.get("GOOGLE_DRIVE_CREDENTIALS_FILE") or None,
         base_url=os.environ.get("GOOGLE_DRIVE_BASE_URL", DRIVE_API_BASE),
+        root_folder_id=os.environ.get("GOOGLE_DRIVE_ROOT_FOLDER_ID") or None,
     )
 
 

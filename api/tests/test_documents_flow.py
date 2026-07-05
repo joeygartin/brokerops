@@ -185,6 +185,33 @@ def test_cross_tenant_document_write_through_wired_store_is_audited() -> None:
     assert security[0].args == {"attempted_tenant": "other-brokerage", "bound_tenant": "demo"}
 
 
+def test_document_id_is_tenant_scoped() -> None:
+    # The documents PK is global while transaction ids are tenant-independent
+    # (derived from the listing key): two tenants attaching the same file to
+    # "the same" transaction must land on different rows, not a PK collision
+    # behind RLS. Same tenant stays deterministic (the replay contract).
+    from brokerops_api.routes.documents import _document_id
+
+    a = _document_id("brokerage-a", "TXN-1", "drive-0001")
+    b = _document_id("brokerage-b", "TXN-1", "drive-0001")
+    assert a != b
+    assert a == _document_id("brokerage-a", "TXN-1", "drive-0001")
+
+
+def test_upload_body_is_bounded() -> None:
+    from brokerops_api.routes.documents import UPLOAD_MAX_CHARS
+
+    with TestClient(app) as client:
+        _seed(client)
+        oversized = {
+            "name": "huge.txt",
+            "content_text": "x" * (UPLOAD_MAX_CHARS + 1),
+        }
+        response = client.post(f"/transactions/{TXN}/documents/upload", json=oversized)
+        assert response.status_code == 422  # rejected at validation, never buffered onward
+        assert "content_text" in response.text
+
+
 def test_files_provider_selector_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:
     from brokerops_api.deps import build_files_adapter
 

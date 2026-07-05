@@ -145,9 +145,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
         app.state.feedback_store = ScopedFeedbackStore(InMemoryFeedbackStore(), app.state.audit_log)
         app.state.message_store = ScopedMessageStore(InMemoryMessageStore(), app.state.audit_log)
-        app.state.document_store = ScopedDocumentStore(
-            InMemoryDocumentStore(), app.state.audit_log
-        )
+        app.state.document_store = ScopedDocumentStore(InMemoryDocumentStore(), app.state.audit_log)
         app.state.idempotency_store = InMemoryIdempotencyStore()
         magic_store = InMemoryMagicTokenStore()
     # Magic-link service is None unless the "magic" method is enabled; routes
