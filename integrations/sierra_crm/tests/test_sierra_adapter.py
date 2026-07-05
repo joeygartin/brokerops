@@ -153,7 +153,7 @@ async def test_add_note_folds_subject_into_message(adapter: SierraCRMAdapter) ->
 
 async def test_log_call_journals_as_note(adapter: SierraCRMAdapter) -> None:
     # Sierra's public API has no call-log write endpoint; the adapter journals
-    # the call as a note carrying outcome + duration (ADR-0015).
+    # the call as a note carrying outcome + duration (ADR-0016).
     captured: list[dict[str, Any]] = []
 
     async def capture(request: httpx.Request) -> None:

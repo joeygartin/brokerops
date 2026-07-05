@@ -1,4 +1,4 @@
-# ADR-0015: Second CRM adapter (Sierra Interactive) and the CRMPort widening it forced
+# ADR-0016: Second CRM adapter (Sierra Interactive) and the CRMPort widening it forced
 
 **Status:** Accepted · **Date:** 2026-07-04 · **Relates to:** ADR-0004 (two implementations prove the seam), ADR-0010 (audit ledger), ADR-0011 (idempotent writes), ADR-0014 (explicit fail-loud selectors)
 

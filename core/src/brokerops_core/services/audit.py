@@ -135,7 +135,7 @@ class RecordingCRM:
     `integration` names the CRM vendor this deploy is wired to (the CRM_VENDOR
     selection), so mutation records attribute writes to the actual system —
     hardcoding "followupboss" here stopped being true with the second adapter
-    (ADR-0015).
+    (ADR-0016).
     """
 
     def __init__(self, inner: CRMPort, audit: AuditLog, integration: str) -> None:

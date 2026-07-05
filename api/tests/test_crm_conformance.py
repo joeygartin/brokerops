@@ -1,4 +1,4 @@
-"""One CRMPort conformance suite, two vendors (BOP-022 / ADR-0015).
+"""One CRMPort conformance suite, two vendors (BOP-022 / ADR-0016).
 
 A port with one adapter is a hypothesis (the ADR-0004 lesson); this suite is
 the proof that both CRM adapters honor the same, vendor-neutral contract. It
@@ -125,7 +125,7 @@ async def test_create_task_attached_to_a_contact(case: VendorCase) -> None:
 
 async def test_create_task_without_a_contact(case: VendorCase) -> None:
     # contact_id=None means "not tied to a contact" — however a vendor anchors
-    # it internally, the port-level result must echo None back (ADR-0015).
+    # it internally, the port-level result must echo None back (ADR-0016).
     task = await case.adapter.create_task("Order yard sign", due_date=date(2026, 7, 10))
     assert task.id
     assert task.contact_id is None

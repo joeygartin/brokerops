@@ -1,4 +1,4 @@
-"""CRM_VENDOR selector behavior (ADR-0015, the ORCHESTRATOR/ADR-0014 posture):
+"""CRM_VENDOR selector behavior (ADR-0016, the ORCHESTRATOR/ADR-0014 posture):
 explicit, closed, fail-loud. Unset keeps the FollowUpBoss default so the
 zero-credential demo is unchanged; misconfiguration is a startup error, never
 a silent fallback to a different CRM.

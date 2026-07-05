@@ -9,7 +9,7 @@ class CRMPort(Protocol):
 
     CRM-specific payload shapes stay inside the integration package; services
     and workflows see only these methods and core models. The contract below
-    is the intersection both vendors can honor (ADR-0015):
+    is the intersection both vendors can honor (ADR-0016):
 
     - Ids (`Contact.crm_id`, note/task/call-log ids) live in the wired
       vendor's namespace and are opaque to callers.
@@ -34,7 +34,7 @@ class CRMPort(Protocol):
         self, name: str, due_date: date, contact_id: str | None = None
     ) -> CrmTask:
         """Create a task due on `due_date` (required — Sierra cannot represent an
-        undated task; ADR-0015). `contact_id=None` means "not tied to a contact";
+        undated task; ADR-0016). `contact_id=None` means "not tied to a contact";
         vendors whose task model is contact-anchored attach such tasks to a
         deploy-configured anchor contact, and the returned `CrmTask.contact_id`
         always echoes the caller's value."""
@@ -46,5 +46,5 @@ class CRMPort(Protocol):
         """Log a call against a contact; returns the id of the vendor record
         that journals it. Vendors expose different call-log surfaces: adapters
         map `outcome` onto the vendor's vocabulary, and a vendor with no
-        call-log write endpoint journals the call as a note (ADR-0015)."""
+        call-log write endpoint journals the call as a note (ADR-0016)."""
         ...

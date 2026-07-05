@@ -94,7 +94,7 @@ CRM_VENDORS = ("followupboss", "sierra")
 
 
 def crm_vendor() -> str:
-    """The CRM this deploy is wired to — a closed, explicit selector (ADR-0015,
+    """The CRM this deploy is wired to — a closed, explicit selector (ADR-0016,
     mirroring the ORCHESTRATOR / EXTRACTION_BACKEND posture). Unset keeps the
     FollowUpBoss default so the zero-credential demo is unchanged; an unknown
     value is a startup error, never a silent fallback."""

@@ -4,7 +4,7 @@ Runs standalone over stdio (`uv run mcp-server-sierra`); points at any
 Sierra-shaped endpoint via SIERRA_BASE_URL (real API by default, stub in demo
 mode). Against the real API host, the API credential and the task assignee and
 anchor settings must all be explicit — fail-loud, mirroring the api wiring
-(ADR-0015): stub defaults must never silently write tasks onto whatever lead
+(ADR-0016): stub defaults must never silently write tasks onto whatever lead
 their id happens to name in a real account. Pointing SIERRA_BASE_URL at a stub
 keeps the stub's seeded defaults.
 """

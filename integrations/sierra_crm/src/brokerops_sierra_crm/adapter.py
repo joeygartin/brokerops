@@ -6,7 +6,7 @@ failure; that envelope, and every other Sierra payload shape, never leaves this
 module. The same adapter runs against the bundled stub (demo mode) and the real
 API — swapping is a base-URL + key change.
 
-Vendor constraints the port absorbs (ADR-0015):
+Vendor constraints the port absorbs (ADR-0016):
 
 - Sierra tasks are always lead-attached and always assigned: a port-level task
   with no ``contact_id`` is anchored to a deploy-configured lead
@@ -188,7 +188,7 @@ class SierraCRMAdapter:
                 ) from exc
             raise
         # contact_id echoes the caller's value: the anchor lead is deploy
-        # plumbing, not task semantics (ADR-0015).
+        # plumbing, not task semantics (ADR-0016).
         return CrmTask(id=str(body["id"]), name=name, due_date=due_date, contact_id=contact_id)
 
     async def log_call(
