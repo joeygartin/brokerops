@@ -2,6 +2,13 @@
 
 **Status:** Accepted · **Date:** 2026-06-28 · **Relates to:** ADR-0010 (audit ledger), ADR-0011 (idempotent writes), ADR-0004 (dual engines)
 
+> **Historical framing (see [ADR-0019](ADR-0019-one-orchestrator-langgraph.md)).** This
+> ADR was written while two orchestration engines ran side by side (ADR-0004). brokerops
+> has since committed to a single LangGraph engine and removed the ADK lane. The
+> tenant-scoping seam and property described below still hold — they sit below the one
+> engine, exactly as they did below two. Read "two engines" as the state at this
+> decision's date.
+
 ## Context
 
 brokerops is a multi-tenant agent backoffice. One compromised or prompt-injected

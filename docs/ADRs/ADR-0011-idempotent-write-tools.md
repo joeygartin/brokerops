@@ -2,6 +2,13 @@
 
 **Status:** Accepted · **Date:** 2026-06-23 · **Relates to:** ADR-0010 (audit ledger), ADR-0004 (dual engines)
 
+> **Historical framing (see [ADR-0019](ADR-0019-one-orchestrator-langgraph.md)).** This
+> ADR was written while two orchestration engines ran side by side (ADR-0004). brokerops
+> has since committed to a single LangGraph engine and removed the ADK lane. The seam
+> and property described below still hold — the idempotency decorator sits below the one
+> engine, exactly as it did below two. Read "both engines" / "two engines" as the state
+> at this decision's date.
+
 ## Context
 
 Agents retry and re-plan by nature, and an orchestrator can re-run a node on resume.

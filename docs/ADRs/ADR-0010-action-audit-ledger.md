@@ -2,6 +2,13 @@
 
 **Status:** Accepted · **Date:** 2026-06-22 · **Relates to:** ADR-0004 (dual engines)
 
+> **Historical framing (see [ADR-0019](ADR-0019-one-orchestrator-langgraph.md)).** This
+> ADR was written while two orchestration engines ran side by side (ADR-0004). brokerops
+> has since committed to a single LangGraph engine and removed the ADK lane; the
+> `{langgraph, adk}` matrix no longer runs. The seam and property described below still
+> hold — the audit decorator sits below the one engine, exactly as it did below two. Read
+> "both engines" / the matrix as the state at this decision's date.
+
 ## Context
 
 The system performs writes against external systems on an operator's behalf: it

@@ -2,6 +2,13 @@
 
 **Status:** Accepted · **Date:** 2026-07-04 · **Relates to:** ADR-0004 (two implementations prove the seam), ADR-0010 (audit ledger), ADR-0011 (idempotent writes), ADR-0014 (explicit fail-loud selectors)
 
+> **Historical framing (see [ADR-0019](ADR-0019-one-orchestrator-langgraph.md)).** This
+> ADR was written while two orchestration engines ran side by side (ADR-0004). brokerops
+> has since committed to a single LangGraph engine and removed the ADK lane. The CRMPort
+> widening and its proofs described below stand; where the text says a workflow runs on
+> "both engines" / "LangGraph and ADK", read the ADK half as the state at this decision's
+> date — it now runs on the one LangGraph engine.
+
 ## Context
 
 `CRMPort` was live-proven against FollowUpBoss — but a port with one adapter is a
