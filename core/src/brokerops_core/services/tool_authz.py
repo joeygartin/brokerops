@@ -33,7 +33,7 @@ bare argument. This module treats an *argument* as tenant-bearing when it is:
 3. defensively, a mapping/dict argument carrying a ``tenant_id`` key (e.g. an opaque
    ``payload: dict``).
 
-Runtime enforcement (``_tenant_values``) and static detection
+Runtime enforcement (``tenant_values``) and static detection
 (``accepts_tenant_bearing_param``, the enumeration test's gate) cover the **same** surface,
 so a shape enforced at runtime is also discovered statically — no divergence, no silent
 hole. One deliberate, documented bound keeps them honest and bounded: a mapping is a tenant
@@ -81,10 +81,15 @@ def _is_tenant_param_name(name: str) -> bool:
     return name == TENANT_FIELD or name.endswith(f"_{TENANT_FIELD}")
 
 
-def _tenant_values(
+def tenant_values(
     param_name: str, value: Any, *, within_model: bool = False, seen: set[int] | None = None
 ) -> list[str]:
-    """The tenant ids an argument commits the call to, each of which must be authorized.
+    """The tenant ids a value commits the call to, each of which must be authorized.
+
+    Public because it defines THE tenant-bearing surface (module docstring) for both
+    directions of the tool seam: this module enforces it on arguments before a call runs,
+    and the egress filter (``services/egress.py``, BOP-012) applies the same extraction to
+    a response before it leaves the boundary — one rule set, no drift.
 
     Recurses models, their list/tuple fields, and list/tuple/mapping arguments; ``seen``
     guards against a self-referential model looping forever. Includes empty ids: a model
@@ -113,7 +118,7 @@ def _tenant_values(
                 continue
             field_value = getattr(value, name, None)
             if isinstance(field_value, (BaseModel, list, tuple)):
-                found.extend(_tenant_values(name, field_value, within_model=True, seen=seen))
+                found.extend(tenant_values(name, field_value, within_model=True, seen=seen))
         return found
     if isinstance(value, Mapping):
         if within_model:
@@ -123,7 +128,7 @@ def _tenant_values(
     if isinstance(value, (list, tuple)):
         found = []
         for item in value:
-            found.extend(_tenant_values(param_name, item, within_model=within_model, seen=seen))
+            found.extend(tenant_values(param_name, item, within_model=within_model, seen=seen))
         return found
     if _is_tenant_param_name(param_name) and isinstance(value, str):
         return [value]
@@ -172,7 +177,7 @@ def authorize_tenant_params(
     tool_name: str = tool or str(getattr(func, "__name__", "tool"))
 
     async def _authorize(param: str, value: Any) -> None:
-        for tenant in _tenant_values(param, value):
+        for tenant in tenant_values(param, value):
             try:
                 enforce_tenant(tenant)
             except CrossTenantError as err:
@@ -267,7 +272,7 @@ def annotation_is_tenant_bearing(annotation: Any) -> bool:
 
     True when it is/nests a ``tenant_id``-bearing model (``list[Milestone]``, ``X | None``,
     a model nesting one) or is a top-level mapping/dict (which can smuggle a ``tenant_id``
-    key). This is the static mirror of ``_tenant_values``. A plain string or non-tenant
+    key). This is the static mirror of ``tenant_values``. A plain string or non-tenant
     model annotation is not tenant-bearing.
     """
     return _annotation_nests_tenant_model(annotation) or _annotation_is_mapping(annotation)
@@ -279,7 +284,7 @@ def accepts_tenant_bearing_param(func: Callable[..., Any]) -> bool:
     The enumeration test uses this to decide which methods *must* be authorized. It flags a
     parameter *named* ``tenant_id`` / ``*_tenant_id``, one annotated as a tenant-bearing
     model (or a container/nesting of one), or one annotated as a mapping/dict — the same
-    surface ``_tenant_values`` enforces at runtime, so the static gate is never blind to a
+    surface ``tenant_values`` enforces at runtime, so the static gate is never blind to a
     shape the runtime accepts.
     """
     try:

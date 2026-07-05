@@ -1,6 +1,9 @@
 from datetime import date
+from typing import Annotated
 
 from pydantic import BaseModel
+
+from brokerops_core.models.sensitivity import CONTACT_PII
 
 
 class Contact(BaseModel):
@@ -15,15 +18,16 @@ class Contact(BaseModel):
     crm_id: str
     name: str
     role: str = "Lead"
-    email: str | None = None
-    phone: str | None = None
+    # Direct reach is role-restricted PII at the egress boundary (BOP-012).
+    email: Annotated[str | None, CONTACT_PII] = None
+    phone: Annotated[str | None, CONTACT_PII] = None
 
 
 class ContactCreate(BaseModel):
     first_name: str
     last_name: str
-    email: str | None = None
-    phone: str | None = None
+    email: Annotated[str | None, CONTACT_PII] = None
+    phone: Annotated[str | None, CONTACT_PII] = None
     source: str = "brokerops"
 
 

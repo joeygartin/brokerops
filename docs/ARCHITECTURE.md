@@ -250,8 +250,19 @@ keyed on a per-transaction GUC (alembic `0007`) is the database belt under the a
 it engages under a least-privilege (non-superuser) DB role; under the demo's superuser role
 RLS is inert and the app-layer wrapper is the always-on guarantee. brokerops is
 single-tenant *per deploy* today, so the wrapper makes that boundary explicit and a future
-shared-database migration mechanical. This is increment 1; uniform tool authorization,
-egress filtering, and per-agent least-privilege accounts are follow-ons.
+shared-database migration mechanical. That was increment 1. Increment 2 (BOP-011,
+`core/services/tool_authz.py`) authorizes every tenant-bearing tool *input* at the entry
+point, before any port/store method runs. Increment 3 (BOP-012,
+`core/services/egress.py`) scans every tool *response* before it leaves the boundary: a
+foreign tenant identifier blocks the whole response fail-closed (logged and recorded as a
+`security` event — tool + finding class, never the payload), secret-shaped values and
+role-restricted PII redact in place with a marker, and the rules are data — the shared
+tenant-value extraction, the audit trail's secret-key hints plus a value-shape pattern
+table, and `Pii` field annotations on the response models — never per-tool code. Both
+directions ride one wrapper (`guard_tool_ports`) on every port in
+`app.state.engine_tool_ports`, and the enumeration test asserts both markers on every
+registered port, so a new tool entry point cannot ship unguarded in either direction.
+Per-agent least-privilege accounts remain the follow-on.
 
 ## Data
 
@@ -291,6 +302,9 @@ side effect at most once and returns the original result, atomic claim, restart
 survival), transaction-open tests (deterministic bounded id, idempotent open with
 conflict and race handling, escrow-date validation, engine wire-through), tenant-scoping
 tests (cross-tenant by-id denial, write stamping, denied-attempt audit events, RLS belt),
+tool-seam tests (input authorization plus egress filtering: cross-tenant response
+blocking, secret-shape and role-restricted-PII redaction, both-direction enumeration
+over the engine tool-port registry),
 extraction-selector tests (deterministic default, fail-loud on an explicitly selected
 LLM backend with no key, fail-closed on unknown values) plus an offline PydanticAI
 adapter suite (TestModel, no credentials),

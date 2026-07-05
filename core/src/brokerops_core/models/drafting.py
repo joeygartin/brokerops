@@ -9,9 +9,12 @@ decision. Both are the contract of `DraftingPort` — the deterministic default
 renders templates verbatim; an LLM backend (BOP-020) fills the same shapes.
 """
 
+from typing import Annotated
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from brokerops_core.models.message import MessageChannel
+from brokerops_core.models.sensitivity import CONTACT_PII
 
 
 class DraftContext(BaseModel):
@@ -42,7 +45,8 @@ class DraftedMessage(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     channel: MessageChannel = MessageChannel.EMAIL
-    recipient: str
+    # An email address or phone number — role-restricted PII at egress (BOP-012).
+    recipient: Annotated[str, CONTACT_PII]
     subject: str = ""
     body: str
     template_ref: str = ""

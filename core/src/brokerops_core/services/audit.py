@@ -53,7 +53,13 @@ _SECRET_HINTS = (
 _REDACTED = "[redacted]"
 
 
-def _is_secret(key: str) -> bool:
+def is_secret_key(key: str) -> bool:
+    """Whether a key/field name looks like it names a secret (case-insensitive hint match).
+
+    The single place the secret-shape *name* knowledge lives: the audit trail's ``redact``
+    uses it before persisting args, and the egress filter (BOP-012) reuses it so responses
+    leaving the boundary apply the same rule set rather than a duplicate.
+    """
     lowered = key.lower()
     return any(hint in lowered for hint in _SECRET_HINTS)
 
@@ -61,7 +67,7 @@ def _is_secret(key: str) -> bool:
 def redact(value: Any) -> Any:
     """Deep-copy `value`, masking the values of any secret-looking keys."""
     if isinstance(value, dict):
-        return {k: (_REDACTED if _is_secret(str(k)) else redact(v)) for k, v in value.items()}
+        return {k: (_REDACTED if is_secret_key(str(k)) else redact(v)) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
         return [redact(item) for item in value]
     return value

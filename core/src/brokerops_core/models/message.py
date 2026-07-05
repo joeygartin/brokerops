@@ -9,9 +9,11 @@ the mutation crossing the boundary; this records the communication itself.
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict
+
+from brokerops_core.models.sensitivity import CONTACT_PII
 
 
 class MessageChannel(StrEnum):
@@ -69,7 +71,8 @@ class Message(BaseModel):
     # Stamped by the scoped data layer (BOP-006); never caller-supplied.
     tenant_id: str = ""
     channel: MessageChannel = MessageChannel.EMAIL
-    recipient: str
+    # An email address or phone number — role-restricted PII at egress (BOP-012).
+    recipient: Annotated[str, CONTACT_PII]
     # Empty for channels that have no subject line (SMS).
     subject: str = ""
     body: str = ""

@@ -1,7 +1,10 @@
 from datetime import date
 from enum import StrEnum
+from typing import Annotated
 
 from pydantic import BaseModel, Field
+
+from brokerops_core.models.sensitivity import CONTACT_PII
 
 
 class TransactionStage(StrEnum):
@@ -25,8 +28,9 @@ class TransactionParty(BaseModel):
     contact_id: str | None = None
     # Direct reach for parties that aren't CRM contacts (escrow officers,
     # lenders, co-op agents). Empty = no email on file; the drafted-comms rules
-    # (BOP-019) skip such parties rather than guessing an address.
-    email: str = ""
+    # (BOP-019) skip such parties rather than guessing an address. Role-restricted
+    # PII at the egress boundary (BOP-012).
+    email: Annotated[str, CONTACT_PII] = ""
 
 
 class Transaction(BaseModel):

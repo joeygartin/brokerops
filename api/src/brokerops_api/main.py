@@ -80,7 +80,7 @@ from brokerops_core.services.scoped_stores import (
     ScopedMessageStore,
     ScopedTransactionStore,
 )
-from brokerops_core.services.tool_authz import authorize_tool_ports
+from brokerops_core.services.egress import guard_tool_ports
 from brokerops_adk.engine import build_engine as build_adk_engine
 from brokerops_langgraph.engine import build_engine as build_langgraph_engine
 
@@ -126,19 +126,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # keep the raw engine (internal infra / pre-auth — not under tenant RLS).
         scoped_engine = TenantScopedEngine(engine)
         app.state.audit_log = SqlAuditLog(scoped_engine)
-        # BOP-011: authorize_tool_ports wraps each tenant-bearing store as the OUTERMOST
-        # layer, so a tool call carrying a foreign tenant_id is rejected before the scoped
-        # store (BOP-006) or the database (RLS) is reached. It gates entry only — the write
-        # still flows through the same scoped/approval/idempotency/audit chain underneath.
-        app.state.approval_repo = authorize_tool_ports(
+        # BOP-011 + BOP-012: guard_tool_ports wraps each tenant-bearing store with BOTH
+        # directions of the uniform tool seam as the OUTERMOST layer — a tool call carrying
+        # a foreign tenant_id is rejected before the scoped store (BOP-006) or the database
+        # (RLS) is reached, and every response is egress-filtered (cross-tenant identifiers
+        # block; secret shapes and role-restricted PII redact) before it returns. It gates
+        # the boundary only — the write still flows through the same
+        # scoped/approval/idempotency/audit chain underneath.
+        app.state.approval_repo = guard_tool_ports(
             ScopedApprovalRepo(SqlApprovalRepo(scoped_engine), app.state.audit_log),
             audit=app.state.audit_log,
         )
-        app.state.transaction_store = authorize_tool_ports(
+        app.state.transaction_store = guard_tool_ports(
             ScopedTransactionStore(SqlTransactionStore(scoped_engine), app.state.audit_log),
             audit=app.state.audit_log,
         )
-        app.state.feedback_store = authorize_tool_ports(
+        app.state.feedback_store = guard_tool_ports(
             ScopedFeedbackStore(SqlFeedbackStore(scoped_engine), app.state.audit_log),
             audit=app.state.audit_log,
         )
@@ -155,17 +158,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # scoped wrappers enforce tenant confinement in-process, so demo and tests get
         # identical isolation without RLS.
         app.state.audit_log = InMemoryAuditLog()
-        # Same BOP-011 authorization layer over the in-memory scoped stores, so demo/tests
-        # get identical tool-input confinement without a database.
-        app.state.approval_repo = authorize_tool_ports(
+        # Same BOP-011/BOP-012 seam over the in-memory scoped stores, so demo/tests get
+        # identical tool-input confinement and egress filtering without a database.
+        app.state.approval_repo = guard_tool_ports(
             ScopedApprovalRepo(InMemoryApprovalRepo(), app.state.audit_log),
             audit=app.state.audit_log,
         )
-        app.state.transaction_store = authorize_tool_ports(
+        app.state.transaction_store = guard_tool_ports(
             ScopedTransactionStore(InMemoryTransactionStore(), app.state.audit_log),
             audit=app.state.audit_log,
         )
-        app.state.feedback_store = authorize_tool_ports(
+        app.state.feedback_store = guard_tool_ports(
             ScopedFeedbackStore(InMemoryFeedbackStore(), app.state.audit_log),
             audit=app.state.audit_log,
         )
@@ -187,21 +190,27 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # identically (architecture rule #5). The raw adapters stay on app.state for the
     # operator-driven direct routes, which are not workflow writes.
     #
-    # BOP-011: tenant authorization is the OUTERMOST wrapper on every engine-reachable tool
-    # port — for the write ports it runs BEFORE the idempotency claim and the audit record,
-    # so a foreign tenant argument is rejected before ANY store/port side effect and never
+    # BOP-011 + BOP-012: the both-directions tool guard is the OUTERMOST wrapper on every
+    # engine-reachable tool port. Inbound, a foreign tenant argument is rejected BEFORE the
+    # idempotency claim and the audit record — before ANY store/port side effect — and never
     # lands as a full-payload failure entry on the mutation ledger (only the intended
-    # security denial is recorded). The read-only MLS port is wrapped through the same seam
-    # for uniform coverage; the stores are already authorized outermost (above).
-    engine_mls = authorize_tool_ports(mls, audit=app.state.audit_log)
-    engine_crm = authorize_tool_ports(
+    # security denial is recorded). Outbound, every response is egress-filtered before the
+    # engine sees it: a foreign tenant identifier blocks the whole response fail-closed, and
+    # secret shapes / role-restricted PII redact in place. The engine seam's recipient is
+    # the agent, wired at the OPERATOR tier (it acts — drafts comms, places calls — but
+    # never decides, per ADR-0009), so contact-reach PII the workflows legitimately consume
+    # stays visible while everything above that bar is filtered even from the agent. The
+    # read-only MLS port goes through the same seam for uniform coverage; the stores are
+    # already guarded outermost (above).
+    engine_mls = guard_tool_ports(mls, audit=app.state.audit_log)
+    engine_crm = guard_tool_ports(
         IdempotentCRM(
             RecordingCRM(crm, app.state.audit_log, integration=crm_vendor()),
             app.state.idempotency_store,
         ),
         audit=app.state.audit_log,
     )
-    engine_voice = authorize_tool_ports(
+    engine_voice = guard_tool_ports(
         IdempotentVoice(RecordingVoice(voice, app.state.audit_log), app.state.idempotency_store),
         audit=app.state.audit_log,
     )
@@ -209,11 +218,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # BOP-018): deduped, then recorded, over the tenant-scoped message store. The
     # /messages/send route binds the run context the decorators read via audit_scope.
     # BOP-019 made the email seam ENGINE-REACHABLE (workflow send-on-approve nodes),
-    # so it is authorization-wrapped outermost like every other engine tool port and
-    # registered in engine_tool_ports below; its `send(message)` is tenant-bearing.
-    # The SMS seam stays route-driven only (no workflow drafts SMS in v1) — when a
-    # workflow gains an SMS send node, wrap and register it the same way.
-    seam_email = authorize_tool_ports(
+    # so it is guarded outermost like every other engine tool port and registered in
+    # engine_tool_ports below; its `send(message)` is tenant-bearing, and the egress
+    # half of the guard (BOP-012) is the filter BOP-020's LLM-drafting wiring gate
+    # checks for on this seam (EGRESS_FILTERED_MARKER). The SMS seam stays
+    # route-driven only (no workflow drafts SMS in v1) — when a workflow gains an
+    # SMS send node, wrap and register it the same way.
+    seam_email = guard_tool_ports(
         IdempotentEmail(RecordingEmail(email, app.state.audit_log), app.state.idempotency_store),
         audit=app.state.audit_log,
     )
@@ -236,9 +247,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.idempotency_store,
     )
     # The single enumerable registry of engine-reachable tool ports; the enumeration test
-    # asserts every one is authorization-wrapped, so a new engine tool port cannot be added
-    # unwrapped. (Raw crm/voice stay on app.state for the RBAC-gated operator routes, which
-    # build their call context server-side and carry no tenant-bearing argument.)
+    # asserts every one is guarded in BOTH directions (authorization-wrapped AND
+    # egress-filtered), so a new engine tool port cannot be added unwrapped in either.
+    # (Raw crm/voice stay on app.state for the RBAC-gated operator routes, which build
+    # their call context server-side and carry no tenant-bearing argument.)
     app.state.engine_tool_ports = {
         "mls": engine_mls,
         "crm": engine_crm,
