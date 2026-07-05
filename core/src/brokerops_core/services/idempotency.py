@@ -37,7 +37,7 @@ from brokerops_core.models.message import Message, semantic_send_args
 from brokerops_core.ports.crm import CRMPort
 from brokerops_core.ports.files import FilesPort
 from brokerops_core.ports.idempotency import IdempotencyStore
-from brokerops_core.ports.messaging import EmailPort
+from brokerops_core.ports.messaging import EmailPort, SMSPort
 from brokerops_core.ports.voice import VoicePort
 from brokerops_core.services.audit import current_audit_context, file_write_args
 
@@ -240,6 +240,29 @@ class IdempotentEmail:
     async def send(self, message: Message) -> str:
         args = semantic_send_args(message)
         key, claim = await self._dedupe.claim("send_email", args)
+        if claim is not None and claim.status is ClaimStatus.COMPLETED:
+            return _require(claim.result)
+        provider_id = await self._inner.send(message)
+        await self._dedupe.record(key, provider_id)
+        return provider_id
+
+
+class IdempotentSMS:
+    """SMSPort decorator: dedupes the send so a retry never texts a person twice.
+
+    The email precedent (IdempotentEmail) applied to the SMS channel (BOP-018):
+    the key is derived from the message's semantic fields (`semantic_send_args`),
+    which include the channel — so the same words sent by email and by SMS within
+    one run are two distinct writes, but a re-issued SMS is one.
+    """
+
+    def __init__(self, inner: SMSPort, store: IdempotencyStore) -> None:
+        self._inner = inner
+        self._dedupe = _Deduper(store)
+
+    async def send(self, message: Message) -> str:
+        args = semantic_send_args(message)
+        key, claim = await self._dedupe.claim("send_sms", args)
         if claim is not None and claim.status is ClaimStatus.COMPLETED:
             return _require(claim.result)
         provider_id = await self._inner.send(message)

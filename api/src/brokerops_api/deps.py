@@ -22,7 +22,7 @@ from brokerops_core.ports.extraction import ExtractionPort
 from brokerops_core.ports.feedback import FeedbackStore
 from brokerops_core.ports.files import FilesPort
 from brokerops_core.ports.identity import AuthError, IdentityVerifier, Principal, Role
-from brokerops_core.ports.messaging import EmailPort, MessageStore
+from brokerops_core.ports.messaging import EmailPort, MessageStore, SMSPort
 from brokerops_core.ports.transactions import TransactionStore
 from brokerops_core.ports.voice import VoicePort
 from brokerops_core.services.email import ConsoleEmailSender
@@ -33,6 +33,7 @@ from brokerops_core.services.magic_link import MagicLinkService
 from brokerops_core.services.message_send import MessageSendService
 from brokerops_email_stub.adapter import StubEmailAdapter
 from brokerops_followupboss.adapter import FUB_API_BASE, FUBCRMAdapter
+from brokerops_twilio_sms.adapter import TWILIO_API_BASE, TwilioSMSAdapter
 from brokerops_mls_reso.adapter import ResoMLSAdapter
 from brokerops_vapi.adapter import VAPI_API_BASE, VapiVoiceAdapter
 
@@ -266,6 +267,80 @@ def build_email_port() -> EmailPort:
         )
     raise RuntimeError(
         f"unknown EMAIL_PROVIDER {provider!r}; expected one of {sorted(EMAIL_PROVIDERS)}"
+    )
+
+
+SMS_PROVIDERS = ("stub", "twilio")
+
+# Twilio test-credential magic from-number (always "sends" successfully) — the
+# stub's default sender, so demo config needs no phone number anywhere.
+_STUB_FROM_NUMBER = "+15005550006"
+
+
+def build_sms_port() -> SMSPort:
+    """The outbound SMS provider (SMSPort, BOP-018) — EMAIL_PROVIDER's sibling.
+
+    Closed, explicit selector in the ADR-0014 posture: SMS_PROVIDER names the
+    provider; nothing is inferred from key presence. Unset → the bundled
+    recorded-shape Twilio stub, in-process over the `internal` sentinel, so demo
+    mode stays zero-credential; `twilio` requires the account SID, auth token,
+    and a sender (from-number or messaging-service SID) and fails loud without
+    them — never a silent downgrade to the stub; an unknown value raises.
+    """
+    provider = os.environ.get("SMS_PROVIDER", "").strip().lower() or "stub"
+    if provider == "stub":
+        # Like the email stub, the default base URL is the `internal` sentinel —
+        # there is no external stub service to default to — so `docker compose up`
+        # exercises the SMS flow with zero configuration.
+        base_url = os.environ.get("SMS_BASE_URL", INTERNAL)
+        if base_url == INTERNAL:
+            from brokerops_twilio_sms.stub import create_stub_app
+
+            return TwilioSMSAdapter(
+                account_sid="ACstub00000000000000000000000000",
+                auth_token="stub-token",
+                from_number=_STUB_FROM_NUMBER,
+                base_url="http://stub.internal",
+                client=_internal_client(create_stub_app()),
+            )
+        return TwilioSMSAdapter(
+            account_sid="ACstub00000000000000000000000000",
+            auth_token="stub-token",
+            from_number=_STUB_FROM_NUMBER,
+            base_url=base_url,
+        )
+    if provider == "twilio":
+        # Fail loud, never downgrade (the _require_env posture): an explicitly
+        # selected real provider with missing config is a deploy misconfiguration.
+        # "unset" is the Terraform placeholder for a secret that was never pushed.
+        def _require(name: str) -> str:
+            value = os.environ.get(name, "")
+            if not value or value == "unset":
+                raise RuntimeError(
+                    f"SMS_PROVIDER='twilio' requires {name} to be set to a real value"
+                )
+            return value
+
+        account_sid = _require("TWILIO_ACCOUNT_SID")
+        auth_token = _require("TWILIO_AUTH_TOKEN")
+        from_number = os.environ.get("TWILIO_FROM_NUMBER", "")
+        messaging_service_sid = os.environ.get("TWILIO_MESSAGING_SERVICE_SID", "")
+        if not from_number and not messaging_service_sid:
+            raise RuntimeError(
+                "SMS_PROVIDER='twilio' requires TWILIO_FROM_NUMBER or "
+                "TWILIO_MESSAGING_SERVICE_SID (the A2P 10DLC sender — see "
+                "docs/A2P_10DLC_ONBOARDING.md)"
+            )
+        return TwilioSMSAdapter(
+            account_sid=account_sid,
+            auth_token=auth_token,
+            from_number=from_number,
+            messaging_service_sid=messaging_service_sid,
+            status_callback_url=os.environ.get("TWILIO_STATUS_CALLBACK_URL", ""),
+            base_url=os.environ.get("SMS_BASE_URL", TWILIO_API_BASE),
+        )
+    raise RuntimeError(
+        f"unknown SMS_PROVIDER {provider!r}; expected one of {sorted(SMS_PROVIDERS)}"
     )
 
 

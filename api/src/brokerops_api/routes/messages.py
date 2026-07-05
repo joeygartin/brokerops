@@ -1,7 +1,8 @@
-"""Outbound business-email routes (BOP-015, ADR-0015).
+"""Outbound business-comms routes (BOP-015/018, ADR-0015).
 
-POST /messages/send drives the full seam: template render → `outbound_messages`
-row → EmailPort send that is deduped (ADR-0011) and recorded in the audit ledger
+POST /messages/send drives the full seam for both channels: template render →
+`outbound_messages` row → a channel-port send (EmailPort or SMSPort, picked by
+`channel`) that is deduped (ADR-0011) and recorded in the audit ledger
 (ADR-0010), tenant-scoped throughout (ADR-0012). The route binds the run context
 (`audit_scope`) the seam decorators read: a caller-supplied `request_id` makes a
 retried request the *same* logical send — replays return the original message
@@ -19,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from brokerops_api.deps import get_message_service, get_message_store, require_role
-from brokerops_core.models.message import Message
+from brokerops_core.models.message import Message, MessageChannel
 from brokerops_core.models.message_templates import TemplateParamError, UnknownTemplateError
 from brokerops_core.ports.identity import Principal, Role
 from brokerops_core.ports.messaging import MessageStore
@@ -36,6 +37,9 @@ OperatorDep = Annotated[Principal, Depends(require_role(Role.OPERATOR))]
 
 
 class SendMessageRequest(BaseModel):
+    # Which port the message leaves through: email (default) or sms (BOP-018).
+    channel: MessageChannel = MessageChannel.EMAIL
+    # email address or E.164 phone number, per channel.
     recipient: str
     # Versioned template ref, e.g. "showing_followup:v1" (templates are source, ADR-0005).
     template: str
@@ -57,9 +61,10 @@ async def send_message(
         workflow="message_send",
         actor=principal.email,
     )
+    send = service.send_sms if body.channel is MessageChannel.SMS else service.send_email
     with audit_scope(context):
         try:
-            return await service.send_email(
+            return await send(
                 recipient=body.recipient,
                 template_ref=body.template,
                 params=body.params,

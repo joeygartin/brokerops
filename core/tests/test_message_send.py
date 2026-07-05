@@ -3,7 +3,7 @@ MessageStore, and the deterministic replay identity within a run (ADR-0015)."""
 
 import pytest
 
-from brokerops_core.models.message import Message, MessageStatus
+from brokerops_core.models.message import Message, MessageChannel, MessageStatus
 from brokerops_core.models.message_templates import TemplateParamError, UnknownTemplateError
 from brokerops_core.services.audit import AuditContext, audit_scope
 from brokerops_core.services.message_send import MessageSendService
@@ -36,6 +36,12 @@ class DictMessageStore:
 
     async def get_message(self, message_id: str) -> Message | None:
         return self.rows.get(message_id)
+
+    async def get_message_by_provider_id(self, provider_message_id: str) -> Message | None:
+        for message in self.rows.values():
+            if provider_message_id and message.provider_message_id == provider_message_id:
+                return message
+        return None
 
     async def list_messages(self, contact_id: str | None = None, limit: int = 100) -> list[Message]:
         return list(self.rows.values())[:limit]
@@ -135,3 +141,49 @@ async def test_sends_outside_a_run_get_random_ids_and_are_not_deduped() -> None:
     assert first.id != second.id
     assert email.sends == 2
     assert len(store.rows) == 2
+
+
+# ── SMS through the same service (BOP-018) ──────────────────────────────────
+
+
+async def test_send_sms_persists_sms_channel_with_empty_subject() -> None:
+    sms = CountingEmail()  # structurally an SMSPort double too
+    store = DictMessageStore()
+    service = MessageSendService(email=CountingEmail(), store=store, sms=sms)
+    message = await service.send_sms(
+        recipient="+15551230101",
+        template_ref="showing_followup_sms:v1",
+        params=PARAMS,
+        contact_id="101",
+    )
+    assert message.channel is MessageChannel.SMS
+    assert message.subject == ""  # SMS has no subject line
+    assert "412 Alder Court" in message.body
+    assert message.status is MessageStatus.SENT
+    assert sms.sends == 1
+
+
+async def test_send_sms_without_a_wired_provider_fails_loud() -> None:
+    service, email, store = _service()  # sms port not wired
+    with pytest.raises(RuntimeError, match="no SMS provider is wired"):
+        await service.send_sms(
+            recipient="+15551230101", template_ref="showing_followup_sms:v1", params=PARAMS
+        )
+    assert store.rows == {} and email.sends == 0
+
+
+async def test_email_and_sms_replays_are_distinct_rows_within_one_run() -> None:
+    email, sms = CountingEmail(), CountingEmail()
+    store = DictMessageStore()
+    service = MessageSendService(email=email, store=store, sms=sms)
+    with audit_scope(_run()):
+        by_email = await service.send_email(
+            recipient="sam@example.com", template_ref="showing_followup:v1", params=PARAMS
+        )
+        by_sms = await service.send_sms(
+            recipient="sam@example.com", template_ref="showing_followup:v1", params=PARAMS
+        )
+    # Same template, same recipient, same run — but a different channel is a
+    # different semantic send: two rows, two provider calls.
+    assert by_email.id != by_sms.id
+    assert email.sends == 1 and sms.sends == 1

@@ -31,6 +31,11 @@ SELECTOR_VARS = (
     "SENDGRID_API_KEY",
     "SENDGRID_FROM_EMAIL",
     "SENDGRID_BASE_URL",
+    "SMS_PROVIDER",
+    "SMS_BASE_URL",
+    # Not a selector, but the SMS delivery webhook's fail-closed signing key
+    # (BOP-018): if it doesn't reach the container, every callback 500s.
+    "TWILIO_AUTH_TOKEN",
 )
 
 

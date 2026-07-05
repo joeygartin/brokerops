@@ -87,8 +87,22 @@ MILESTONE_REMINDER_V1 = MessageTemplate(
     ),
 )
 
+# SMS bodies are short by design (segments are billed per 160 GSM-7 chars) and
+# carry no subject — the renderer still returns one, but the SMS send path
+# persists it empty (the Message contract for subject-less channels).
+SHOWING_FOLLOWUP_SMS_V1 = MessageTemplate(
+    name="showing_followup_sms",
+    version=1,
+    subject="",
+    body=(
+        "Hi $recipient_name, thanks for touring $listing_address! We'd love your "
+        "feedback — just reply to this text. — $sender_name"
+    ),
+)
+
 TEMPLATES: dict[str, MessageTemplate] = {
-    template.ref: template for template in (SHOWING_FOLLOWUP_V1, MILESTONE_REMINDER_V1)
+    template.ref: template
+    for template in (SHOWING_FOLLOWUP_V1, MILESTONE_REMINDER_V1, SHOWING_FOLLOWUP_SMS_V1)
 }
 
 

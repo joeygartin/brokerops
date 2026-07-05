@@ -1,0 +1,22 @@
+[project]
+name = "brokerops-twilio-sms"
+version = "0.1.0"
+description = "Twilio SMS adapter + MCP server + recorded-shape demo stub"
+requires-python = ">=3.12"
+dependencies = [
+    "brokerops-core",
+    "fastapi>=0.115",
+    "httpx>=0.28",
+    "mcp>=1.2",
+    "uvicorn[standard]>=0.32",
+]
+
+[project.scripts]
+mcp-server-twilio-sms = "brokerops_twilio_sms.mcp_server:main"
+
+[tool.uv.sources]
+brokerops-core = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

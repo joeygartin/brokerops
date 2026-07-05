@@ -33,7 +33,7 @@ from brokerops_core.models.mutation import MutationOutcome, MutationRecord
 from brokerops_core.ports.audit import AuditLog
 from brokerops_core.ports.crm import CRMPort
 from brokerops_core.ports.files import FilesPort
-from brokerops_core.ports.messaging import EmailPort
+from brokerops_core.ports.messaging import EmailPort, SMSPort
 from brokerops_core.ports.voice import VoicePort
 
 # Substrings that mark an argument key as sensitive; matched case-insensitively so
@@ -288,4 +288,27 @@ class RecordingEmail:
             await self._rec.emit("send_email", args, MutationOutcome.FAILURE, error=str(exc))
             raise
         await self._rec.emit("send_email", args, MutationOutcome.SUCCESS, external_id=provider_id)
+        return provider_id
+
+
+class RecordingSMS:
+    """SMSPort decorator: records the one external write (sending an SMS).
+
+    The email precedent (RecordingEmail) applied to the SMS channel (BOP-018).
+    Integration is hardcoded like RecordingVoice's "vapi": both SMS providers
+    (the real API and the recorded-shape stub) are Twilio-shaped.
+    """
+
+    def __init__(self, inner: SMSPort, audit: AuditLog) -> None:
+        self._inner = inner
+        self._rec = _Recorder(audit, "twilio_sms")
+
+    async def send(self, message: Message) -> str:
+        args = message.model_dump(mode="json", exclude={"status", "provider_message_id", "sent_at"})
+        try:
+            provider_id = await self._inner.send(message)
+        except Exception as exc:
+            await self._rec.emit("send_sms", args, MutationOutcome.FAILURE, error=str(exc))
+            raise
+        await self._rec.emit("send_sms", args, MutationOutcome.SUCCESS, external_id=provider_id)
         return provider_id

@@ -35,6 +35,7 @@ from brokerops_api.deps import (
     build_magic_link_service,
     build_mls_adapter,
     build_session_refresher,
+    build_sms_port,
     build_voice_adapter,
     crm_vendor,
     demo_routes_enabled,
@@ -60,12 +61,14 @@ from brokerops_core.services.audit import (
     RecordingCRM,
     RecordingEmail,
     RecordingFiles,
+    RecordingSMS,
     RecordingVoice,
 )
 from brokerops_core.services.idempotency import (
     IdempotentCRM,
     IdempotentEmail,
     IdempotentFiles,
+    IdempotentSMS,
     IdempotentVoice,
 )
 from brokerops_core.services.message_send import MessageSendService
@@ -105,9 +108,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # The outbound business-email provider (ADR-0015). An unknown or unwired
     # EMAIL_PROVIDER raises right here — misconfiguration is a startup error.
     email = build_email_port()
+    # The outbound SMS provider (BOP-018), same posture over SMS_PROVIDER.
+    sms = build_sms_port()
     app.state.crm = crm
     app.state.voice = voice
     app.state.email = email
+    app.state.sms = sms
     engine = create_engine(database_url) if database_url else None
     magic_store: MagicTokenStore
     if engine is not None:
@@ -198,15 +204,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         IdempotentVoice(RecordingVoice(voice, app.state.audit_log), app.state.idempotency_store),
         audit=app.state.audit_log,
     )
-    # Outbound email sends flow through the identical seam (ADR-0015): deduped,
-    # then recorded, over the tenant-scoped message store. The /messages/send
-    # route binds the run context the decorators read via audit_scope. Route-driven
-    # only today — when a workflow gains a send node (BOP-019), this port must be
-    # authorization-wrapped and registered in engine_tool_ports below.
+    # Outbound email and SMS sends flow through the identical seam (ADR-0015 /
+    # BOP-018): deduped, then recorded, over the tenant-scoped message store. The
+    # /messages/send route binds the run context the decorators read via audit_scope.
+    # Route-driven only today — when a workflow gains a send node (BOP-019), these
+    # ports must be authorization-wrapped and registered in engine_tool_ports below.
     seam_email = IdempotentEmail(
         RecordingEmail(email, app.state.audit_log), app.state.idempotency_store
     )
-    app.state.message_service = MessageSendService(email=seam_email, store=app.state.message_store)
+    seam_sms = IdempotentSMS(RecordingSMS(sms, app.state.audit_log), app.state.idempotency_store)
+    app.state.message_service = MessageSendService(
+        email=seam_email, store=app.state.message_store, sms=seam_sms
+    )
     # File writes go through the same two seams (BOP-021). Unlike crm/voice, the
     # wrapped port IS the app.state instance: the only file writer today is the
     # operator-driven documents route, and even that write must be recorded in

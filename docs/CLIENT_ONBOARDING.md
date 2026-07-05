@@ -42,6 +42,7 @@ mechanism yet, must be built for this client.
 | **Email delivery** (for magic-link) | SMTP host/port/from/username | `smtp_*` **[config]** + `smtp-password` secret — for AWS SES, `scripts/setup_ses.sh <client> <domain>` automates the identity + IAM user + password push (prints the DKIM records and deploy `-var`s) |
 | **Outbound business email (SES)** (client-facing comms, BOP-016) | Provider (`ses`) + the business-comms **sending identity** (from address) — see §2b | `EMAIL_PROVIDER`, `SES_REGION`, `SES_ACCESS_KEY_ID`, `SES_FROM_ADDRESS` **[config]** + `ses-secret-access-key` secret (pushed by `setup_ses.sh`) |
 | **Outbound business email (SendGrid)** | API key + authenticated sending domain + from-address — see §2c | `EMAIL_PROVIDER=sendgrid`, `SENDGRID_FROM_EMAIL` **[config]** + `sendgrid-api-key` secret |
+| **SMS (Twilio)** | Dedicated Twilio account SID + auth token, Messaging Service SID (or from-number), **A2P 10DLC brand/campaign registration status** | `SMS_PROVIDER`/`TWILIO_*` **[config]** + auth-token secret — registration is a MANUAL per-client gate with real lead time: run `docs/A2P_10DLC_ONBOARDING.md` first (`scripts/setup_twilio_sms.sh <client>` wraps the scriptable rim) |
 
 If a system isn't ready, leave it on the bundled stub (`*_base_url = "internal"`)
 and turn it on later.

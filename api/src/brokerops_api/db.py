@@ -635,6 +635,18 @@ class SqlMessageStore:
             row = result.first()
         return Message.model_validate(dict(row._mapping)) if row is not None else None
 
+    async def get_message_by_provider_id(self, provider_message_id: str) -> Message | None:
+        if not provider_message_id:
+            return None  # every not-yet-sent row holds "" — never match those
+        async with self._engine.connect() as conn:
+            result = await conn.execute(
+                outbound_messages.select().where(
+                    outbound_messages.c.provider_message_id == provider_message_id
+                )
+            )
+            row = result.first()
+        return Message.model_validate(dict(row._mapping)) if row is not None else None
+
     async def list_messages(self, contact_id: str | None = None, limit: int = 100) -> list[Message]:
         query = (
             outbound_messages.select().order_by(outbound_messages.c.created_at.desc()).limit(limit)
@@ -656,6 +668,14 @@ class InMemoryMessageStore:
 
     async def get_message(self, message_id: str) -> Message | None:
         return self._messages.get(message_id)
+
+    async def get_message_by_provider_id(self, provider_message_id: str) -> Message | None:
+        if not provider_message_id:
+            return None  # every not-yet-sent row holds "" — never match those
+        for message in self._messages.values():
+            if message.provider_message_id == provider_message_id:
+                return message
+        return None
 
     async def list_messages(self, contact_id: str | None = None, limit: int = 100) -> list[Message]:
         found = [

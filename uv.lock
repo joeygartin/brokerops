@@ -25,6 +25,7 @@ members = [
     "brokerops-mls-reso",
     "brokerops-pydantic-ai-extraction",
     "brokerops-sierra-crm",
+    "brokerops-twilio-sms",
     "brokerops-vapi",
 ]
 
@@ -202,6 +203,7 @@ dependencies = [
     { name = "brokerops-mls-reso" },
     { name = "brokerops-pydantic-ai-extraction" },
     { name = "brokerops-sierra-crm" },
+    { name = "brokerops-twilio-sms" },
     { name = "brokerops-vapi" },
     { name = "fastapi" },
     { name = "psycopg", extra = ["binary"] },
@@ -237,6 +239,7 @@ requires-dist = [
     { name = "brokerops-mls-reso", editable = "integrations/mls_reso" },
     { name = "brokerops-pydantic-ai-extraction", editable = "integrations/pydantic_ai_extraction" },
     { name = "brokerops-sierra-crm", editable = "integrations/sierra_crm" },
+    { name = "brokerops-twilio-sms", editable = "integrations/twilio_sms" },
     { name = "brokerops-vapi", editable = "integrations/vapi" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
@@ -473,6 +476,27 @@ requires-dist = [
 name = "brokerops-sierra-crm"
 version = "0.1.0"
 source = { editable = "integrations/sierra_crm" }
+dependencies = [
+    { name = "brokerops-core" },
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "mcp" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "brokerops-core", editable = "core" },
+    { name = "fastapi", specifier = ">=0.115" },
+    { name = "httpx", specifier = ">=0.28" },
+    { name = "mcp", specifier = ">=1.2" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
+]
+
+[[package]]
+name = "brokerops-twilio-sms"
+version = "0.1.0"
+source = { editable = "integrations/twilio_sms" }
 dependencies = [
     { name = "brokerops-core" },
     { name = "fastapi" },

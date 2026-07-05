@@ -22,6 +22,20 @@ class EmailPort(Protocol):
         ...
 
 
+class SMSPort(Protocol):
+    """Boundary to the outbound SMS provider (BOP-018).
+
+    Same contract as EmailPort over the same channel-agnostic `Message`
+    (channel=sms, empty subject) — a separate port because the two channels are
+    separately wired (SMS_PROVIDER vs EMAIL_PROVIDER), separately decorated
+    (RecordingSMS/IdempotentSMS), and fail independently.
+    """
+
+    async def send(self, message: Message) -> str:
+        """Send `message` (channel=sms); returns the provider's message id."""
+        ...
+
+
 class MessageStore(Protocol):
     """Persistence boundary for the outbound comms history (`outbound_messages`).
 
@@ -34,6 +48,11 @@ class MessageStore(Protocol):
     async def save_message(self, message: Message) -> None: ...
 
     async def get_message(self, message_id: str) -> Message | None: ...
+
+    async def get_message_by_provider_id(self, provider_message_id: str) -> Message | None:
+        """Look up a message by the provider's id — how a delivery-status webhook
+        (which only knows the provider's MessageSid) finds its row (BOP-018)."""
+        ...
 
     async def list_messages(
         self, contact_id: str | None = None, limit: int = 100

@@ -78,6 +78,7 @@ integrations/
   followupboss/          # FUB adapter (token-bucket rate limited) + stub + MCP server
   sierra_crm/            # Sierra Interactive adapter + stub + MCP server (ADR-0016)
   vapi/                  # voice adapter + webhook-firing stub + MCP server
+  twilio_sms/            # Twilio SMS adapter + recorded-shape stub + MCP server (ADR-0017)
   llm_extraction/        # Claude extraction adapter behind ExtractionPort (ADR-0006)
   pydantic_ai_extraction/  # PydanticAI extraction adapter, same port (ADR-0014)
   google_oidc/           # Google ID-token verifier behind IdentityVerifier (ADR-0007)

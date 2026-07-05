@@ -24,12 +24,29 @@ class MessageStatus(StrEnum):
 
     DRAFTED → SENT | FAILED is the whole V1 path. PENDING_APPROVAL is reserved for
     LLM-drafted comms (BOP-019/020), which insert a human gate between draft and send.
+    DELIVERED is set only by a provider delivery-status webhook (BOP-018): SENT means
+    the provider accepted the message; DELIVERED means the provider confirmed the
+    handset got it. A delivery callback can also move SENT → FAILED.
     """
 
     DRAFTED = "drafted"
     PENDING_APPROVAL = "pending_approval"
     SENT = "sent"
+    DELIVERED = "delivered"
     FAILED = "failed"
+
+
+# How far along the send lifecycle each status is. Delivery callbacks may arrive
+# out of order (Twilio documents no ordering guarantee), so webhook transitions
+# only ever move a message *forward* — a late "sent" callback never downgrades a
+# DELIVERED row.
+STATUS_RANK: dict[MessageStatus, int] = {
+    MessageStatus.DRAFTED: 0,
+    MessageStatus.PENDING_APPROVAL: 1,
+    MessageStatus.SENT: 2,
+    MessageStatus.DELIVERED: 3,
+    MessageStatus.FAILED: 3,
+}
 
 
 class Message(BaseModel):

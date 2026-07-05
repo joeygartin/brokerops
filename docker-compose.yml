@@ -103,6 +103,17 @@ services:
       SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
       SENDGRID_FROM_EMAIL: ${SENDGRID_FROM_EMAIL:-}
       SENDGRID_BASE_URL: ${SENDGRID_BASE_URL:-}
+      # Outbound SMS: EMAIL_PROVIDER's sibling selector (BOP-018). Unset = the
+      # bundled in-process Twilio-shaped stub (zero-credential demo). The
+      # delivery-status webhook fails closed without TWILIO_AUTH_TOKEN, so
+      # compose defaults a demo signing token (the VAPI_WEBHOOK_SECRET pattern).
+      SMS_PROVIDER: ${SMS_PROVIDER:-}
+      SMS_BASE_URL: ${SMS_BASE_URL:-}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-demo-twilio-token}
+      TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER:-}
+      TWILIO_MESSAGING_SERVICE_SID: ${TWILIO_MESSAGING_SERVICE_SID:-}
+      TWILIO_STATUS_CALLBACK_URL: ${TWILIO_STATUS_CALLBACK_URL:-}
       # Demo seed/reset routes (/demo/*): on for the local demo so the "Seed demo
       # transactions" button works; off by default everywhere else (the route can wipe
       # tenant data). Real client deploys never set this.

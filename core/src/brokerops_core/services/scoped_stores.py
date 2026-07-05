@@ -231,6 +231,16 @@ class ScopedMessageStore:
             return None
         return message
 
+    async def get_message_by_provider_id(self, provider_message_id: str) -> Message | None:
+        # The delivery-webhook lookup (BOP-018): same confinement as get_message —
+        # a callback carrying another tenant's provider id resolves to nothing.
+        ambient = require_tenant()
+        message = await self._inner.get_message_by_provider_id(provider_message_id)
+        if message is not None and _is_foreign(message.tenant_id, ambient):
+            await self._audit_foreign("get_message_by_provider_id", message.tenant_id, ambient)
+            return None
+        return message
+
     async def list_messages(self, contact_id: str | None = None, limit: int = 100) -> list[Message]:
         ambient = require_tenant()
         rows = await self._inner.list_messages(contact_id, limit)
