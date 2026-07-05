@@ -41,6 +41,7 @@ jobs:
           integrations/google_oidc/src integrations/google_oidc/tests
           integrations/llm_extraction/src integrations/llm_extraction/tests
           integrations/pydantic_ai_extraction/src integrations/pydantic_ai_extraction/tests
+          integrations/sierra_crm/src integrations/sierra_crm/tests
           integrations/vapi/src integrations/vapi/tests
           orchestration/langgraph/src orchestration/langgraph/tests
           orchestration/adk/src orchestration/adk/tests

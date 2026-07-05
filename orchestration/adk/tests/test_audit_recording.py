@@ -26,7 +26,7 @@ class CollectingAuditLog:
 
 async def test_resume_writes_are_recorded_and_linked() -> None:
     audit = CollectingAuditLog()
-    crm = RecordingCRM(GraphFakeCRM(), audit)
+    crm = RecordingCRM(GraphFakeCRM(), audit, integration="fake-crm")
     engine, _ = make_engine(build_listing_to_contract(GraphFakeMLS(), crm))
 
     run = await engine.start(LISTING_TO_CONTRACT, {"listing_key": "RM1001"}, actor="joey@x")

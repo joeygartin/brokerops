@@ -8,6 +8,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request
 
 if TYPE_CHECKING:
     from brokerops_api.auth.session import SessionRefresher
+    from brokerops_sierra_crm.adapter import SierraCRMAdapter
 
 from brokerops_api.db import ApprovalRepo, TransactionStoreAdmin
 from brokerops_api.workflows import WorkflowEngine
@@ -89,7 +90,34 @@ def build_mls_adapter() -> ResoMLSAdapter:
     return ResoMLSAdapter(base_url=base_url, auth_token=os.environ.get("RESO_AUTH_TOKEN") or None)
 
 
-def build_crm_adapter() -> FUBCRMAdapter:
+CRM_VENDORS = ("followupboss", "sierra")
+
+
+def crm_vendor() -> str:
+    """The CRM this deploy is wired to — a closed, explicit selector (ADR-0015,
+    mirroring the ORCHESTRATOR / EXTRACTION_BACKEND posture). Unset keeps the
+    FollowUpBoss default so the zero-credential demo is unchanged; an unknown
+    value is a startup error, never a silent fallback."""
+    vendor = os.environ.get("CRM_VENDOR", "").strip().lower()
+    if not vendor:
+        return "followupboss"
+    if vendor not in CRM_VENDORS:
+        raise RuntimeError(f"unknown CRM_VENDOR {vendor!r}; expected one of {sorted(CRM_VENDORS)}")
+    return vendor
+
+
+def _require_env(name: str, vendor: str) -> str:
+    # Fail loud, never downgrade (ADR-0014 posture): an explicitly selected CRM
+    # with missing config is a deploy misconfiguration, not a reason to run a
+    # different CRM. "unset" is the Terraform placeholder for a secret that was
+    # never pushed — same misconfiguration.
+    value = os.environ.get(name, "")
+    if not value or value == "unset":
+        raise RuntimeError(f"CRM_VENDOR={vendor!r} requires {name} to be set to a real value")
+    return value
+
+
+def _build_fub_adapter() -> FUBCRMAdapter:
     api_key = os.environ.get("FUB_API_KEY", "")
     base_url = os.environ.get("FUB_BASE_URL", FUB_API_BASE)
     if base_url == INTERNAL:
@@ -101,6 +129,42 @@ def build_crm_adapter() -> FUBCRMAdapter:
             client=_internal_client(create_stub_app(), auth=(api_key, "")),
         )
     return FUBCRMAdapter(api_key=api_key, base_url=base_url)
+
+
+def _build_sierra_adapter() -> "SierraCRMAdapter":
+    from brokerops_sierra_crm.adapter import SIERRA_API_BASE, SierraCRMAdapter
+    from brokerops_sierra_crm.stub import STUB_TASK_ANCHOR_LEAD_ID, STUB_TASK_ASSIGNEE_ID
+
+    base_url = os.environ.get("SIERRA_BASE_URL", SIERRA_API_BASE)
+    if base_url == INTERNAL:
+        from brokerops_sierra_crm.stub import create_stub_app
+
+        return SierraCRMAdapter(
+            api_key=os.environ.get("SIERRA_API_KEY", ""),
+            base_url="http://stub.internal",
+            client=_internal_client(create_stub_app(), headers={"Sierra-ApiKey": "internal-demo"}),
+            task_assignee_id=int(
+                os.environ.get("SIERRA_TASK_ASSIGNEE_ID", str(STUB_TASK_ASSIGNEE_ID))
+            ),
+            task_anchor_lead_id=os.environ.get(
+                "SIERRA_TASK_ANCHOR_LEAD_ID", STUB_TASK_ANCHOR_LEAD_ID
+            ),
+        )
+    # Against the real API everything must be explicit: the key, who Sierra
+    # tasks are assigned to, and which lead anchors contact-less tasks.
+    return SierraCRMAdapter(
+        api_key=_require_env("SIERRA_API_KEY", "sierra"),
+        base_url=base_url,
+        task_assignee_id=int(_require_env("SIERRA_TASK_ASSIGNEE_ID", "sierra")),
+        task_anchor_lead_id=_require_env("SIERRA_TASK_ANCHOR_LEAD_ID", "sierra"),
+    )
+
+
+def build_crm_adapter() -> CRMPort:
+    vendor = crm_vendor()
+    if vendor == "sierra":
+        return _build_sierra_adapter()
+    return _build_fub_adapter()
 
 
 def build_voice_adapter() -> VapiVoiceAdapter:

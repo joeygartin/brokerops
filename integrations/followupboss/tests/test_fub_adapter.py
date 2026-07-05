@@ -25,7 +25,7 @@ async def test_search_contacts_maps_fub_people(adapter: FUBCRMAdapter) -> None:
     contacts = await adapter.search_contacts("jordan")
     assert len(contacts) == 1
     contact = contacts[0]
-    assert contact.fub_id == "101"
+    assert contact.crm_id == "101"
     assert contact.name == "Jordan Pike"
     assert contact.email == "jordan.pike@example.test"
     assert contact.role == "Lead"
@@ -45,7 +45,7 @@ async def test_create_contact_roundtrip(adapter: FUBCRMAdapter) -> None:
         ContactCreate(first_name="Riley", last_name="Marsh", email="riley.marsh@example.test")
     )
     assert created.name == "Riley Marsh"
-    fetched = await adapter.get_contact(created.fub_id)
+    fetched = await adapter.get_contact(created.crm_id)
     assert fetched is not None
     assert fetched.email == "riley.marsh@example.test"
 

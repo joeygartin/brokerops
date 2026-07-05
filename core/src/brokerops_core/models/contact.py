@@ -4,10 +4,15 @@ from pydantic import BaseModel
 
 
 class Contact(BaseModel):
-    """CRM contact DTO. The CRM (FollowUpBoss) is the source of truth —
-    this is a read-through shape, never persisted on our side."""
+    """CRM contact DTO. The CRM behind `CRMPort` is the source of truth —
+    this is a read-through shape, never persisted on our side.
 
-    fub_id: str
+    `crm_id` is the contact's id in whichever CRM this deploy is wired to
+    (a FollowUpBoss person id, a Sierra Interactive lead id, …); it is only
+    meaningful to the adapter that produced it.
+    """
+
+    crm_id: str
     name: str
     role: str = "Lead"
     email: str | None = None

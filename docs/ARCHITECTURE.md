@@ -51,6 +51,8 @@ via Terraform.
                       │      │        │ ports (Protocol)                               │
                       │      │        ├── integrations/mls_reso      (RESO Web API)    │
                       │      │        ├── integrations/followupboss  (FUB REST)        │
+                      │      │        ├── integrations/sierra_crm    (Sierra REST,     │
+                      │      │        │        CRM_VENDOR-selected — ADR-0015)         │
                       │      │        └── integrations/vapi          (Vapi REST)       │
                       │      ▼                                                         │
                       │  Cloud SQL Postgres ── domain tables + engine state tables     │
@@ -74,6 +76,7 @@ core/                    # framework-free domain: models/, services/, ports/
 integrations/
   mls_reso/              # mock RESO Web API + adapter + MCP server
   followupboss/          # FUB adapter (token-bucket rate limited) + stub + MCP server
+  sierra_crm/            # Sierra Interactive adapter + stub + MCP server (ADR-0015)
   vapi/                  # voice adapter + webhook-firing stub + MCP server
   llm_extraction/        # Claude extraction adapter behind ExtractionPort (ADR-0006)
   pydantic_ai_extraction/  # PydanticAI extraction adapter, same port (ADR-0014)

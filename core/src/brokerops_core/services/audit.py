@@ -131,11 +131,16 @@ class _Recorder:
 class RecordingCRM:
     """CRMPort decorator: reads pass straight through; every write is recorded
     once — success or failure — before the result is returned or the error re-raised.
+
+    `integration` names the CRM vendor this deploy is wired to (the CRM_VENDOR
+    selection), so mutation records attribute writes to the actual system —
+    hardcoding "followupboss" here stopped being true with the second adapter
+    (ADR-0015).
     """
 
-    def __init__(self, inner: CRMPort, audit: AuditLog) -> None:
+    def __init__(self, inner: CRMPort, audit: AuditLog, integration: str) -> None:
         self._inner = inner
-        self._rec = _Recorder(audit, "followupboss")
+        self._rec = _Recorder(audit, integration)
 
     async def get_contact(self, contact_id: str) -> Contact | None:
         return await self._inner.get_contact(contact_id)
@@ -151,7 +156,7 @@ class RecordingCRM:
             await self._rec.emit("create_contact", args, MutationOutcome.FAILURE, error=str(exc))
             raise
         await self._rec.emit(
-            "create_contact", args, MutationOutcome.SUCCESS, external_id=result.fub_id
+            "create_contact", args, MutationOutcome.SUCCESS, external_id=result.crm_id
         )
         return result
 
@@ -166,11 +171,11 @@ class RecordingCRM:
         return note_id
 
     async def create_task(
-        self, name: str, due_date: date | None = None, contact_id: str | None = None
+        self, name: str, due_date: date, contact_id: str | None = None
     ) -> CrmTask:
         args = {
             "name": name,
-            "due_date": due_date.isoformat() if due_date is not None else None,
+            "due_date": due_date.isoformat(),
             "contact_id": contact_id,
         }
         try:

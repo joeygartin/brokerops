@@ -143,11 +143,11 @@ class IdempotentCRM:
         return note_id
 
     async def create_task(
-        self, name: str, due_date: date | None = None, contact_id: str | None = None
+        self, name: str, due_date: date, contact_id: str | None = None
     ) -> CrmTask:
         args = {
             "name": name,
-            "due_date": due_date.isoformat() if due_date is not None else None,
+            "due_date": due_date.isoformat(),
             "contact_id": contact_id,
         }
         key, claim = await self._dedupe.claim("create_task", args)

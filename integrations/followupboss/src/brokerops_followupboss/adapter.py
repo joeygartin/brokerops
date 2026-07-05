@@ -41,7 +41,7 @@ def contact_from_fub(person: Mapping[str, Any]) -> Contact:
     first = person.get("firstName") or ""
     last = person.get("lastName") or ""
     return Contact(
-        fub_id=str(person["id"]),
+        crm_id=str(person["id"]),
         name=person.get("name") or f"{first} {last}".strip(),
         role=person.get("stage") or "Lead",
         email=emails[0]["value"] if emails else None,

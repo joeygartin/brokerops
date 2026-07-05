@@ -50,14 +50,14 @@ class CountingCRM:
 
     async def get_contact(self, contact_id: str) -> Contact | None:
         self.get_contact_calls += 1
-        return Contact(fub_id=contact_id, name="Sam")
+        return Contact(crm_id=contact_id, name="Sam")
 
     async def search_contacts(self, query: str, limit: int = 20) -> list[Contact]:
         return []
 
     async def create_contact(self, draft: ContactCreate) -> Contact:
         self.create_contact_calls += 1
-        return Contact(fub_id=f"c-{self.create_contact_calls}", name=draft.first_name)
+        return Contact(crm_id=f"c-{self.create_contact_calls}", name=draft.first_name)
 
     async def add_note(self, contact_id: str, subject: str, body: str) -> str:
         self.add_note_calls += 1
@@ -129,8 +129,8 @@ async def test_distinct_args_are_not_deduped() -> None:
     crm = CountingCRM()
     deduped = IdempotentCRM(crm, InMemoryStore())
     with audit_scope(_run()):
-        await deduped.create_task("Order signage")
-        await deduped.create_task("Schedule photos")
+        await deduped.create_task("Order signage", due_date=date(2026, 7, 1))
+        await deduped.create_task("Schedule photos", due_date=date(2026, 7, 1))
     assert crm.create_task_calls == 2
 
 
@@ -138,9 +138,9 @@ async def test_different_runs_are_not_deduped() -> None:
     crm = CountingCRM()
     store = InMemoryStore()
     with audit_scope(_run("run-a")):
-        await IdempotentCRM(crm, store).create_task("Order signage")
+        await IdempotentCRM(crm, store).create_task("Order signage", due_date=date(2026, 7, 1))
     with audit_scope(_run("run-b")):
-        await IdempotentCRM(crm, store).create_task("Order signage")
+        await IdempotentCRM(crm, store).create_task("Order signage", due_date=date(2026, 7, 1))
     assert crm.create_task_calls == 2
 
 
@@ -148,8 +148,8 @@ async def test_writes_outside_a_run_are_not_deduped() -> None:
     # No audit scope → no run context to key on → the write runs undeduped.
     crm = CountingCRM()
     deduped = IdempotentCRM(crm, InMemoryStore())
-    await deduped.create_task("Loose write")
-    await deduped.create_task("Loose write")
+    await deduped.create_task("Loose write", due_date=date(2026, 7, 1))
+    await deduped.create_task("Loose write", due_date=date(2026, 7, 1))
     assert crm.create_task_calls == 2
 
 
@@ -157,12 +157,12 @@ async def test_pending_replay_refuses_to_repeat_the_side_effect() -> None:
     # Simulate a mid-write crash: a prior attempt claimed the key but never completed.
     crm = CountingCRM()
     store = InMemoryStore()
-    args = {"name": "Order signage", "due_date": None, "contact_id": None}
+    args = {"name": "Order signage", "due_date": "2026-07-01", "contact_id": None}
     key = idempotency_key("run-1", "create_task", args)
     await store.begin(key, workflow_run_id="run-1", tool="create_task")  # claim, never complete
     with audit_scope(_run()):
         with pytest.raises(ReplayInProgressError, match="create_task"):
-            await IdempotentCRM(crm, store).create_task("Order signage")
+            await IdempotentCRM(crm, store).create_task("Order signage", due_date=date(2026, 7, 1))
     assert crm.create_task_calls == 0  # at most once: we did not re-run the side effect
 
 
@@ -190,10 +190,10 @@ async def test_deduped_replay_writes_no_second_mutation_record() -> None:
     # ledger — the BOP-002 contract: a deduped replay emits no second record.
     crm = CountingCRM()
     audit = CollectingAuditLog()
-    deduped = IdempotentCRM(RecordingCRM(crm, audit), InMemoryStore())
+    deduped = IdempotentCRM(RecordingCRM(crm, audit, integration="fake-crm"), InMemoryStore())
     with audit_scope(_run()):
-        await deduped.create_task("Order signage")
-        await deduped.create_task("Order signage")
+        await deduped.create_task("Order signage", due_date=date(2026, 7, 1))
+        await deduped.create_task("Order signage", due_date=date(2026, 7, 1))
     assert crm.create_task_calls == 1
     assert len(audit.records) == 1
     assert audit.records[0].tool == "create_task"

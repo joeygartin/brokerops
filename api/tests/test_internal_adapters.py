@@ -26,7 +26,14 @@ async def test_mls_internal_serves_seed() -> None:
 
 async def test_crm_internal_serves_stub_contacts() -> None:
     contacts = await build_crm_adapter().search_contacts("jordan")
-    assert [c.fub_id for c in contacts] == ["101"]
+    assert [c.crm_id for c in contacts] == ["101"]
+
+
+async def test_sierra_internal_serves_stub_contacts(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CRM_VENDOR", "sierra")
+    monkeypatch.setenv("SIERRA_BASE_URL", "internal")
+    contacts = await build_crm_adapter().search_contacts("morgan")
+    assert [c.crm_id for c in contacts] == ["501"]
 
 
 async def test_voice_internal_records_calls() -> None:

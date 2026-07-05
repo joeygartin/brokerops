@@ -69,7 +69,7 @@ class GraphFakeCRM:
         return []
 
     async def create_contact(self, draft: ContactCreate) -> Contact:
-        return Contact(fub_id=str(next(self._ids)), name=f"{draft.first_name} {draft.last_name}")
+        return Contact(crm_id=str(next(self._ids)), name=f"{draft.first_name} {draft.last_name}")
 
     async def add_note(self, contact_id: str, subject: str, body: str) -> str:
         self.notes.append((contact_id, subject, body))

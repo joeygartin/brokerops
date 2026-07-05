@@ -36,6 +36,7 @@ from brokerops_api.deps import (
     build_mls_adapter,
     build_session_refresher,
     build_voice_adapter,
+    crm_vendor,
     demo_routes_enabled,
     deploy_tenant,
     get_current_principal,
@@ -161,7 +162,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # side effect and writes no second mutation record. Both engines inherit this
     # identically (architecture rule #5). The raw adapters stay on app.state for the
     # operator-driven direct routes, which are not workflow writes.
-    engine_crm = IdempotentCRM(RecordingCRM(crm, app.state.audit_log), app.state.idempotency_store)
+    engine_crm = IdempotentCRM(
+        RecordingCRM(crm, app.state.audit_log, integration=crm_vendor()),
+        app.state.idempotency_store,
+    )
     engine_voice = IdempotentVoice(
         RecordingVoice(voice, app.state.audit_log), app.state.idempotency_store
     )

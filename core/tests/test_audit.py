@@ -45,7 +45,7 @@ class FakeCRM:
         return []
 
     async def create_contact(self, draft: ContactCreate) -> Contact:
-        return Contact(fub_id="c-1", name=f"{draft.first_name} {draft.last_name}")
+        return Contact(crm_id="c-1", name=f"{draft.first_name} {draft.last_name}")
 
     async def add_note(self, contact_id: str, subject: str, body: str) -> str:
         return "note-1"
@@ -92,7 +92,7 @@ def test_redact_masks_secret_keys_deeply() -> None:
 
 async def test_records_successful_write_with_run_context() -> None:
     audit = CollectingAuditLog()
-    crm = RecordingCRM(FakeCRM(), audit)
+    crm = RecordingCRM(FakeCRM(), audit, integration="fake-crm")
     context = AuditContext(
         workflow_run_id="run-7", workflow="listing_to_contract", approval_id="ap-3", actor="joey@x"
     )
@@ -103,7 +103,7 @@ async def test_records_successful_write_with_run_context() -> None:
     assert len(audit.records) == 1
     record = audit.records[0]
     assert record.tool == "create_task"
-    assert record.integration == "followupboss"
+    assert record.integration == "fake-crm"
     assert record.outcome is MutationOutcome.SUCCESS
     assert record.external_id == "task-1"
     assert record.workflow_run_id == "run-7"
@@ -115,10 +115,10 @@ async def test_records_successful_write_with_run_context() -> None:
 
 async def test_records_failure_and_reraises() -> None:
     audit = CollectingAuditLog()
-    crm = RecordingCRM(FakeCRM(fail=True), audit)
+    crm = RecordingCRM(FakeCRM(fail=True), audit, integration="fake-crm")
     with audit_scope(AuditContext(workflow_run_id="run-9", workflow="listing_to_contract")):
         with pytest.raises(RuntimeError, match="FUB rejected"):
-            await crm.create_task("Order signage")
+            await crm.create_task("Order signage", due_date=date(2026, 7, 1))
 
     assert len(audit.records) == 1
     record = audit.records[0]
@@ -129,7 +129,7 @@ async def test_records_failure_and_reraises() -> None:
 
 async def test_reads_are_not_recorded() -> None:
     audit = CollectingAuditLog()
-    crm = RecordingCRM(FakeCRM(), audit)
+    crm = RecordingCRM(FakeCRM(), audit, integration="fake-crm")
     with audit_scope(AuditContext(workflow_run_id="run-1", workflow="x")):
         await crm.get_contact("c-1")
         await crm.search_contacts("q")
@@ -149,7 +149,7 @@ async def test_voice_call_is_recorded() -> None:
 
 async def test_write_outside_a_run_records_with_empty_context() -> None:
     audit = CollectingAuditLog()
-    crm = RecordingCRM(FakeCRM(), audit)
-    await crm.create_task("Loose write")
+    crm = RecordingCRM(FakeCRM(), audit, integration="fake-crm")
+    await crm.create_task("Loose write", due_date=date(2026, 7, 1))
     assert audit.records[0].workflow_run_id == ""
     assert audit.records[0].approval_id is None

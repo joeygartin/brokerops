@@ -62,7 +62,7 @@ def _stub_crm() -> FUBCRMAdapter:
 
 audit_log = InMemoryAuditLog()
 repo = InMemoryApprovalRepo()
-recording_crm = RecordingCRM(_stub_crm(), audit_log)
+recording_crm = RecordingCRM(_stub_crm(), audit_log, integration="followupboss")
 engine = LangGraphWorkflowEngine(
     {
         "listing_to_contract": build_listing_to_contract(

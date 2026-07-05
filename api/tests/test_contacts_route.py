@@ -33,7 +33,7 @@ def test_search_contacts_via_port() -> None:
     response = client.get("/contacts", params={"q": "jordan"})
     assert response.status_code == 200
     contacts = response.json()
-    assert [c["fub_id"] for c in contacts] == ["101"]
+    assert [c["crm_id"] for c in contacts] == ["101"]
     assert contacts[0]["name"] == "Jordan Pike"
 
 
