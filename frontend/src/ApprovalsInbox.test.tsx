@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import type { ApprovalRequest } from "./client";
 import type { Role } from "./roles";
+import { renderWithClient } from "./test/renderWithClient";
 
 // Control the operator's role per-test and stub the data fetch. Both modules
 // are hoisted mocks so ApprovalsInbox picks them up at import time. The
@@ -102,7 +103,7 @@ afterEach(() => {
 describe("Outbound-message card (approve_outbound_message)", () => {
   it("shows recipient, channel, and an editable draft body", async () => {
     mockInbox([OUTBOUND_MESSAGE_APPROVAL]);
-    render(<ApprovalsInbox />);
+    renderWithClient(<ApprovalsInbox />);
 
     expect(
       await screen.findByText("Approve outbound email — jordan@example.test"),
@@ -115,7 +116,7 @@ describe("Outbound-message card (approve_outbound_message)", () => {
 
   it("sends the edited body as edited_payload on approve", async () => {
     mockInbox([OUTBOUND_MESSAGE_APPROVAL]);
-    render(<ApprovalsInbox />);
+    renderWithClient(<ApprovalsInbox />);
 
     const body = await screen.findByLabelText("Draft body");
     fireEvent.change(body, { target: { value: "Edited before send." } });
@@ -137,7 +138,7 @@ describe("Outbound-message card (approve_outbound_message)", () => {
 
   it("omits edited_payload when the body is untouched or on reject", async () => {
     mockInbox([OUTBOUND_MESSAGE_APPROVAL]);
-    render(<ApprovalsInbox />);
+    renderWithClient(<ApprovalsInbox />);
 
     const body = await screen.findByLabelText("Draft body");
     fireEvent.change(body, { target: { value: "Would-be edit, then rejected." } });
@@ -154,7 +155,7 @@ describe("Outbound-message card (approve_outbound_message)", () => {
 
   it("blocks approve while the draft body is emptied, with a hint", async () => {
     mockInbox([OUTBOUND_MESSAGE_APPROVAL]);
-    render(<ApprovalsInbox />);
+    renderWithClient(<ApprovalsInbox />);
 
     const body = await screen.findByLabelText("Draft body");
     const approve = screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement;
@@ -176,7 +177,7 @@ describe("Outbound-message card (approve_outbound_message)", () => {
   it("renders the draft read-only for a non-admin", async () => {
     roleState.role = "operator";
     mockInbox([OUTBOUND_MESSAGE_APPROVAL]);
-    render(<ApprovalsInbox />);
+    renderWithClient(<ApprovalsInbox />);
 
     const body = (await screen.findByLabelText("Draft body")) as HTMLTextAreaElement;
     expect(body.readOnly).toBe(true);
@@ -187,7 +188,7 @@ describe("Outbound-message card (approve_outbound_message)", () => {
 describe("ApprovalsInbox role gating", () => {
   it("shows Approve/Reject to an admin", async () => {
     roleState.role = "admin";
-    render(<ApprovalsInbox />);
+    renderWithClient(<ApprovalsInbox />);
 
     expect(await screen.findByRole("button", { name: "Approve" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reject" })).toBeInTheDocument();
@@ -196,7 +197,7 @@ describe("ApprovalsInbox role gating", () => {
 
   it("hides the decision controls from a non-admin operator", async () => {
     roleState.role = "operator";
-    render(<ApprovalsInbox />);
+    renderWithClient(<ApprovalsInbox />);
 
     // The card renders (subject present) but the controls are replaced.
     await waitFor(() => expect(screen.getByText(/Approve marketing/)).toBeInTheDocument());

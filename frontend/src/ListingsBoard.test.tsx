@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import type { Listing } from "./client";
 import type { Role } from "./roles";
+import { renderWithClient } from "./test/renderWithClient";
 
 const roleState = vi.hoisted(() => ({ role: "operator" as Role }));
 const RANK: Record<Role, number> = { viewer: 0, operator: 1, admin: 2 };
@@ -59,7 +60,7 @@ afterEach(() => {
 describe("ListingsBoard role gating", () => {
   it("shows the workflow controls to an operator on an active listing", async () => {
     roleState.role = "operator";
-    render(<ListingsBoard />);
+    renderWithClient(<ListingsBoard />);
 
     expect(
       await screen.findByRole("button", { name: "Start marketing workflow" }),
@@ -69,7 +70,7 @@ describe("ListingsBoard role gating", () => {
 
   it("hides the workflow controls from a viewer", async () => {
     roleState.role = "viewer";
-    render(<ListingsBoard />);
+    renderWithClient(<ListingsBoard />);
 
     // The card still renders (address present) — only the action row is gated.
     await waitFor(() => expect(screen.getByText("1 Sunny St")).toBeInTheDocument());

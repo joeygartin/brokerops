@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AuthProvider, useAuth } from "./authContext";
 import { setToken } from "./auth";
+import { queryKeys } from "./hooks/keys";
 import type { Role } from "./roles";
 
 const fetchMock = vi.fn();
@@ -41,10 +43,13 @@ function RoleProbe() {
 }
 
 function renderProvider() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <AuthProvider>
-      <RoleProbe />
-    </AuthProvider>,
+    <QueryClientProvider client={client}>
+      <AuthProvider>
+        <RoleProbe />
+      </AuthProvider>
+    </QueryClientProvider>,
   );
 }
 
@@ -107,5 +112,45 @@ describe("AuthProvider", () => {
     await waitFor(() => expect(screen.getByText("Sign in to continue")).toBeInTheDocument());
     // The gated children never mounted.
     expect(screen.queryByTestId("role")).not.toBeInTheDocument();
+  });
+
+  // Regression (BOP-024/ADR-0022): the QueryClient outlives a session, so signing
+  // out must wipe cached server state — otherwise the next login on the same
+  // browser could render the prior operator's data before it refetches.
+  it("clears cached server state on sign-out so a later login can't see it", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    // Seed the cache as the prior (admin) session would have.
+    client.setQueryData(queryKeys.approvals, [{ id: "prior-session-approval" }]);
+
+    setToken("session.jwt");
+    routeFetch({ enabled: true, methods: ["magic"], client_id: null }, {
+      email: "a@example.com",
+      role: "admin",
+    });
+
+    function SignOutProbe() {
+      const { role, signOut } = useAuth();
+      return (
+        <div>
+          <span data-testid="role">{role ?? "—"}</span>
+          <button onClick={signOut}>Sign out</button>
+        </div>
+      );
+    }
+
+    render(
+      <QueryClientProvider client={client}>
+        <AuthProvider>
+          <SignOutProbe />
+        </AuthProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("role")).toHaveTextContent("admin"));
+    expect(client.getQueryData(queryKeys.approvals)).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+
+    await waitFor(() => expect(client.getQueryData(queryKeys.approvals)).toBeUndefined());
   });
 });

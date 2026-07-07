@@ -1,15 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
-import { unwrap } from "./api";
+import { useState } from "react";
 import { useAuth } from "./authContext";
 import {
-  attachDocumentTransactionsTransactionIdDocumentsPost,
   DocumentKind,
-  listFilesFilesGet,
   type Document,
-  type FileRef,
   type MilestoneView,
   type Transaction,
 } from "./client";
+import { useAttachDocument, useFolderFiles } from "./hooks/transactions";
 
 // The Documents tab on a transaction card (BOP-021): list what's attached,
 // open it in the file store's own viewer, and (operators and up) attach a file
@@ -29,58 +26,42 @@ export default function TransactionDocuments({
   transaction,
   documents,
   milestones,
-  onChanged,
 }: {
   transaction: Transaction;
   documents: Document[];
   milestones: MilestoneView[];
-  onChanged: () => void;
 }) {
   const { hasRole } = useAuth();
-  const [folderFiles, setFolderFiles] = useState<FileRef[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState("");
   const [kind, setKind] = useState<DocumentKind>("other");
   const [milestoneId, setMilestoneId] = useState("");
-  const [attaching, setAttaching] = useState(false);
 
   const canAttach = hasRole("operator");
-
-  const loadFolder = useCallback(() => {
-    listFilesFilesGet({ query: { folder: transaction.listing_key } })
-      .then((result) => setFolderFiles(unwrap(result)))
-      .catch((cause) => setError(String(cause)));
-  }, [transaction.listing_key]);
-
-  useEffect(() => {
-    if (canAttach) loadFolder();
-  }, [canAttach, loadFolder]);
+  const folderQuery = useFolderFiles(transaction.listing_key, { enabled: canAttach });
+  const attachMutation = useAttachDocument();
+  const attaching = attachMutation.isPending;
+  // The folder load and the attach POST can each fail; surface whichever did.
+  const error = folderQuery.error ?? attachMutation.error;
 
   const attach = async () => {
     if (!selectedFile) return;
-    setAttaching(true);
-    setError(null);
     try {
-      unwrap(
-        await attachDocumentTransactionsTransactionIdDocumentsPost({
-          path: { transaction_id: transaction.id },
-          body: {
-            file_id: selectedFile,
-            kind,
-            milestone_id: milestoneId || null,
-          },
-        }),
-      );
+      await attachMutation.mutateAsync({
+        transactionId: transaction.id,
+        body: { file_id: selectedFile, kind, milestone_id: milestoneId || null },
+      });
+      // The mutation invalidated the transactions query — the board (and this
+      // card) re-render with the new document; just reset the form.
       setSelectedFile("");
       setMilestoneId("");
-      onChanged();
-    } catch (cause) {
-      setError(String(cause));
-    } finally {
-      setAttaching(false);
+    } catch {
+      // Rendered from attachMutation.error below.
     }
   };
 
+  // `enabled` keeps the query idle for viewers, so `data` is undefined until the
+  // operator's folder load resolves — mirror the old "Loading folder…" gate.
+  const folderFiles = folderQuery.data ?? null;
   const attachedIds = new Set(documents.map((d) => d.file.file_id));
   const attachable = (folderFiles ?? []).filter((f) => !attachedIds.has(f.file_id));
 
@@ -202,7 +183,7 @@ export default function TransactionDocuments({
           </button>
         </div>
       )}
-      {error && <p style={{ color: "#cf222e", fontSize: "0.85rem" }}>{error}</p>}
+      {error && <p style={{ color: "#cf222e", fontSize: "0.85rem" }}>{String(error)}</p>}
     </div>
   );
 }

@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
-import { unwrap } from "./api";
-import { listMutationsAuditGet, type MutationRecord } from "./client";
+import { useState } from "react";
+import { type MutationRecord } from "./client";
+import { useMutations } from "./hooks/audit";
 
 const INTEGRATION_LABELS: Record<string, string> = {
   followupboss: "FollowUpBoss",
@@ -75,17 +75,8 @@ function MutationRow({ record }: { record: MutationRecord }) {
 }
 
 export default function AuditTrail() {
-  const [records, setRecords] = useState<MutationRecord[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [runFilter, setRunFilter] = useState("");
-
-  const refresh = useCallback(() => {
-    listMutationsAuditGet({ query: { workflow_run_id: runFilter.trim() || undefined } })
-      .then((result) => setRecords(unwrap(result)))
-      .catch((cause) => setError(String(cause)));
-  }, [runFilter]);
-
-  useEffect(refresh, [refresh]);
+  const { data: records = [], error, isPending, refetch } = useMutations(runFilter);
 
   return (
     <>
@@ -104,7 +95,7 @@ export default function AuditTrail() {
           }}
         />
         <button
-          onClick={refresh}
+          onClick={() => refetch()}
           style={{
             padding: "0.4rem 1.1rem",
             borderRadius: 6,
@@ -116,8 +107,10 @@ export default function AuditTrail() {
           Refresh
         </button>
       </div>
-      {error && <p style={{ textAlign: "center", color: "#cf222e" }}>{error}</p>}
-      {records.length === 0 ? (
+      {error && <p style={{ textAlign: "center", color: "#cf222e" }}>{String(error)}</p>}
+      {isPending ? (
+        <p style={{ textAlign: "center", color: "#57606a" }}>Loading audit trail…</p>
+      ) : records.length === 0 ? (
         <p style={{ textAlign: "center", color: "#57606a" }}>
           No recorded actions yet. Approve a workflow to see its CRM writes here.
         </p>

@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Document, FileRef, MilestoneView, Transaction } from "./client";
 import type { Role } from "./roles";
+import { renderWithClient } from "./test/renderWithClient";
 
 const roleState = vi.hoisted(() => ({ role: "operator" as Role }));
 const RANK: Record<Role, number> = { viewer: 0, operator: 1, admin: 2 };
@@ -98,13 +99,8 @@ afterEach(() => {
 
 describe("TransactionDocuments", () => {
   it("lists attached documents with an open link", async () => {
-    render(
-      <TransactionDocuments
-        transaction={TXN}
-        documents={[ATTACHED]}
-        milestones={[MILESTONE]}
-        onChanged={() => {}}
-      />,
+    renderWithClient(
+      <TransactionDocuments transaction={TXN} documents={[ATTACHED]} milestones={[MILESTONE]} />,
     );
     // let the on-mount folder browse settle before asserting
     await screen.findByRole("combobox", { name: "File to attach" });
@@ -116,14 +112,8 @@ describe("TransactionDocuments", () => {
   });
 
   it("shows the attach controls to an operator and posts the attachment", async () => {
-    const onChanged = vi.fn();
-    render(
-      <TransactionDocuments
-        transaction={TXN}
-        documents={[]}
-        milestones={[MILESTONE]}
-        onChanged={onChanged}
-      />,
+    renderWithClient(
+      <TransactionDocuments transaction={TXN} documents={[]} milestones={[MILESTONE]} />,
     );
 
     // folder is browsed via the transaction's listing key
@@ -148,11 +138,14 @@ describe("TransactionDocuments", () => {
     );
     await user.click(screen.getByRole("button", { name: "Attach" }));
 
-    await waitFor(() => expect(onChanged).toHaveBeenCalled());
-    const attach = apiFetchMock.mock.calls
-      .map(([request]) => request as Request)
-      .find((request) => request.url.endsWith("/transactions/TXN-1001/documents"));
-    expect(attach).toBeDefined();
+    // The attach mutation now invalidates the transactions query instead of
+    // calling an onChanged prop; assert the POST landed with the right body.
+    const findAttach = () =>
+      apiFetchMock.mock.calls
+        .map(([request]) => request as Request)
+        .find((request) => request.url.endsWith("/transactions/TXN-1001/documents"));
+    await waitFor(() => expect(findAttach()).toBeDefined());
+    const attach = findAttach();
     expect(attach?.method).toBe("POST");
     expect(await attach?.clone().json()).toEqual({
       file_id: "drive-0004",
@@ -162,15 +155,13 @@ describe("TransactionDocuments", () => {
   });
 
   it("already-attached files are not offered again", async () => {
-    render(
-      <TransactionDocuments
-        transaction={TXN}
-        documents={[ATTACHED]}
-        milestones={[MILESTONE]}
-        onChanged={() => {}}
-      />,
+    renderWithClient(
+      <TransactionDocuments transaction={TXN} documents={[ATTACHED]} milestones={[MILESTONE]} />,
     );
     const select = await screen.findByRole("combobox", { name: "File to attach" });
+    // Wait for the folder browse to resolve (the option list starts as a single
+    // "Loading folder…" placeholder before the query settles).
+    await screen.findByRole("option", { name: "Home inspection report.pdf" });
     const names = Array.from(select.querySelectorAll("option")).map((o) => o.textContent);
     expect(names).toContain("Home inspection report.pdf");
     expect(names).not.toContain("Purchase agreement.pdf"); // already attached
@@ -178,13 +169,8 @@ describe("TransactionDocuments", () => {
 
   it("hides the attach controls from a viewer (list stays visible)", () => {
     roleState.role = "viewer";
-    render(
-      <TransactionDocuments
-        transaction={TXN}
-        documents={[ATTACHED]}
-        milestones={[MILESTONE]}
-        onChanged={() => {}}
-      />,
+    renderWithClient(
+      <TransactionDocuments transaction={TXN} documents={[ATTACHED]} milestones={[MILESTONE]} />,
     );
     expect(screen.getByText("Purchase agreement.pdf")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Attach" })).not.toBeInTheDocument();

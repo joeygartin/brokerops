@@ -1,12 +1,7 @@
-import { useEffect, useState } from "react";
-import { unwrap } from "./api";
+import { useState } from "react";
 import { useAuth } from "./authContext";
-import {
-  searchListingsListingsGet,
-  startListingToContractWorkflowsListingToContractStartPost,
-  startOutboundCallCallsOutboundPost,
-  type Listing,
-} from "./client";
+import { type Listing } from "./client";
+import { useListings, useStartListingWorkflow, useStartOutboundCall } from "./hooks/listings";
 
 const price = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -29,18 +24,15 @@ function ListingCard({
   listing: Listing;
   onStarted: (message: string) => void;
 }) {
-  const [starting, setStarting] = useState(false);
-  const [calling, setCalling] = useState(false);
   const { hasRole } = useAuth();
+  const startWorkflowMutation = useStartListingWorkflow();
+  const startCallMutation = useStartOutboundCall();
+  const starting = startWorkflowMutation.isPending;
+  const calling = startCallMutation.isPending;
 
   const startWorkflow = async () => {
-    setStarting(true);
     try {
-      const result = unwrap(
-        await startListingToContractWorkflowsListingToContractStartPost({
-          body: { listing_key: listing.mls_id },
-        }),
-      );
+      const result = await startWorkflowMutation.mutateAsync(listing.mls_id);
       onStarted(
         result.status === "awaiting_approval"
           ? `${listing.mls_id}: marketing draft is waiting in the Approvals inbox.`
@@ -48,27 +40,21 @@ function ListingCard({
       );
     } catch (cause) {
       onStarted(`${listing.mls_id}: failed to start workflow — ${String(cause)}`);
-    } finally {
-      setStarting(false);
     }
   };
 
   const startFeedbackCall = async () => {
-    setCalling(true);
     try {
-      const result = unwrap(
-        await startOutboundCallCallsOutboundPost({
-          body: { listing_key: listing.mls_id, contact_id: DEMO_FEEDBACK_CONTACT },
-        }),
-      );
+      const result = await startCallMutation.mutateAsync({
+        listingKey: listing.mls_id,
+        contactId: DEMO_FEEDBACK_CONTACT,
+      });
       onStarted(
         `${listing.mls_id}: feedback call ${result.call_id} placed — the transcript lands as a ` +
           `CRM note (check Approvals if the buyer is hot).`,
       );
     } catch (cause) {
       onStarted(`${listing.mls_id}: failed to place call — ${String(cause)}`);
-    } finally {
-      setCalling(false);
     }
   };
 
@@ -145,22 +131,19 @@ function ListingCard({
 }
 
 export default function ListingsBoard() {
-  const [listings, setListings] = useState<Listing[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const { data: listings = [], error, isPending } = useListings();
   const [notice, setNotice] = useState<string | null>(null);
-
-  useEffect(() => {
-    searchListingsListingsGet()
-      .then((result) => setListings(unwrap(result)))
-      .catch((cause) => setError(String(cause)));
-  }, []);
 
   return (
     <>
       {error && (
         <p style={{ textAlign: "center", color: "#cf222e" }}>
-          Could not load listings: {error} — is the api running on :8000?
+          Could not load listings: {String(error)} — is the api running on :8000?
         </p>
+      )}
+      {isPending && <p style={{ textAlign: "center", color: "#57606a" }}>Loading listings…</p>}
+      {!isPending && !error && listings.length === 0 && (
+        <p style={{ textAlign: "center", color: "#57606a" }}>No listings found.</p>
       )}
       {notice && (
         <p

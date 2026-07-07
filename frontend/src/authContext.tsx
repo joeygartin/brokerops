@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import {
   createContext,
   useCallback,
@@ -79,6 +80,12 @@ export function useAuth(): AuthState {
 type Phase = "loading" | "demo" | "login" | "ready";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  // The QueryClient lives above this provider (main.tsx) and outlives any single
+  // session, so its cache of protected server state (listings, transactions,
+  // approvals, audit, folder files) must be wiped whenever the session ends —
+  // otherwise a later login on the same browser could render the prior
+  // operator's cached data before it refetches (BOP-024/ADR-0022).
+  const queryClient = useQueryClient();
   const [phase, setPhase] = useState<Phase>("loading");
   const [config, setConfig] = useState<AuthConfig | null>(null);
   const [email, setEmail] = useState<string | null>(null);
@@ -101,16 +108,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(() => {
     clearSession();
+    queryClient.clear();
     setEmail(null);
     setRole(null);
     window.google?.accounts.id.disableAutoSelect();
     setPhase("login");
-  }, []);
+  }, [queryClient]);
 
   // Bootstrap: read /auth/config, then either run open (demo), complete a magic
   // callback, resume a stored session, or show the sign-in screen.
   useEffect(() => {
     setUnauthorizedHandler(() => {
+      queryClient.clear();
       setEmail(null);
       setRole(null);
       setPhase("login");
@@ -143,7 +152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .catch((cause) => setError(String(cause)));
     return () => setUnauthorizedHandler(null);
-  }, [loadMe]);
+  }, [loadMe, queryClient]);
 
   const submitMagic = useCallback(
     async (event: FormEvent) => {

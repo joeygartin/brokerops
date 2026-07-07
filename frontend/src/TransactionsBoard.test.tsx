@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { TransactionDetail } from "./client";
 import type { Role } from "./roles";
+import { renderWithClient } from "./test/renderWithClient";
 
 const roleState = vi.hoisted(() => ({ role: "operator" as Role }));
 const RANK: Record<Role, number> = { viewer: 0, operator: 1, admin: 2 };
@@ -106,7 +107,7 @@ afterEach(() => {
 
 describe("TransactionsBoard documents tie-in", () => {
   it("flags a milestone whose expected document is missing", async () => {
-    render(<TransactionsBoard />);
+    renderWithClient(<TransactionsBoard />);
     expect(await screen.findByText("📄 needs inspection report")).toBeInTheDocument();
     // a milestone with no expectation gets no badge
     expect(screen.queryByText(/needs closing/)).not.toBeInTheDocument();
@@ -124,12 +125,12 @@ describe("TransactionsBoard documents tie-in", () => {
       if (request.url.includes("/files?")) return Promise.resolve(json([]));
       return Promise.resolve(json([satisfied]));
     });
-    render(<TransactionsBoard />);
+    renderWithClient(<TransactionsBoard />);
     expect(await screen.findByText("📄 doc attached")).toBeInTheDocument();
   });
 
   it("switches the card to the Documents tab", async () => {
-    render(<TransactionsBoard />);
+    renderWithClient(<TransactionsBoard />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Documents (1)" }));
     expect(screen.getByText("Purchase agreement.pdf")).toBeInTheDocument();

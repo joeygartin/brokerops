@@ -1,13 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
-import { unwrap } from "./api";
-import { API_BASE } from "./auth";
+import { useState } from "react";
 import TransactionDocuments from "./TransactionDocuments";
-import {
-  listTransactionsTransactionsGet,
-  seedDemoDataDemoSeedPost,
-  type MilestoneView,
-  type TransactionDetail,
-} from "./client";
+import { type MilestoneView, type TransactionDetail } from "./client";
+import { useRunMilestoneCron, useSeedDemo, useTransactions } from "./hooks/transactions";
 
 const CLASS_STYLES: Record<string, { color: string; background: string; label: string }> = {
   overdue: { color: "#fff", background: "#cf222e", label: "OVERDUE" },
@@ -74,49 +68,27 @@ function MilestoneRow({ milestone }: { milestone: MilestoneView }) {
 }
 
 export default function TransactionsBoard() {
-  const [details, setDetails] = useState<TransactionDetail[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const { data: details = [], error, isPending } = useTransactions();
   const [notice, setNotice] = useState<string | null>(null);
-  const [running, setRunning] = useState(false);
-
-  const refresh = useCallback(() => {
-    listTransactionsTransactionsGet()
-      .then((result) => setDetails(unwrap(result)))
-      .catch((cause) => setError(String(cause)));
-  }, []);
-
-  useEffect(refresh, [refresh]);
+  const seedMutation = useSeedDemo();
+  const cronMutation = useRunMilestoneCron();
+  const running = cronMutation.isPending;
 
   const seed = async () => {
-    await seedDemoDataDemoSeedPost();
-    refresh();
+    await seedMutation.mutateAsync();
   };
 
   const runCron = async () => {
-    setRunning(true);
     try {
-      // Deliberately plain fetch, not the generated client: /internal/cron is
-      // gated by X-Cron-Key (not the bearer), and a 401 from it must not trip
-      // apiFetch's refresh/sign-out path — it isn't a session problem. Its
-      // response is an open dict on the wire, so the summary type stays local.
-      const response = await fetch(`${API_BASE}/internal/cron/milestones`, { method: "POST" });
-      if (!response.ok) throw new Error(`api returned ${response.status}`);
-      const summary = (await response.json()) as {
-        checked: number;
-        skipped_pending_escalation: number;
-        results: { transaction_id: string; status: string; outcome: string | null }[];
-      };
+      const summary = await cronMutation.mutateAsync();
       const escalations = summary.results.filter((r) => r.status === "awaiting_approval").length;
       setNotice(
         `Milestone check: ${summary.checked} transaction(s) checked, ` +
           `${escalations} escalation(s) waiting in Approvals, ` +
           `${summary.skipped_pending_escalation} skipped (already pending).`,
       );
-      refresh();
     } catch (cause) {
       setNotice(`Cron run failed: ${String(cause)}`);
-    } finally {
-      setRunning(false);
     }
   };
 
@@ -152,7 +124,7 @@ export default function TransactionsBoard() {
           </button>
         )}
       </div>
-      {error && <p style={{ textAlign: "center", color: "#cf222e" }}>{error}</p>}
+      {error && <p style={{ textAlign: "center", color: "#cf222e" }}>{String(error)}</p>}
       {notice && (
         <p
           style={{
@@ -168,20 +140,22 @@ export default function TransactionsBoard() {
           {notice}
         </p>
       )}
+      {isPending && (
+        <p style={{ textAlign: "center", color: "#57606a" }}>Loading transactions…</p>
+      )}
+      {!isPending && !error && details.length === 0 && (
+        <p style={{ textAlign: "center", color: "#57606a" }}>
+          No transactions yet. Seed the demo data to get started.
+        </p>
+      )}
       {details.map((detail) => (
-        <TransactionCard key={detail.transaction.id} detail={detail} onChanged={refresh} />
+        <TransactionCard key={detail.transaction.id} detail={detail} />
       ))}
     </>
   );
 }
 
-function TransactionCard({
-  detail,
-  onChanged,
-}: {
-  detail: TransactionDetail;
-  onChanged: () => void;
-}) {
+function TransactionCard({ detail }: { detail: TransactionDetail }) {
   const { transaction, milestones, documents } = detail;
   const [view, setView] = useState<"timeline" | "documents">("timeline");
 
@@ -248,7 +222,6 @@ function TransactionCard({
           transaction={transaction}
           documents={documents}
           milestones={milestones}
-          onChanged={onChanged}
         />
       )}
     </article>

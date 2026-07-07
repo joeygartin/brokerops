@@ -1,11 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
-import { unwrap } from "./api";
+import { useState } from "react";
 import { useAuth } from "./authContext";
-import {
-  decideApprovalApprovalsApprovalIdDecidePost,
-  listApprovalsApprovalsGet,
-  type ApprovalRequest,
-} from "./client";
+import { type ApprovalRequest } from "./client";
+import { useApprovals, useDecideApproval } from "./hooks/approvals";
 
 // The backend deliberately types ApprovalRequest.payload as an open dict — the
 // HITL spine carries every approval kind through one model, discriminated by
@@ -184,8 +180,9 @@ function ApprovalCard({
   approval: ApprovalRequest;
   onDecided: (message: string) => void;
 }) {
-  const [busy, setBusy] = useState(false);
   const { hasRole } = useAuth();
+  const decideMutation = useDecideApproval();
+  const busy = decideMutation.isPending;
   const payload = payloadOf(approval);
   const isEscalation = approval.kind === "approve_escalation";
   const isHotLead = approval.kind === "notify_agent";
@@ -205,18 +202,15 @@ function ApprovalCard({
         : `Approve marketing — ${payload.listing_key}`;
 
   const decide = async (decision: "approved" | "rejected") => {
-    setBusy(true);
     const editedPayload =
       isOutboundMessage && decision === "approved" && editedBody !== (payload.body ?? "")
         ? { body: editedBody }
         : undefined;
     try {
-      const outcome = unwrap(
-        await decideApprovalApprovalsApprovalIdDecidePost({
-          path: { approval_id: approval.id },
-          body: editedPayload ? { decision, edited_payload: editedPayload } : { decision },
-        }),
-      );
+      const outcome = await decideMutation.mutateAsync({
+        approvalId: approval.id,
+        body: editedPayload ? { decision, edited_payload: editedPayload } : { decision },
+      });
       // The workflow output is an open dict on the wire (engine-specific), so
       // the task-count view of it stays a local cast.
       const output = outcome.workflow.output as
@@ -240,8 +234,6 @@ function ApprovalCard({
       );
     } catch (cause) {
       onDecided(`Failed to decide ${approval.id}: ${String(cause)}`);
-    } finally {
-      setBusy(false);
     }
   };
 
@@ -318,26 +310,16 @@ function ApprovalCard({
 }
 
 export default function ApprovalsInbox() {
-  const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const { data: approvals = [], error, isPending } = useApprovals();
   const [notice, setNotice] = useState<string | null>(null);
 
-  const refresh = useCallback(() => {
-    listApprovalsApprovalsGet()
-      .then((result) => setApprovals(unwrap(result)))
-      .catch((cause) => setError(String(cause)));
-  }, []);
-
-  useEffect(refresh, [refresh]);
-
-  const handleDecided = (message: string) => {
-    setNotice(message);
-    refresh();
-  };
+  // The decide mutation invalidates the approvals query, so a decision refreshes
+  // the inbox without a manual refetch here — this just surfaces the outcome.
+  const handleDecided = (message: string) => setNotice(message);
 
   return (
     <>
-      {error && <p style={{ textAlign: "center", color: "#cf222e" }}>{error}</p>}
+      {error && <p style={{ textAlign: "center", color: "#cf222e" }}>{String(error)}</p>}
       {notice && (
         <p
           style={{
@@ -353,7 +335,9 @@ export default function ApprovalsInbox() {
           {notice}
         </p>
       )}
-      {approvals.length === 0 ? (
+      {isPending ? (
+        <p style={{ textAlign: "center", color: "#57606a" }}>Loading approvals…</p>
+      ) : approvals.length === 0 ? (
         <p style={{ textAlign: "center", color: "#57606a" }}>
           No pending approvals. Start a marketing workflow from the Listings tab.
         </p>
