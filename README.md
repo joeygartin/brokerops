@@ -247,6 +247,22 @@ Operator sessions refresh without re-login (ADR-0013): the request bearer is a
 short-lived access JWT (1h) and login also issues a refresh token (24h) the SPA
 exchanges silently on expiry, re-checking the allowlist and role each time — so a
 revoked operator loses access within the hour and a leaked token stays bounded.
+A capability-security layer wraps the engine tool seam in both directions: every
+tenant-bearing tool *input* is authorized at the entry point (BOP-011), and every
+tool *response* is scanned before it leaves the boundary (BOP-012) — a foreign-tenant
+identifier blocks the whole response fail-closed, secret-shaped values and
+role-restricted PII redact in place, and the rules are data, so a new tool cannot ship
+unguarded. A comms wave followed: outbound email and SMS behind dedicated ports
+(ADR-0015, ADR-0017) with SES, SendGrid, and Twilio adapters, a draft-and-send flow
+that routes generated copy through the approval inbox, and a PydanticAI drafting backend
+behind the same explicit selector as extraction — with an outbound egress gate that
+DLP-scrubs every message both when a draft is persisted for approval and immediately
+before send (ADR-0020). The CRM port widened to a second vendor selectable by
+`CRM_VENDOR` (ADR-0016), a files port fronts document storage (Google Drive), and the
+React app consumes a TypeScript API client generated from the OpenAPI schema — contract
+drift fails CI (ADR-0018). The orchestrator collapsed to a single LangGraph engine: the
+second engine that once proved the `WorkflowEngine` seam was removed once portability was
+evidenced, the seam retained (ADR-0019, superseding ADR-0004).
 
 **Next, in rough order — each lands when a demo- or client-path justifies it,
 never speculatively:**
