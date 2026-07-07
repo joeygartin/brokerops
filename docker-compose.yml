@@ -108,8 +108,10 @@ services:
       # delivery-status webhook fails closed without TWILIO_AUTH_TOKEN, so
       # compose defaults a demo signing token (the VAPI_WEBHOOK_SECRET pattern).
       SMS_PROVIDER: ${SMS_PROVIDER:-}
-      # Outbound-message drafting (BOP-019): explicit closed selector. Unset =
-      # deterministic template rendering; llm fails loud until BOP-020.
+      # Outbound-message drafting (BOP-019/020): explicit closed selector —
+      # deterministic | pydantic_ai. Unset = deterministic template rendering
+      # (zero-credential demo); pydantic_ai is the LLM backend (ADR-0020), reuses
+      # LLM_API_KEY/LLM_MODEL and is egress-gated on the channel seams at wiring.
       DRAFTING_BACKEND: ${DRAFTING_BACKEND:-}
       SMS_BASE_URL: ${SMS_BASE_URL:-}
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}

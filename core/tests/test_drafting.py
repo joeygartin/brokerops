@@ -12,6 +12,7 @@ from brokerops_core.models.contact import Contact
 from brokerops_core.models.drafting import (
     EDITED_BODY_MAX_CHARS,
     DraftContext,
+    DraftedMessage,
     EditedMessagePayload,
 )
 from brokerops_core.models.message import STATUS_RANK, Message, MessageChannel, MessageStatus
@@ -210,6 +211,68 @@ async def test_draft_replay_within_a_run_returns_the_original_row() -> None:
         again = await service.draft_for_approval(_context())
     assert first.id == again.id
     assert len(store.rows) == 1
+
+
+async def test_nondeterministic_backend_replay_reuses_the_row_without_redrafting() -> None:
+    # BOP-020: an LLM backend returns different copy each call. The draft row's id
+    # is keyed off the DraftContext (not the generated text) and the existing-row
+    # check runs before the backend, so a replay must reuse the first draft AND not
+    # invoke the backend again — otherwise fresh copy would mint a second approval
+    # card with a new id.
+    class DriftingDrafter:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def draft(self, context: DraftContext) -> "DraftedMessage":
+            self.calls += 1
+            return DraftedMessage(
+                channel=context.channel,
+                recipient=context.recipient,
+                subject=f"Draft #{self.calls}",
+                body=f"Body version {self.calls}",
+                template_ref=context.template_ref,
+                contact_id=context.contact_id,
+                listing_key=context.listing_key,
+            )
+
+    drafter = DriftingDrafter()
+    store = DictMessageStore()
+    service = MessageSendService(email=CountingEmail(), store=store, drafting=drafter)
+    run = AuditContext(workflow_run_id="run-drift", workflow="vapi_followup")
+    with audit_scope(run):
+        first = await service.draft_for_approval(_context())
+        again = await service.draft_for_approval(_context())
+    assert first.id == again.id
+    assert again.body == first.body  # the reused row, not regenerated copy
+    assert drafter.calls == 1  # the backend ran once; replay short-circuited before it
+    assert len(store.rows) == 1
+
+
+async def test_drafted_pending_row_is_dlp_scrubbed_before_the_card_reads_it() -> None:
+    # BOP-020: a credential an LLM backend leaks into generated copy must not survive
+    # into the persisted PENDING_APPROVAL row — the approval card reads that row, and
+    # BOP-012 redacts secret shapes on any egress (role-independent). Scrub is at
+    # draft time, not only at send.
+    class LeakyDrafter:
+        async def draft(self, context: DraftContext) -> DraftedMessage:
+            return DraftedMessage(
+                channel=context.channel,
+                recipient=context.recipient,
+                subject="Follow-up",
+                body="Thanks for visiting! (debug token sk-ABCDEF0123456789XYZ)",
+                template_ref=context.template_ref,
+                contact_id=context.contact_id,
+                listing_key=context.listing_key,
+            )
+
+    store = DictMessageStore()
+    service = MessageSendService(email=CountingEmail(), store=store, drafting=LeakyDrafter())
+    message = await service.draft_for_approval(_context())
+    assert message.status is MessageStatus.PENDING_APPROVAL
+    # The persisted row the approval card reads is already redacted — nothing sent yet.
+    assert "sk-ABCDEF0123456789XYZ" not in store.rows[message.id].body
+    assert "[redacted:secret]" in store.rows[message.id].body
+    assert message.recipient == "sam@example.com"  # routing PII kept at the OPERATOR tier
 
 
 async def test_draft_requires_a_drafting_backend() -> None:

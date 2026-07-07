@@ -43,6 +43,7 @@ jobs:
           integrations/google_drive/src integrations/google_drive/tests
           integrations/google_oidc/src integrations/google_oidc/tests
           integrations/llm_extraction/src integrations/llm_extraction/tests
+          integrations/pydantic_ai_drafting/src integrations/pydantic_ai_drafting/tests
           integrations/pydantic_ai_extraction/src integrations/pydantic_ai_extraction/tests
           integrations/sierra_crm/src integrations/sierra_crm/tests
           integrations/twilio_sms/src integrations/twilio_sms/tests

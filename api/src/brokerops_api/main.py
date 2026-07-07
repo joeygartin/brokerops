@@ -230,15 +230,31 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         IdempotentEmail(RecordingEmail(email, app.state.audit_log), app.state.idempotency_store),
         audit=app.state.audit_log,
     )
-    seam_sms = IdempotentSMS(RecordingSMS(sms, app.state.audit_log), app.state.idempotency_store)
-    # The drafting backend (BOP-019) hangs off the same service: workflow-drafted
+    # The SMS seam is guarded identically to email: MessageSendService can send an
+    # approved draft through *either* channel (send_approved dispatches by the row's
+    # channel), so both are drafted-egress paths and both must carry the BOP-012
+    # guard treatment. (No workflow drafts SMS in v1, but that is enforced by the
+    # gate below, not trusted as a convention.)
+    seam_sms = guard_tool_ports(
+        IdempotentSMS(RecordingSMS(sms, app.state.audit_log), app.state.idempotency_store),
+        audit=app.state.audit_log,
+    )
+    # The drafting backend (BOP-019/020) hangs off the same service: workflow-drafted
     # comms are persisted PENDING_APPROVAL and only a human decision sends them
-    # through the seam above — audited, deduped, tenant-scoped, authorized for free.
+    # through the seams above — audited, deduped, tenant-scoped, authorized for free.
+    # LLM-drafted output (DRAFTING_BACKEND=pydantic_ai, BOP-020) crosses to an external
+    # party only through the DLP seam, enforced two ways: (1) MessageSendService
+    # secret-shape-scrubs every outbound payload before port.send — the real
+    # outbound-direction complement of BOP-012's result filter; and (2) this wiring
+    # hard-gates the LLM backend so build_drafting_port refuses it unless EVERY channel
+    # seam a draft can egress through carries the BOP-012 guard treatment (defense in
+    # depth — the LLM never wires onto an unhardened seam). Both drafted-egress seams
+    # (email + SMS) are passed, so the gate covers every channel send_approved can reach.
     app.state.message_service = MessageSendService(
         email=seam_email,
         store=app.state.message_store,
         sms=seam_sms,
-        drafting=build_drafting_port(),
+        drafting=build_drafting_port(seam_email, seam_sms),
     )
     # File writes go through the same two seams (BOP-021). Unlike crm/voice, the
     # wrapped port IS the app.state instance: the only file writer today is the
@@ -260,8 +276,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         "transaction_store": app.state.transaction_store,
         "feedback_store": app.state.feedback_store,
         "approval_repo": app.state.approval_repo,
-        # BOP-019: the workflows' send-on-approve nodes reach the email seam.
+        # BOP-019/020: the workflows' send-on-approve nodes reach the email and SMS
+        # seams (send_approved dispatches by the drafted row's channel), so both are
+        # engine-reachable send paths and both are guarded + registered.
         "email": seam_email,
+        "sms": seam_sms,
     }
     async with build_engine(
         mls=engine_mls,

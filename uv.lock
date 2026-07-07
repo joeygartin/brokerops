@@ -22,6 +22,7 @@ members = [
     "brokerops-langgraph",
     "brokerops-llm-extraction",
     "brokerops-mls-reso",
+    "brokerops-pydantic-ai-drafting",
     "brokerops-pydantic-ai-extraction",
     "brokerops-sierra-crm",
     "brokerops-twilio-sms",
@@ -167,6 +168,7 @@ dependencies = [
     { name = "brokerops-langgraph" },
     { name = "brokerops-llm-extraction" },
     { name = "brokerops-mls-reso" },
+    { name = "brokerops-pydantic-ai-drafting" },
     { name = "brokerops-pydantic-ai-extraction" },
     { name = "brokerops-sierra-crm" },
     { name = "brokerops-twilio-sms" },
@@ -202,6 +204,7 @@ requires-dist = [
     { name = "brokerops-langgraph", editable = "orchestration/langgraph" },
     { name = "brokerops-llm-extraction", editable = "integrations/llm_extraction" },
     { name = "brokerops-mls-reso", editable = "integrations/mls_reso" },
+    { name = "brokerops-pydantic-ai-drafting", editable = "integrations/pydantic_ai_drafting" },
     { name = "brokerops-pydantic-ai-extraction", editable = "integrations/pydantic_ai_extraction" },
     { name = "brokerops-sierra-crm", editable = "integrations/sierra_crm" },
     { name = "brokerops-twilio-sms", editable = "integrations/twilio_sms" },
@@ -420,6 +423,21 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28" },
     { name = "mcp", specifier = ">=1.2" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
+]
+
+[[package]]
+name = "brokerops-pydantic-ai-drafting"
+version = "0.1.0"
+source = { editable = "integrations/pydantic_ai_drafting" }
+dependencies = [
+    { name = "brokerops-core" },
+    { name = "pydantic-ai-slim", extra = ["anthropic"] },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "brokerops-core", editable = "core" },
+    { name = "pydantic-ai-slim", extras = ["anthropic"], specifier = "~=2.3.0" },
 ]
 
 [[package]]

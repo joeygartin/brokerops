@@ -52,6 +52,10 @@ EXPECTED_ENGINE_TOOL_PORTS = {
     # BOP-019: the workflows' send-on-approve nodes reach the email seam
     # (its send(message) is tenant-bearing), so it must be wrapped + registered.
     "email",
+    # BOP-020: send_approved dispatches by the drafted row's channel, so the SMS
+    # seam is an engine-reachable send path too — guarded + registered like email,
+    # so the LLM drafting gate's "every drafted egress channel is filtered" holds.
+    "sms",
 }
 
 

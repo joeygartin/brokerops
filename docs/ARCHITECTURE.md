@@ -264,7 +264,12 @@ The covered surface is the engine tool seam: HTTP route responses are RBAC-scope
 (`require_role`, ADR-0009), not egress-role-scoped — store-backed routes read through
 ports filtered at the pinned OPERATOR tier regardless of the caller's actual role, and
 filtering route responses per the caller's role is a follow-on. Per-agent
-least-privilege accounts remain the other follow-on.
+least-privilege accounts remain the other follow-on. Increment 4 (BOP-020) closes the
+*outbound* direction the result filter does not cover: `MessageSendService` runs every
+outbound message through the same secret-shape redaction both when a draft is persisted for
+approval and immediately before `port.send`, so LLM-drafted copy cannot carry a leaked
+credential to the approval card or an external provider — and the LLM drafting backend is
+wiring-gated onto guarded channel seams only (email + SMS).
 
 ## Data
 

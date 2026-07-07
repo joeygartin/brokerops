@@ -17,8 +17,9 @@ even if it doesn't, the Idempotent decorator refuses to re-send. Outside a run
 the id is random and the send runs undeduped, mirroring `_Deduper`'s contract.
 """
 
+import logging
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from brokerops_core.models.drafting import DraftContext
@@ -29,10 +30,14 @@ from brokerops_core.models.message import (
     semantic_send_args,
 )
 from brokerops_core.models.message_templates import get_template
+from brokerops_core.models.role import Role
 from brokerops_core.ports.drafting import DraftingPort
 from brokerops_core.ports.messaging import EmailPort, MessageStore, SMSPort
 from brokerops_core.services.audit import current_audit_context
+from brokerops_core.services.egress import scrub_payload
 from brokerops_core.services.idempotency import idempotency_key
+
+logger = logging.getLogger(__name__)
 
 # The channel port's seam tool name — must match what the Idempotent decorator
 # claims, so the deterministic message id and the dedupe key agree per channel.
@@ -61,6 +66,20 @@ def _message_id(draft: Message) -> str:
     return idempotency_key(
         context.workflow_run_id, _SEND_TOOL[draft.channel], semantic_send_args(draft)
     )
+
+
+def _draft_id(context: DraftContext) -> str:
+    """The within-run identity of a drafted approval row.
+
+    Derived from the run id + the DraftContext — the stable *inputs* — never the
+    drafted output, so a non-deterministic drafting backend (BOP-020) cannot make a
+    replay miss the original row and mint a duplicate approval card. A distinct
+    "draft_message" namespace keeps it from colliding with a send's key. Outside a
+    run the id is random and no dedup happens, mirroring ``_message_id``."""
+    audit = current_audit_context()
+    if audit is None or not audit.workflow_run_id:
+        return uuid4().hex
+    return idempotency_key(audit.workflow_run_id, "draft_message", context.model_dump(mode="json"))
 
 
 class MessageSendService:
@@ -93,6 +112,41 @@ class MessageSendService:
         if self._sms is None:
             raise RuntimeError("no SMS provider is wired (SMS_PROVIDER)")
         return self._sms
+
+    def _dlp_scrub(self, message: Message) -> Message:
+        """DLP-scrub a message copy through the BOP-012 rules.
+
+        The outbound-direction complement of the BOP-012 egress filter, which scans
+        what a tool call returns *to the agent* (`filter_tool_response`). The
+        subject/body — free text an LLM drafting backend (BOP-020) may author —
+        pass through the SAME deterministic secret-shape redaction at BOTH points a
+        drafted message becomes visible or leaves: when the draft is persisted
+        PENDING_APPROVAL (so a credential the model leaked into generated copy never
+        reaches the approval card the operator reads — secret-shape redaction is
+        role-independent under BOP-012), and again immediately before `port.send`
+        (so a direct send, and an operator edit that reintroduces a secret, are
+        covered too). This is what makes "LLM output only crosses out through the DLP
+        seam" (ADR-0020) an actual mechanism rather than a marker on the wrong
+        direction.
+
+        Role-restricted PII rides on the model's own annotations at the OPERATOR
+        seam tier, so the `recipient` (CONTACT_PII, `min_role=OPERATOR`) is kept —
+        the send needs it. Cross-tenant *blocking* is deliberately not applied on
+        this path: the row is this tenant's own message and its free text carries no
+        structured tenant identifier to enforce against (that check belongs to the
+        result seam, where a foreign id can ride back on a model). Copy-on-write: a
+        clean message returns unchanged — no redundant persist, no send-vs-history
+        divergence."""
+        findings: list[str] = []
+        scrubbed = scrub_payload(message, recipient_role=Role.OPERATOR, findings=findings)
+        if findings:
+            # Tool + finding class only, never the payload (the egress-log contract).
+            logger.warning(
+                "dlp redaction: channel=%s findings=%s",
+                message.channel.value,
+                sorted(set(findings)),
+            )
+        return cast(Message, scrubbed)
 
     async def send_email(
         self,
@@ -178,6 +232,9 @@ class MessageSendService:
             status=MessageStatus.DRAFTED,
             created_at=datetime.now(UTC),
         )
+        # Scrub before the id/save/send so the deterministic id, the persisted
+        # DRAFTED row, and what ships are all the exact same (redacted) bytes.
+        draft = self._dlp_scrub(draft)
         message = draft.model_copy(update={"id": _message_id(draft)})
         existing = await self._store.get_message(message.id)
         if existing is not None and existing.status in (
@@ -218,15 +275,25 @@ class MessageSendService:
         """Draft via the DraftingPort and persist the row as PENDING_APPROVAL.
 
         Nothing is sent here — the row waits for the approve-outbound-message
-        gate. The id is the same deterministic within-a-run identity as sends,
-        so a replayed draft node lands on the original row (even one already
-        decided) instead of minting a duplicate.
+        gate. The row's within-run identity comes from the DraftContext
+        (``_draft_id``), NOT the drafted text, and the existing-row check runs
+        BEFORE the backend: a replayed draft node lands on the original row and the
+        drafting backend is not re-invoked — decisive for a non-deterministic LLM
+        backend (BOP-020), where fresh copy on replay would otherwise mint a second
+        approval card with a new id.
         """
         if self._drafting is None:
             raise RuntimeError("no drafting backend wired (DraftingPort is required to draft)")
+        message_id = _draft_id(context)
+        existing = await self._store.get_message(message_id)
+        if existing is not None:
+            # Replay/restart within the run: reuse the first draft; do NOT call the
+            # (possibly non-deterministic) backend again. Node replays are
+            # sequential, so the single pre-draft check is the idempotency point.
+            return existing
         drafted = await self._drafting.draft(context)
-        draft = Message(
-            id="",  # excluded from semantic identity; assigned below
+        message = Message(
+            id=message_id,
             channel=drafted.channel,
             recipient=drafted.recipient,
             # Empty for channels that have no subject line (the Message contract).
@@ -239,12 +306,13 @@ class MessageSendService:
             status=MessageStatus.PENDING_APPROVAL,
             created_at=datetime.now(UTC),
         )
-        message = draft.model_copy(update={"id": _message_id(draft)})
-        existing = await self._store.get_message(message.id)
-        if existing is not None:
-            return existing
+        # Scrub BEFORE persisting: the PENDING_APPROVAL row is read back onto the
+        # operator's approval card, so a secret an LLM backend leaked into the copy
+        # must not survive even to that internal surface (BOP-012 redacts secret
+        # shapes on any egress, role-independent). A re-scrub runs at send too.
+        message = self._dlp_scrub(message)
         await self._store.save_message(message)
-        stored = await self._store.get_message(message.id)
+        stored = await self._store.get_message(message_id)
         return stored if stored is not None else message
 
     async def send_approved(
@@ -281,8 +349,11 @@ class MessageSendService:
             updates["subject"] = subject
         if body is not None and body != row.body:
             updates["body"] = body
-        message = row.model_copy(update=updates)
-        if updates:
+        # Scrub the exact text that will ship (edits already applied) so the
+        # persisted row and the sent message stay identical — the card's promise
+        # that the visible text is what sends holds even when DLP redacts a leak.
+        message = self._dlp_scrub(row.model_copy(update=updates))
+        if message != row:
             await self._store.save_message(message)
         try:
             provider_id = await port.send(message)

@@ -19,9 +19,13 @@ class CountingEmail:
     def __init__(self, fail: bool = False) -> None:
         self.sends = 0
         self.fail = fail
+        # The exact payload the provider was handed on the most recent send — lets a
+        # test assert what actually crossed to the provider (e.g. after DLP scrub).
+        self.last: Message | None = None
 
     async def send(self, message: Message) -> str:
         self.sends += 1
+        self.last = message
         if self.fail:
             raise RuntimeError("provider unavailable")
         return f"provider-{self.sends}"
@@ -198,3 +202,50 @@ async def test_email_and_sms_replays_are_distinct_rows_within_one_run() -> None:
     # different semantic send: two rows, two provider calls.
     assert by_email.id != by_sms.id
     assert email.sends == 1 and sms.sends == 1
+
+
+async def test_outbound_secret_shape_is_redacted_before_the_provider_sees_it() -> None:
+    # An LLM drafting backend (BOP-020) could put a leaked credential in generated
+    # copy. It must be DLP-scrubbed before it reaches the provider — and the persisted
+    # history must show exactly what shipped, not the pre-scrub text.
+    service, email, store = _service()
+    leaked = Message(
+        id="m-secret",
+        channel=MessageChannel.EMAIL,
+        recipient="sam@example.com",
+        subject="Your showing follow-up",
+        body="Thanks for visiting! (internal note: key sk-ABCDEF0123456789XYZ)",
+        template_ref="showing_followup:v1",
+        status=MessageStatus.PENDING_APPROVAL,
+    )
+    await store.save_message(leaked)
+    sent = await service.send_approved("m-secret")
+    assert email.last is not None
+    # The provider never saw the raw credential.
+    assert "sk-ABCDEF0123456789XYZ" not in email.last.body
+    assert "[redacted:secret]" in email.last.body
+    # Recipient (CONTACT_PII at the OPERATOR seam tier) is preserved — the send needs it.
+    assert email.last.recipient == "sam@example.com"
+    # History reflects exactly what shipped (row and sent payload agree, both scrubbed).
+    assert sent.body == email.last.body
+    assert "sk-ABCDEF0123456789XYZ" not in store.rows["m-secret"].body
+
+
+async def test_clean_outbound_message_ships_and_is_persisted_unchanged() -> None:
+    # Copy-on-write: an ordinary (non-leaking) message is sent verbatim — the scrub
+    # is a no-op for controlled copy, so the deterministic path is unaffected.
+    service, email, store = _service()
+    clean = Message(
+        id="m-clean",
+        channel=MessageChannel.EMAIL,
+        recipient="sam@example.com",
+        subject="Your showing follow-up",
+        body="Thanks for visiting 412 Alder Court — let us know your thoughts!",
+        template_ref="showing_followup:v1",
+        status=MessageStatus.PENDING_APPROVAL,
+    )
+    await store.save_message(clean)
+    sent = await service.send_approved("m-clean")
+    assert email.last is not None
+    assert email.last.body == clean.body
+    assert sent.status is MessageStatus.SENT and sent.body == clean.body

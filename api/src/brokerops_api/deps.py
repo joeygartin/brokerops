@@ -28,6 +28,7 @@ from brokerops_core.ports.messaging import EmailPort, MessageStore, SMSPort
 from brokerops_core.ports.transactions import TransactionStore
 from brokerops_core.ports.voice import VoicePort
 from brokerops_core.services.drafting import DeterministicDrafter
+from brokerops_core.services.egress import EGRESS_FILTERED_MARKER
 from brokerops_core.services.email import ConsoleEmailSender
 from brokerops_core.services.feedback_extraction import DeterministicExtractor
 from brokerops_core.services.identity import DemoIdentityVerifier, EmailAllowlist, RoleResolver
@@ -364,22 +365,55 @@ def build_sms_port() -> SMSPort:
     )
 
 
-DRAFTING_BACKENDS = ("deterministic", "llm")
+DRAFTING_BACKENDS = ("deterministic", "pydantic_ai")
 
 
-def build_drafting_port() -> DraftingPort:
-    """Outbound-message drafting backend (BOP-019) — closed, explicit selector
+def _require_egress_filtered_channels(channels: tuple[object, ...]) -> None:
+    """BOP-020 hard gate: an LLM drafter may be wired only when every channel-port
+    seam its output egresses through carries the BOP-012 guard treatment.
+
+    Defense in depth, not the primary control: the outbound payload itself is
+    secret-shape-scrubbed in ``MessageSendService`` before every ``port.send`` (the
+    real outbound-direction DLP), so LLM copy cannot leave unscrubbed regardless.
+    This gate additionally refuses to wire the LLM backend onto a seam that never
+    went through ``guard_tool_ports`` — detected by ``EGRESS_FILTERED_MARKER`` on
+    the wrapped port — so a generated draft only ever flows through a fully hardened
+    (tenant-authorized-in, result-filtered-out) seam. Fail closed: no channels
+    supplied, or any one of them unfiltered, refuses. The deterministic backend
+    never reaches this."""
+    unfiltered = [c for c in channels if not getattr(c, EGRESS_FILTERED_MARKER, False)]
+    if not channels or unfiltered:
+        raise RuntimeError(
+            "DRAFTING_BACKEND='pydantic_ai' requires the outbound channel seam to be "
+            "egress-filtered (BOP-012); refusing to wire an LLM drafter onto a send path "
+            "that is not egress-filtered"
+        )
+
+
+def build_drafting_port(*egress_channels: object) -> DraftingPort:
+    """Outbound-message drafting backend (BOP-019/020) — closed, explicit selector
     in the ADR-0014 posture. Unset → deterministic template rendering, so demo
-    mode stays zero-credential; `llm` is declared-but-unwired until BOP-020
-    lands its adapter, and naming it fails loud rather than silently
-    downgrading; an unknown value raises at wiring."""
+    mode stays zero-credential; `pydantic_ai` is the LLM backend (BOP-020, one
+    backend — no raw-SDK twin) and is hard-gated on egress filtering; an unknown
+    value raises at wiring.
+
+    ``egress_channels`` are the channel-port seams a drafted message egresses
+    through (main.py passes the egress-guarded email and SMS seams — every channel
+    ``send_approved`` can dispatch to). They are required only for the LLM backend,
+    whose wiring refuses to start unless each carries the BOP-012 egress filter; the
+    deterministic backend ignores them."""
     backend = os.environ.get("DRAFTING_BACKEND", "").strip().lower() or "deterministic"
     if backend == "deterministic":
         return DeterministicDrafter()
-    if backend == "llm":
-        raise RuntimeError(
-            "DRAFTING_BACKEND='llm' is not yet wired (its adapter lands in BOP-020); "
-            "use DRAFTING_BACKEND=deterministic until then"
+    if backend == "pydantic_ai":
+        # Refuse before touching the key: an unfiltered send path is a wiring bug,
+        # not a credentials problem, and the refusal must not depend on config order.
+        _require_egress_filtered_channels(egress_channels)
+        from brokerops_pydantic_ai_drafting.adapter import DEFAULT_MODEL, PydanticAIDraftingAdapter
+
+        return PydanticAIDraftingAdapter(
+            api_key=_require_llm_api_key(backend, selector="DRAFTING_BACKEND"),
+            model=os.environ.get("LLM_MODEL") or DEFAULT_MODEL,
         )
     raise RuntimeError(
         f"unknown DRAFTING_BACKEND {backend!r}; expected one of {sorted(DRAFTING_BACKENDS)}"
@@ -441,16 +475,16 @@ def build_files_adapter() -> FilesPort:
 EXTRACTION_BACKENDS = ("deterministic", "llm", "pydantic_ai")
 
 
-def _require_llm_api_key(backend: str) -> str:
+def _require_llm_api_key(backend: str, *, selector: str = "EXTRACTION_BACKEND") -> str:
     # Fail loud, never downgrade (ADR-0014): an explicitly selected LLM backend
     # with no usable key is a deploy misconfiguration, not a reason to silently
-    # run the deterministic extractor. "unset" is the Terraform placeholder for
-    # a secret that was never pushed — same misconfiguration.
+    # run the deterministic default. "unset" is the Terraform placeholder for a
+    # secret that was never pushed — same misconfiguration. Shared by the
+    # extraction and drafting selectors (both key off LLM_API_KEY); `selector`
+    # names the offending env var in the error.
     api_key = os.environ.get("LLM_API_KEY", "")
     if not api_key or api_key == "unset":
-        raise RuntimeError(
-            f"EXTRACTION_BACKEND={backend!r} requires LLM_API_KEY to be set to a real key"
-        )
+        raise RuntimeError(f"{selector}={backend!r} requires LLM_API_KEY to be set to a real key")
     return api_key
 
 
