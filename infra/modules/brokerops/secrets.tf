@@ -74,6 +74,23 @@ resource "google_secret_manager_secret_version" "database_url" {
   secret_data = local.database_url
 }
 
+# The runtime least-privilege DSN (BOP-013). Terraform-generated like the owner
+# DSN; the api reads it as DATABASE_URL while the owner DSN rides in as
+# MIGRATION_DATABASE_URL for schema management.
+resource "google_secret_manager_secret" "app_database_url" {
+  project   = var.project_id
+  secret_id = "${local.prefix}-app-database-url"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "app_database_url" {
+  secret      = google_secret_manager_secret.app_database_url.id
+  secret_data = local.app_database_url
+}
+
 resource "random_password" "cron" {
   length  = 32
   special = false
@@ -120,6 +137,7 @@ locals {
     { for name, secret in google_secret_manager_secret.client : name => secret.secret_id },
     {
       "database-url"        = google_secret_manager_secret.database_url.secret_id
+      "app-database-url"    = google_secret_manager_secret.app_database_url.secret_id
       "cron-secret"         = google_secret_manager_secret.cron_secret.secret_id
       "session-signing-key" = google_secret_manager_secret.session_signing_key.secret_id
     }

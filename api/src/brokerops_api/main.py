@@ -101,7 +101,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             f"unknown ORCHESTRATOR {orchestrator!r}; expected one of {sorted(ENGINE_FACTORIES)}"
         )
     build_engine = ENGINE_FACTORIES[orchestrator]
+    # DATABASE_URL is the runtime DSN the tenant-scoped domain stores connect
+    # with; in a hardened deploy it is a non-owner, non-BYPASSRLS role so the
+    # forced RLS policy binds (BOP-013 / ADR-0021). Schema-managing code — the
+    # LangGraph checkpointer's setup() (and alembic, via its own env) — needs the
+    # owner role instead, read from MIGRATION_DATABASE_URL. Local/compose leaves
+    # MIGRATION_DATABASE_URL unset, so both collapse to one role, unchanged.
     database_url = os.environ.get("DATABASE_URL")
+    schema_database_url = os.environ.get("MIGRATION_DATABASE_URL") or database_url
     mls = build_mls_adapter()
     crm = build_crm_adapter()
     voice = build_voice_adapter()
@@ -291,7 +298,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         feedback_store=app.state.feedback_store,
         approval_repo=app.state.approval_repo,
         message_service=app.state.message_service,
-        database_url=database_url,
+        database_url=schema_database_url,
     ) as workflow_engine:
         app.state.workflow_engine = workflow_engine
         yield

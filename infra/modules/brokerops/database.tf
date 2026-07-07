@@ -33,6 +33,10 @@ resource "random_password" "db" {
   special = false
 }
 
+# Owner/migration role: owns the tables (alembic runs as this role) and manages
+# schema. Cloud SQL makes it a cloudsqlsuperuser member; it is NOT a real Postgres
+# superuser, so it cannot bypass RLS — but it IS the table owner, so migration 0007
+# uses FORCE RLS to bind the policy to it too.
 resource "google_sql_user" "app" {
   project  = var.project_id
   name     = "brokerops"
@@ -40,7 +44,26 @@ resource "google_sql_user" "app" {
   password = random_password.db.result
 }
 
+resource "random_password" "db_app" {
+  length  = 24
+  special = false
+}
+
+# Runtime least-privilege role (BOP-013 / ADR-0021): the app's tenant-scoped
+# domain stores connect as this role. It is NOT the table owner and has NO
+# BYPASSRLS attribute, so the forced RLS policy binds to every query, and
+# migration 0010 grants it DML only — it cannot run DDL or disable RLS.
+resource "google_sql_user" "runtime" {
+  project  = var.project_id
+  name     = "brokerops_app"
+  instance = google_sql_database_instance.this.name
+  password = random_password.db_app.result
+}
+
 locals {
   # psycopg + SQLAlchemy both accept the Cloud SQL unix-socket host form.
+  # Owner DSN — alembic migrations and the LangGraph checkpointer's setup().
   database_url = "postgresql://brokerops:${random_password.db.result}@/brokerops_${var.client_name}?host=/cloudsql/${google_sql_database_instance.this.connection_name}"
+  # Runtime least-privilege DSN — the tenant-scoped domain stores (BOP-013).
+  app_database_url = "postgresql://brokerops_app:${random_password.db_app.result}@/brokerops_${var.client_name}?host=/cloudsql/${google_sql_database_instance.this.connection_name}"
 }

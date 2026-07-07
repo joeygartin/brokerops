@@ -10,7 +10,10 @@ if config.config_file_name is not None:
 
 
 def database_url() -> str:
-    url = os.environ.get(
+    # Migrations are schema management: they run as the owner role via
+    # MIGRATION_DATABASE_URL when a hardened deploy splits the DB roles (BOP-013).
+    # Local/compose leaves it unset and falls back to the single DATABASE_URL role.
+    url = os.environ.get("MIGRATION_DATABASE_URL") or os.environ.get(
         "DATABASE_URL", "postgresql://brokerops:brokerops@localhost:5432/brokerops_demo"
     )
     if url.startswith("postgresql://"):

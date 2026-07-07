@@ -252,7 +252,9 @@ tenant-bearing tool *input* is authorized at the entry point (BOP-011), and ever
 tool *response* is scanned before it leaves the boundary (BOP-012) — a foreign-tenant
 identifier blocks the whole response fail-closed, secret-shaped values and
 role-restricted PII redact in place, and the rules are data, so a new tool cannot ship
-unguarded. A comms wave followed: outbound email and SMS behind dedicated ports
+unguarded. Beneath that, GCP deploys run the app as a non-owner, least-privilege database
+role so the forced row-level-security policy binds and the runtime can neither disable it
+nor tamper with the append-only audit ledger (BOP-013). A comms wave followed: outbound email and SMS behind dedicated ports
 (ADR-0015, ADR-0017) with SES, SendGrid, and Twilio adapters, a draft-and-send flow
 that routes generated copy through the approval inbox, and a PydanticAI drafting backend
 behind the same explicit selector as extraction — with an outbound egress gate that

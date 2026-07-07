@@ -223,8 +223,21 @@ resource "google_cloud_run_v2_service" "api" {
         }
       }
 
+      # Runtime DSN: the tenant-scoped domain stores connect as the non-owner,
+      # non-BYPASSRLS role so the forced RLS policy binds (BOP-013 / ADR-0021).
       env {
         name = "DATABASE_URL"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.app_database_url.secret_id
+            version = "latest"
+          }
+        }
+      }
+      # Owner DSN for schema management only: alembic (its env reads this) and the
+      # LangGraph checkpointer's setup(). Never used by the domain stores.
+      env {
+        name = "MIGRATION_DATABASE_URL"
         value_source {
           secret_key_ref {
             secret  = google_secret_manager_secret.database_url.secret_id
@@ -319,9 +332,18 @@ resource "google_cloud_run_v2_service" "api" {
     google_secret_manager_secret_version.client_placeholder,
     google_secret_manager_secret_version.vapi_webhook_secret,
     google_secret_manager_secret_version.database_url,
+    google_secret_manager_secret_version.app_database_url,
     google_secret_manager_secret_version.cron_secret,
     google_secret_manager_secret_version.session_signing_key,
     google_secret_manager_secret_iam_member.api_access,
+    # The database and both DB roles must exist before the container boots: the
+    # DSN secrets are just strings and create no dependency on them, so pin the
+    # order explicitly. On boot alembic connects as the owner (google_sql_user.app)
+    # via MIGRATION_DATABASE_URL and grants to the runtime role, then uvicorn
+    # connects as the runtime role (google_sql_user.runtime).
+    google_sql_database.db,
+    google_sql_user.app,
+    google_sql_user.runtime,
   ]
 }
 

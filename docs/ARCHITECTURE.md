@@ -245,8 +245,10 @@ brokerage" knob. Scoped store wrappers (`core/services/scoped_stores.py`) stamp 
 tenant on writes, deny by-id access to another tenant's rows, and record a denied attempt
 in the audit ledger as a `security` event. A forced Postgres row-level-security policy
 keyed on a per-transaction GUC (alembic `0007`) is the database belt under the app layer —
-it engages under a least-privilege (non-superuser) DB role; under the demo's superuser role
-RLS is inert and the app-layer wrapper is the always-on guarantee. brokerops is
+it binds under a non-owner, non-`BYPASSRLS` DB role, which GCP deploys now use for the
+runtime connection (`brokerops_app`, BOP-013/ADR-0021); the owner role is kept only for
+schema management (alembic + the checkpointer). Under the single superuser role of
+compose/CI, RLS is inert and the app-layer wrapper is the always-on guarantee. brokerops is
 single-tenant *per deploy* today, so the wrapper makes that boundary explicit and a future
 shared-database migration mechanical. That was increment 1. Increment 2 (BOP-011,
 `core/services/tool_authz.py`) authorizes every tenant-bearing tool *input* at the entry
@@ -264,7 +266,8 @@ The covered surface is the engine tool seam: HTTP route responses are RBAC-scope
 (`require_role`, ADR-0009), not egress-role-scoped — store-backed routes read through
 ports filtered at the pinned OPERATOR tier regardless of the caller's actual role, and
 filtering route responses per the caller's role is a follow-on. Per-agent
-least-privilege accounts remain the other follow-on. Increment 4 (BOP-020) closes the
+least-privilege infrastructure shipped in BOP-013 (ADR-0021): the non-owner runtime DB
+role above, plus per-client cloud isolation (own GCP project + per-secret IAM). Increment 4 (BOP-020) closes the
 *outbound* direction the result filter does not cover: `MessageSendService` runs every
 outbound message through the same secret-shape redaction both when a draft is persisted for
 approval and immediately before `port.send`, so LLM-drafted copy cannot carry a leaked
@@ -287,7 +290,8 @@ rate-limit protection and voice-path reads — never for anything HITL-adjacent.
 ## Deploy
 
 `make deploy CLIENT=acme` applies a per-client Terraform module: two Cloud Run
-services, Cloud SQL, Secret Manager shells (real keys pushed interactively by
+services, Cloud SQL (an owner DB role for migrations + a non-owner least-privilege
+runtime role, BOP-013), Secret Manager shells (real keys pushed interactively by
 `make secrets` — values never touch the repo or state), the milestone Scheduler job,
 and least-privilege service accounts. Per-client tfvars are committed and contain no
 secrets; Terraform state lives in GCS with a per-client prefix.

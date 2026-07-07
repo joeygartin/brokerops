@@ -54,6 +54,9 @@ tool accepts a tenant parameter; the agent has no "which brokerage" knob.
   bypasses RLS even with `FORCE`; the demo/compose role is a superuser, so there the
   app-layer wrapper is the always-on guarantee and RLS is inert. Provisioning the
   least-privilege role is a deferred follow-on (with per-agent IAM hardening).
+  **Done — see [ADR-0021](ADR-0021-least-privilege-runtime-db-role.md):** deploys now
+  connect as a non-owner, non-`BYPASSRLS` runtime role, so the policy binds and the app
+  can no longer disable it.
 - **Audit scope is bounded** (ratified 2026-06-28): cross-tenant access is denied on
   every path; the *security-event audit* is reliable on the write path (foreign model
   tenant id, all backends) and the app-visible by-id paths. A by-id read hidden by RLS
