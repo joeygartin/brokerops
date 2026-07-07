@@ -73,7 +73,7 @@ uv sync --all-packages   # install workspace deps
 make test                # contract, workflow, API flow, auth, audit ledger,
                          # idempotency, transaction open, tenant scoping,
                          # fail-closed defaults, restart-survival
-make frontend-test       # vitest: role gating, apiFetch bearer/401, auth bootstrap
+make frontend-test       # vitest: role gating, apiFetch bearer/401, auth bootstrap, routing
 make lint                # ruff + mypy strict
 ```
 
@@ -205,7 +205,8 @@ integrations/            # mls_reso · followupboss · sierra_crm · vapi (adapt
                          #   · llm_extraction + pydantic_ai_extraction (LLM adapters) · google_oidc · email_smtp (operator auth)
 orchestration/           # the three workflows on LangGraph, behind the WorkflowEngine seam
 api/                     # FastAPI: routes, webhooks, cron, workflow engine, Alembic
-frontend/                # React + Vite: Listings, Transactions, Approval Inbox
+frontend/                # React + Vite: typed routes + deep links over Listings,
+                         #   Transactions, Approval Inbox, Audit (TanStack Router)
 infra/                   # Terraform per-client module + bootstrap
 docs/                    # ARCHITECTURE.md · DEMO.md · CLIENT_ONBOARDING.md · ADRs/
 ```

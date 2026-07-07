@@ -3,6 +3,7 @@ import { unwrap } from "../api";
 import { API_BASE } from "../auth";
 import {
   attachDocumentTransactionsTransactionIdDocumentsPost,
+  getTransactionTransactionsTransactionIdGet,
   listFilesFilesGet,
   listTransactionsTransactionsGet,
   seedDemoDataDemoSeedPost,
@@ -19,6 +20,24 @@ export function useTransactions() {
   return useQuery({
     queryKey: queryKeys.transactions,
     queryFn: async () => unwrap(await listTransactionsTransactionsGet()),
+    staleTime: 10_000,
+  });
+}
+
+// A single transaction by id, for the deep-linkable detail route (BOP-025). Uses
+// the keyed GET /transactions/{id} rather than a find() over the board query,
+// which returns only active transactions — so a deep link resolves a transaction
+// in any stage; an unknown id is a 404 (ApiError) the view renders as a clean
+// state.
+export function useTransaction(transactionId: string) {
+  return useQuery({
+    queryKey: queryKeys.transaction(transactionId),
+    queryFn: async () =>
+      unwrap(
+        await getTransactionTransactionsTransactionIdGet({
+          path: { transaction_id: transactionId },
+        }),
+      ),
     staleTime: 10_000,
   });
 }

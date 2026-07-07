@@ -1,7 +1,9 @@
+import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useAuth } from "./authContext";
 import { type ApprovalRequest } from "./client";
 import { useApprovals, useDecideApproval } from "./hooks/approvals";
+import { PERMALINK_STYLE } from "./routeElements";
 
 // The backend deliberately types ApprovalRequest.payload as an open dict — the
 // HITL spine carries every approval kind through one model, discriminated by
@@ -173,7 +175,7 @@ function HotLeadPreview({ approval }: { approval: ApprovalRequest }) {
   );
 }
 
-function ApprovalCard({
+export function ApprovalCard({
   approval,
   onDecided,
 }: {
@@ -343,7 +345,14 @@ export default function ApprovalsInbox() {
         </p>
       ) : (
         approvals.map((approval) => (
-          <ApprovalCard key={approval.id} approval={approval} onDecided={handleDecided} />
+          <div key={approval.id} style={{ maxWidth: 700, margin: "0 auto" }}>
+            <div style={{ textAlign: "right", marginBottom: "0.25rem" }}>
+              <Link to="/approvals/$id" params={{ id: approval.id }} style={PERMALINK_STYLE}>
+                Open ↗
+              </Link>
+            </div>
+            <ApprovalCard approval={approval} onDecided={handleDecided} />
+          </div>
         ))
       )}
     </>

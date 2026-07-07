@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { unwrap } from "../api";
 import {
   decideApprovalApprovalsApprovalIdDecidePost,
+  getApprovalApprovalsApprovalIdGet,
   listApprovalsApprovalsGet,
   type DecideRequest,
   type DecisionResponse,
@@ -23,6 +24,21 @@ export function useApprovals() {
     // false (the default) so the timer pauses while the tab is hidden.
     refetchInterval: 7_000,
     refetchIntervalInBackground: false,
+  });
+}
+
+// A single approval by id, for the notification-email deep-link target (BOP-025).
+// The keyed GET /approvals/{id} returns the row at ANY status (the board list is
+// pending-only), so the detail view can tell a still-pending approval (render the
+// card) from one already decided (render the clean "no longer pending" state); an
+// unknown id is a 404 (ApiError) the view renders as that same clean state. Kept
+// fresh so deciding it from the permalink flips it to the decided state.
+export function useApproval(approvalId: string) {
+  return useQuery({
+    queryKey: queryKeys.approval(approvalId),
+    queryFn: async () =>
+      unwrap(await getApprovalApprovalsApprovalIdGet({ path: { approval_id: approvalId } })),
+    staleTime: 0,
   });
 }
 

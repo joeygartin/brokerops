@@ -50,6 +50,11 @@ export function setSession(access: string, refresh: string): void {
 export function clearSession(): void {
   setToken(null);
   setRefreshToken(null);
+  // Drop any pending post-login redirect too, so a signed-out (or dead) session
+  // can't leave a deep link behind for the next sign-in on this browser (BOP-025).
+  // On the mid-session-401 path apiFetch clears here and the unauthorized handler
+  // immediately re-saves the *current* path, so the live deep link is preserved.
+  localStorage.removeItem(REDIRECT_KEY);
   sessionGeneration += 1;
 }
 
@@ -67,6 +72,54 @@ export function setAccessOnlySession(access: string): void {
 // back to the sign-in screen instead of failing silently.
 export function setUnauthorizedHandler(handler: (() => void) | null): void {
   onUnauthorized = handler;
+}
+
+// Deep-link preservation across the login round-trip (BOP-025). When an
+// unauthenticated visit lands on a deep link (e.g. an approval permalink from a
+// notification email), the intended path is stashed here before the sign-in
+// screen shows; the index route consumes it after login so the operator returns
+// to where they were headed.
+//
+// This uses localStorage, not sessionStorage: the magic-link flow re-enters the
+// app on a SEPARATE browsing context — the email link commonly opens in a new
+// tab — and sessionStorage is per-tab, so it would be gone by the callback. Only
+// localStorage (shared across tabs of the same origin) survives that hop. It is
+// still same-browser only: opening the link in a different browser loses the
+// stash and lands on the home route, an acceptable degradation.
+const REDIRECT_KEY = "brokerops_post_login_redirect";
+
+// A destination is only accepted if it is a same-origin app path: a single
+// leading "/" (not "//" or "/\" which parse as protocol-relative → another
+// origin), and not the auth/callback URLs (not destinations; the callback still
+// carries the single-use magic token). This is the open-redirect guard for the
+// value that later reaches the router as a raw href.
+function isInternalPath(path: string): boolean {
+  return (
+    path.length > 1 &&
+    path.startsWith("/") &&
+    path[1] !== "/" &&
+    path[1] !== "\\" &&
+    !path.startsWith("/auth")
+  );
+}
+
+export function savePostLoginRedirect(path: string): void {
+  // Entering login from a real deep link stashes it; entering from a
+  // non-destination (root, the callback, anything invalid) instead CLEARS any
+  // prior stash — otherwise a redirect saved by an abandoned earlier login could
+  // later be consumed by the next person to sign in on this browser and send them
+  // to a stranger's entity permalink (localStorage outlives the tab).
+  if (isInternalPath(path)) localStorage.setItem(REDIRECT_KEY, path);
+  else localStorage.removeItem(REDIRECT_KEY);
+}
+
+export function takePostLoginRedirect(): string | null {
+  const path = localStorage.getItem(REDIRECT_KEY);
+  if (path == null) return null;
+  localStorage.removeItem(REDIRECT_KEY);
+  // Re-validate on read: the value is user-influenced (it came from the URL) and
+  // is about to be handed to the router as an href, so never trust it blindly.
+  return isInternalPath(path) ? path : null;
 }
 
 export type AuthConfig = { enabled: boolean; methods: string[]; client_id: string | null };

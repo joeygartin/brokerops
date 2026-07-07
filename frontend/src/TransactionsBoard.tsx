@@ -1,7 +1,9 @@
+import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import TransactionDocuments from "./TransactionDocuments";
 import { type MilestoneView, type TransactionDetail } from "./client";
 import { useRunMilestoneCron, useSeedDemo, useTransactions } from "./hooks/transactions";
+import { PERMALINK_STYLE } from "./routeElements";
 
 const CLASS_STYLES: Record<string, { color: string; background: string; label: string }> = {
   overdue: { color: "#fff", background: "#cf222e", label: "OVERDUE" },
@@ -149,13 +151,24 @@ export default function TransactionsBoard() {
         </p>
       )}
       {details.map((detail) => (
-        <TransactionCard key={detail.transaction.id} detail={detail} />
+        <div key={detail.transaction.id} style={{ maxWidth: 760, margin: "0 auto" }}>
+          <div style={{ textAlign: "right", marginBottom: "0.25rem" }}>
+            <Link
+              to="/transactions/$id"
+              params={{ id: detail.transaction.id }}
+              style={PERMALINK_STYLE}
+            >
+              Open ↗
+            </Link>
+          </div>
+          <TransactionCard detail={detail} />
+        </div>
       ))}
     </>
   );
 }
 
-function TransactionCard({ detail }: { detail: TransactionDetail }) {
+export function TransactionCard({ detail }: { detail: TransactionDetail }) {
   const { transaction, milestones, documents } = detail;
   const [view, setView] = useState<"timeline" | "documents">("timeline");
 

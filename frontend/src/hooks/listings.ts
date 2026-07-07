@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { unwrap } from "../api";
 import {
+  getListingListingsListingKeyGet,
   searchListingsListingsGet,
   startListingToContractWorkflowsListingToContractStartPost,
   startOutboundCallCallsOutboundPost,
@@ -19,6 +20,19 @@ export function useListings() {
     queryFn: async () => unwrap(await searchListingsListingsGet()),
     // Listings change rarely relative to a session — a longer window avoids
     // refetch churn while browsing.
+    staleTime: 30_000,
+  });
+}
+
+// A single listing by key, for the deep-linkable detail route (BOP-025). Uses
+// the keyed GET /listings/{key} — NOT a find() over the board query — so a deep
+// link resolves any real listing, not just those in the default search page; an
+// unknown key surfaces as a 404 (ApiError) the view renders as a clean state.
+export function useListing(listingKey: string) {
+  return useQuery({
+    queryKey: queryKeys.listing(listingKey),
+    queryFn: async () =>
+      unwrap(await getListingListingsListingKeyGet({ path: { listing_key: listingKey } })),
     staleTime: 30_000,
   });
 }

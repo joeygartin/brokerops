@@ -1,7 +1,9 @@
+import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useAuth } from "./authContext";
 import { type Listing } from "./client";
 import { useListings, useStartListingWorkflow, useStartOutboundCall } from "./hooks/listings";
+import { PERMALINK_STYLE } from "./routeElements";
 
 const price = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -17,7 +19,7 @@ const STATUS_COLORS: Record<Listing["status"], string> = {
 
 const DEMO_FEEDBACK_CONTACT = "101"; // Jordan Pike in the FUB stub
 
-function ListingCard({
+export function ListingCard({
   listing,
   onStarted,
 }: {
@@ -170,7 +172,16 @@ export default function ListingsBoard() {
         }}
       >
         {listings.map((listing) => (
-          <ListingCard key={listing.mls_id} listing={listing} onStarted={setNotice} />
+          <div key={listing.mls_id} style={{ display: "grid", gap: "0.35rem" }}>
+            <ListingCard listing={listing} onStarted={setNotice} />
+            <Link
+              to="/listings/$key"
+              params={{ key: listing.mls_id }}
+              style={{ ...PERMALINK_STYLE, textAlign: "right" }}
+            >
+              Open listing ↗
+            </Link>
+          </div>
         ))}
       </section>
     </>

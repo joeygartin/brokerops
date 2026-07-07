@@ -7,10 +7,12 @@ import {
   redeemMagicLink,
   refreshSession,
   requestMagicLink,
+  savePostLoginRedirect,
   setAccessOnlySession,
   setSession,
   setToken,
   setUnauthorizedHandler,
+  takePostLoginRedirect,
 } from "./auth";
 
 // A typed handle on the global fetch we stub per-test.
@@ -32,6 +34,49 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe("post-login redirect (deep-link preservation, BOP-025)", () => {
+  it("round-trips an internal deep link via localStorage, then consumes it once", () => {
+    savePostLoginRedirect("/approvals/APR-7");
+    // localStorage, not sessionStorage: it must survive the magic-link callback
+    // opening in a new tab (sessionStorage is per-tab).
+    expect(localStorage.getItem("brokerops_post_login_redirect")).toBe("/approvals/APR-7");
+    expect(takePostLoginRedirect()).toBe("/approvals/APR-7");
+    // Single-use: a second take returns null.
+    expect(takePostLoginRedirect()).toBeNull();
+  });
+
+  it("refuses to stash non-destinations (root and the auth callback)", () => {
+    savePostLoginRedirect("/");
+    savePostLoginRedirect("/auth/callback?token=abc");
+    expect(takePostLoginRedirect()).toBeNull();
+  });
+
+  it("rejects protocol-relative paths on save and on read (open-redirect guard)", () => {
+    savePostLoginRedirect("//evil.com/path");
+    expect(takePostLoginRedirect()).toBeNull();
+    savePostLoginRedirect("/\\evil.com");
+    expect(takePostLoginRedirect()).toBeNull();
+    // Even a value slipped straight into storage is re-validated on read.
+    localStorage.setItem("brokerops_post_login_redirect", "//evil.com");
+    expect(takePostLoginRedirect()).toBeNull();
+  });
+
+  it("clears a stale redirect when login is entered from a non-destination", () => {
+    // A prior, abandoned login stashed a deep link…
+    savePostLoginRedirect("/approvals/APR-STALE");
+    // …then someone signs in from the root: the non-destination save must wipe it,
+    // so the next person on this browser isn't sent to a stranger's permalink.
+    savePostLoginRedirect("/");
+    expect(takePostLoginRedirect()).toBeNull();
+  });
+
+  it("clears a pending redirect on sign-out (clearSession)", () => {
+    savePostLoginRedirect("/transactions/TXN-STALE");
+    clearSession();
+    expect(takePostLoginRedirect()).toBeNull();
+  });
 });
 
 describe("token store", () => {

@@ -17,6 +17,7 @@ import {
   loadAuthConfig,
   redeemMagicLink,
   requestMagicLink,
+  savePostLoginRedirect,
   setAccessOnlySession,
   setSession,
   setUnauthorizedHandler,
@@ -119,6 +120,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // callback, resume a stored session, or show the sign-in screen.
   useEffect(() => {
     setUnauthorizedHandler(() => {
+      // A live session died mid-use (a 401 that couldn't be refreshed). Stash
+      // where the operator was — a deep link they'll expect to return to — before
+      // dropping them on the sign-in screen, so re-login restores it just like a
+      // cold deep-link visit does (BOP-025). The URL still shows that path here.
+      savePostLoginRedirect(window.location.pathname + window.location.search);
       queryClient.clear();
       setEmail(null);
       setRole(null);
@@ -146,9 +152,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setMagicError(String(cause));
           }
         }
-        // A stored token may still be valid after a reload.
+        // A stored token may still be valid after a reload — if so, the current
+        // URL is already the destination (a deep link survives a reload), so
+        // leave it untouched. Otherwise stash where the operator was headed so
+        // the login round-trip can return them there (BOP-025).
         if (await loadMe()) setPhase("ready");
-        else setPhase("login");
+        else {
+          savePostLoginRedirect(window.location.pathname + window.location.search);
+          setPhase("login");
+        }
       })
       .catch((cause) => setError(String(cause)));
     return () => setUnauthorizedHandler(null);
@@ -179,7 +191,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           client_id: config.client_id!,
           callback: (response) => {
             setAccessOnlySession(response.credential);
-            loadMe().then((ok) => setPhase(ok ? "ready" : "login"));
+            loadMe().then((ok) => {
+              // Scrub the sign-in URL to root; the index route restores the
+              // saved deep link (BOP-025), matching the magic-link path.
+              if (ok) window.history.replaceState({}, "", "/");
+              setPhase(ok ? "ready" : "login");
+            });
           },
         });
         window.google.accounts.id.renderButton(buttonRef.current, {

@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AuthProvider, useAuth } from "./authContext";
-import { setToken } from "./auth";
+import { API_BASE, apiFetch, setToken } from "./auth";
 import { queryKeys } from "./hooks/keys";
 import type { Role } from "./roles";
 
@@ -152,5 +153,48 @@ describe("AuthProvider", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
 
     await waitFor(() => expect(client.getQueryData(queryKeys.approvals)).toBeUndefined());
+  });
+
+  // BOP-025: a live session that 401s mid-use (unrefreshable) must stash the deep
+  // link the operator was on before bouncing to sign-in, so re-login returns them
+  // there — the same restore a cold deep-link visit gets.
+  it("saves the current deep link when a live session 401s, so re-login can restore it", async () => {
+    window.history.pushState({}, "", "/approvals/APR-9");
+    setToken("session.jwt"); // access-only: no refresh token, so the 401 is terminal
+    fetchMock.mockImplementation((url: string) => {
+      if (String(url).endsWith("/auth/config"))
+        return Promise.resolve(jsonResponse({ enabled: true, methods: ["magic"], client_id: null }));
+      if (String(url).endsWith("/auth/me"))
+        return Promise.resolve(jsonResponse({ email: "a@example.com", role: "admin" }));
+      // Any protected call (and /auth/refresh, though it's never reached without a
+      // refresh token) fails with 401.
+      return Promise.resolve(new Response(null, { status: 401 }));
+    });
+
+    function ExpireProbe() {
+      const { role } = useAuth();
+      // Fire the doomed call only once the session is live (role resolved).
+      useEffect(() => {
+        if (role) void apiFetch(`${API_BASE}/approvals`);
+      }, [role]);
+      return <div data-testid="probe">{role ?? "—"}</div>;
+    }
+
+    render(
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <AuthProvider>
+          <ExpireProbe />
+        </AuthProvider>
+      </QueryClientProvider>,
+    );
+
+    // The 401 tears the session down and returns to sign-in…
+    await waitFor(() => expect(screen.getByText("Sign in to continue")).toBeInTheDocument());
+    // …with the deep link stashed for the index route to restore after re-login.
+    expect(localStorage.getItem("brokerops_post_login_redirect")).toBe("/approvals/APR-9");
+
+    window.history.pushState({}, "", "/"); // restore jsdom location for later specs
   });
 });
