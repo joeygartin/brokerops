@@ -47,10 +47,16 @@ steps:
   # ── push (both tags) ───────────────────────────────────────────────────────
   - id: push-api
     name: gcr.io/cloud-builders/docker
-    args: [push, --all-tags, ${_AR}/api]
+    args:
+      - push
+      - --all-tags
+      - ${_AR}/api
   - id: push-frontend
     name: gcr.io/cloud-builders/docker
-    args: [push, --all-tags, ${_AR}/frontend]
+    args:
+      - push
+      - --all-tags
+      - ${_AR}/frontend
 
   # ── deploy (image-only roll; preserves env/secrets/SA/Cloud SQL) ───────────
   - id: deploy-api
