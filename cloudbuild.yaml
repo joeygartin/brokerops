@@ -1,0 +1,91 @@
+# Cloud Build pipeline: on push to main, build both images and roll new Cloud
+# Run revisions on brokerops-demo. Wired to the GitHub repo via a 1st-gen Cloud
+# Build trigger (see docs/DEPLOY.md). This is the GCP-native CD path — no GitHub
+# Actions involved.
+#
+# Deploy strategy is IMAGE-ROLL: `gcloud run deploy --image` updates only the
+# container image and preserves every service's existing env vars, secrets,
+# service account, and Cloud SQL mount. That means an auto-deploy can NEVER strip
+# the demo's auth/SES/RBAC config (which lives as `terraform -var` overrides on
+# the running services), unlike a bare `terraform apply`. Infra changes stay a
+# deliberate, manual `terraform apply` with the canonical override set.
+#
+# Images are tagged both `:latest` (parity with the Terraform image pins) and
+# `:$SHORT_SHA` (immutable, for traceability + one-command rollback). Revisions
+# are deployed by the `$SHORT_SHA` tag so a new revision always rolls.
+
+substitutions:
+  _AR: us-west1-docker.pkg.dev/brokerops-demo/brokerops
+  _REGION: us-west1
+
+steps:
+  # ── build ────────────────────────────────────────────────────────────────
+  - id: build-api
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - api/Dockerfile
+      - -t
+      - ${_AR}/api:latest
+      - -t
+      - ${_AR}/api:$SHORT_SHA
+      - .
+
+  - id: build-frontend
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - frontend/Dockerfile.prod
+      - -t
+      - ${_AR}/frontend:latest
+      - -t
+      - ${_AR}/frontend:$SHORT_SHA
+      - frontend/
+
+  # ── push (both tags) ───────────────────────────────────────────────────────
+  - id: push-api
+    name: gcr.io/cloud-builders/docker
+    args: [push, --all-tags, ${_AR}/api]
+  - id: push-frontend
+    name: gcr.io/cloud-builders/docker
+    args: [push, --all-tags, ${_AR}/frontend]
+
+  # ── deploy (image-only roll; preserves env/secrets/SA/Cloud SQL) ───────────
+  - id: deploy-api
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - brokerops-demo-api
+      - --image=${_AR}/api:$SHORT_SHA
+      - --region=${_REGION}
+      - --project=$PROJECT_ID
+      - --quiet
+
+  - id: deploy-frontend
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - brokerops-demo-frontend
+      - --image=${_AR}/frontend:$SHORT_SHA
+      - --region=${_REGION}
+      - --project=$PROJECT_ID
+      - --quiet
+
+images:
+  - ${_AR}/api:latest
+  - ${_AR}/api:$SHORT_SHA
+  - ${_AR}/frontend:latest
+  - ${_AR}/frontend:$SHORT_SHA
+
+options:
+  # A user-specified build service account requires an explicit logs destination.
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+
+timeout: 1800s
