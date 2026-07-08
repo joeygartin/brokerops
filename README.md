@@ -206,7 +206,8 @@ integrations/            # mls_reso · followupboss · sierra_crm · vapi (adapt
 orchestration/           # the three workflows on LangGraph, behind the WorkflowEngine seam
 api/                     # FastAPI: routes, webhooks, cron, workflow engine, Alembic
 frontend/                # React + Vite: typed routes + deep links over Listings,
-                         #   Transactions, Approval Inbox, Audit (TanStack Router)
+                         #   Transactions, Approval Inbox, Audit (TanStack Router);
+                         #   styled with Tailwind + shadcn/ui design tokens (ADR-0024)
 infra/                   # Terraform per-client module + bootstrap
 docs/                    # ARCHITECTURE.md · DEMO.md · CLIENT_ONBOARDING.md · ADRs/
 ```

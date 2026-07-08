@@ -1,28 +1,20 @@
 import { Link } from "@tanstack/react-router";
 import { type ReactNode } from "react";
+import { cn } from "@/lib/utils";
 
-// Small shared pieces for the routed views (BOP-025): a back link and a centered
-// message block used by detail pages, the not-found route, and role denials.
+// Small shared pieces for the routed views (BOP-025). Restyled onto design
+// tokens in BOP-026 — the "Open ↗" permalinks and back links are token-blue,
+// underline-on-hover; the centered message block reads as muted body text.
 
-// Shared styling for the "Open ↗" permalinks the boards render into each entity's
+// Shared class for the "Open ↗" permalinks the boards render into each entity's
 // detail route, making every row addressable (BOP-025).
-export const PERMALINK_STYLE = {
-  color: "#0969da",
-  fontSize: "0.8rem",
-  textDecoration: "none",
-} as const;
+export const PERMALINK_CLASS = "text-xs text-primary no-underline hover:underline";
 
 export function BackLink({ to, label }: { to: string; label: string }) {
   return (
     <Link
       to={to}
-      style={{
-        display: "inline-block",
-        margin: "0 auto 1rem",
-        color: "#0969da",
-        fontSize: "0.85rem",
-        textDecoration: "none",
-      }}
+      className="mb-4 inline-block text-sm text-primary no-underline hover:underline"
     >
       ← {label}
     </Link>
@@ -37,8 +29,8 @@ export function CenteredMessage({
   children?: ReactNode;
 }) {
   return (
-    <div style={{ textAlign: "center", color: "#57606a", padding: "2rem 0" }}>
-      <p style={{ fontSize: "1rem", color: "#24292f", margin: "0 0 0.5rem" }}>{title}</p>
+    <div className={cn("py-8 text-center text-muted-foreground")}>
+      <p className="mb-2 text-base text-foreground">{title}</p>
       {children}
     </div>
   );

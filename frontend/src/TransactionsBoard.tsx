@@ -1,60 +1,45 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
+import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import TransactionDocuments from "./TransactionDocuments";
 import { type MilestoneView, type TransactionDetail } from "./client";
 import { useRunMilestoneCron, useSeedDemo, useTransactions } from "./hooks/transactions";
-import { PERMALINK_STYLE } from "./routeElements";
+import { PERMALINK_CLASS } from "./routeElements";
 
-const CLASS_STYLES: Record<string, { color: string; background: string; label: string }> = {
-  overdue: { color: "#fff", background: "#cf222e", label: "OVERDUE" },
-  due_soon: { color: "#fff", background: "#9a6700", label: "DUE SOON" },
-  blocked_external: { color: "#fff", background: "#8250df", label: "BLOCKED" },
-  on_track: { color: "#fff", background: "#1a7f37", label: "ON TRACK" },
-  complete: { color: "#57606a", background: "#eaeef2", label: "COMPLETE" },
-  waived: { color: "#57606a", background: "#eaeef2", label: "WAIVED" },
+const CLASS_BADGE: Record<string, { variant: BadgeProps["variant"]; label: string }> = {
+  overdue: { variant: "destructive", label: "OVERDUE" },
+  due_soon: { variant: "warning", label: "DUE SOON" },
+  blocked_external: { variant: "blocked", label: "BLOCKED" },
+  on_track: { variant: "success", label: "ON TRACK" },
+  complete: { variant: "secondary", label: "COMPLETE" },
+  waived: { variant: "secondary", label: "WAIVED" },
 };
 
 function MilestoneRow({ milestone }: { milestone: MilestoneView }) {
-  const style = CLASS_STYLES[milestone.classification] ?? CLASS_STYLES.on_track;
+  const badge = CLASS_BADGE[milestone.classification] ?? CLASS_BADGE.on_track;
   return (
-    <li
-      style={{
-        display: "flex",
-        gap: "0.75rem",
-        alignItems: "baseline",
-        padding: "0.45rem 0",
-        borderBottom: "1px solid #eaeef2",
-      }}
-    >
-      <span
-        style={{
-          ...style,
-          borderRadius: 999,
-          padding: "0.1rem 0.55rem",
-          fontSize: "0.7rem",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {style.label}
-      </span>
-      <span style={{ flex: 1 }}>
+    <li className="flex items-baseline gap-3 border-b border-muted py-1.5">
+      <Badge variant={badge.variant}>{badge.label}</Badge>
+      <span className="flex-1">
         {milestone.title}
         {milestone.blocked_reason && (
-          <em style={{ color: "#8250df", fontSize: "0.8rem" }}> — {milestone.blocked_reason}</em>
+          <em className="text-xs text-blocked"> — {milestone.blocked_reason}</em>
         )}
         {(milestone.escalation_level ?? 0) > 0 && (
-          <strong style={{ color: "#cf222e", fontSize: "0.8rem" }}>
+          <strong className="text-xs text-destructive">
             {" "}
             (escalation L{milestone.escalation_level})
           </strong>
         )}
         {milestone.expected_document && (
           <span
-            style={{
-              marginLeft: "0.5rem",
-              fontSize: "0.75rem",
-              color: milestone.document_satisfied ? "#1a7f37" : "#9a6700",
-            }}
+            className={cn(
+              "ml-2 text-xs",
+              milestone.document_satisfied ? "text-success" : "text-warning",
+            )}
           >
             {milestone.document_satisfied
               ? "📄 doc attached"
@@ -62,7 +47,7 @@ function MilestoneRow({ milestone }: { milestone: MilestoneView }) {
           </span>
         )}
       </span>
-      <span style={{ color: "#57606a", fontSize: "0.8rem", whiteSpace: "nowrap" }}>
+      <span className="whitespace-nowrap text-xs text-muted-foreground">
         {milestone.due_date} · {milestone.owner || "unassigned"}
       </span>
     </li>
@@ -96,67 +81,35 @@ export default function TransactionsBoard() {
 
   return (
     <>
-      <div style={{ display: "flex", gap: "0.6rem", justifyContent: "center", marginBottom: "1rem" }}>
-        <button
-          onClick={runCron}
-          disabled={running}
-          style={{
-            padding: "0.4rem 1.1rem",
-            borderRadius: 6,
-            border: "1px solid #0969da",
-            background: "#0969da",
-            color: "#fff",
-            cursor: running ? "wait" : "pointer",
-          }}
-        >
+      <div className="mb-4 flex justify-center gap-2">
+        <Button onClick={runCron} disabled={running}>
           {running ? "Checking…" : "Run milestone check (cron)"}
-        </button>
+        </Button>
         {details.length === 0 && (
-          <button
-            onClick={seed}
-            style={{
-              padding: "0.4rem 1.1rem",
-              borderRadius: 6,
-              border: "1px solid #d0d7de",
-              background: "#fff",
-              cursor: "pointer",
-            }}
-          >
+          <Button variant="outline" onClick={seed}>
             Seed demo transactions
-          </button>
+          </Button>
         )}
       </div>
-      {error && <p style={{ textAlign: "center", color: "#cf222e" }}>{String(error)}</p>}
+      {error && <p className="text-center text-destructive">{String(error)}</p>}
       {notice && (
-        <p
-          style={{
-            textAlign: "center",
-            color: "#0969da",
-            background: "#ddf4ff",
-            borderRadius: 6,
-            padding: "0.5rem",
-            maxWidth: 700,
-            margin: "0 auto 1rem",
-          }}
-        >
+        <p className="mx-auto mb-4 max-w-2xl rounded-md bg-info-soft p-2 text-center text-info-soft-foreground">
           {notice}
         </p>
       )}
-      {isPending && (
-        <p style={{ textAlign: "center", color: "#57606a" }}>Loading transactions…</p>
-      )}
+      {isPending && <p className="text-center text-muted-foreground">Loading transactions…</p>}
       {!isPending && !error && details.length === 0 && (
-        <p style={{ textAlign: "center", color: "#57606a" }}>
+        <p className="text-center text-muted-foreground">
           No transactions yet. Seed the demo data to get started.
         </p>
       )}
       {details.map((detail) => (
-        <div key={detail.transaction.id} style={{ maxWidth: 760, margin: "0 auto" }}>
-          <div style={{ textAlign: "right", marginBottom: "0.25rem" }}>
+        <div key={detail.transaction.id} className="mx-auto max-w-[760px]">
+          <div className="mb-1 text-right">
             <Link
               to="/transactions/$id"
               params={{ id: detail.transaction.id }}
-              style={PERMALINK_STYLE}
+              className={PERMALINK_CLASS}
             >
               Open ↗
             </Link>
@@ -172,71 +125,57 @@ export function TransactionCard({ detail }: { detail: TransactionDetail }) {
   const { transaction, milestones, documents } = detail;
   const [view, setView] = useState<"timeline" | "documents">("timeline");
 
-  const viewTabStyle = (active: boolean) => ({
-    padding: "0.15rem 0.7rem",
-    borderRadius: 6,
-    border: "1px solid #d0d7de",
-    background: active ? "#24292f" : "#fff",
-    color: active ? "#fff" : "#24292f",
-    fontSize: "0.75rem",
-    cursor: "pointer",
-  });
-
   return (
-    <article
-      style={{
-        border: "1px solid #d0d7de",
-        borderRadius: 8,
-        padding: "1rem",
-        textAlign: "left",
-        background: "#fff",
-        maxWidth: 760,
-        margin: "0 auto 1rem",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+    <Card as="article" className="mx-auto mb-4 max-w-[760px] text-left">
+      <CardHeader>
         <strong>
           {transaction.id} — {transaction.listing_key}
         </strong>
-        <span
-          style={{
-            background: "#eaeef2",
-            borderRadius: 999,
-            padding: "0.1rem 0.6rem",
-            fontSize: "0.75rem",
-            textTransform: "uppercase",
-          }}
-        >
+        <Badge variant="secondary" className="uppercase">
           {transaction.stage.replace(/_/g, " ")}
-        </span>
-      </div>
-      <div style={{ color: "#57606a", fontSize: "0.85rem", margin: "0.3rem 0 0.6rem" }}>
-        {(transaction.parties ?? [])
-          .map((p) => `${p.name} (${p.role.replace(/_/g, " ")})`)
-          .join(" · ")}
-        {transaction.close_date ? ` — closes ${transaction.close_date}` : ""}
-      </div>
-      <div style={{ display: "flex", gap: "0.4rem", marginBottom: "0.6rem" }}>
-        <button style={viewTabStyle(view === "timeline")} onClick={() => setView("timeline")}>
-          Timeline
-        </button>
-        <button style={viewTabStyle(view === "documents")} onClick={() => setView("documents")}>
-          Documents ({documents.length})
-        </button>
-      </div>
-      {view === "timeline" ? (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-          {milestones.map((m) => (
-            <MilestoneRow key={m.id} milestone={m} />
-          ))}
-        </ul>
-      ) : (
-        <TransactionDocuments
-          transaction={transaction}
-          documents={documents}
-          milestones={milestones}
-        />
-      )}
-    </article>
+        </Badge>
+      </CardHeader>
+      <CardContent>
+        <div className="mb-2 text-sm text-muted-foreground">
+          {(transaction.parties ?? [])
+            .map((p) => `${p.name} (${p.role.replace(/_/g, " ")})`)
+            .join(" · ")}
+          {transaction.close_date ? ` — closes ${transaction.close_date}` : ""}
+        </div>
+        <div className="mb-2 flex gap-1.5">
+          <Button
+            size="sm"
+            variant={view === "timeline" ? "default" : "outline"}
+            className={view === "timeline" ? "bg-strong text-strong-foreground hover:bg-strong" : ""}
+            onClick={() => setView("timeline")}
+          >
+            Timeline
+          </Button>
+          <Button
+            size="sm"
+            variant={view === "documents" ? "default" : "outline"}
+            className={
+              view === "documents" ? "bg-strong text-strong-foreground hover:bg-strong" : ""
+            }
+            onClick={() => setView("documents")}
+          >
+            Documents ({documents.length})
+          </Button>
+        </div>
+        {view === "timeline" ? (
+          <ul className="m-0 list-none p-0">
+            {milestones.map((m) => (
+              <MilestoneRow key={m.id} milestone={m} />
+            ))}
+          </ul>
+        ) : (
+          <TransactionDocuments
+            transaction={transaction}
+            documents={documents}
+            milestones={milestones}
+          />
+        )}
+      </CardContent>
+    </Card>
   );
 }

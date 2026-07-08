@@ -1,9 +1,13 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
+import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { useAuth } from "./authContext";
 import { type Listing } from "./client";
 import { useListings, useStartListingWorkflow, useStartOutboundCall } from "./hooks/listings";
-import { PERMALINK_STYLE } from "./routeElements";
+import { PERMALINK_CLASS } from "./routeElements";
 
 const price = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -11,10 +15,10 @@ const price = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
 });
 
-const STATUS_COLORS: Record<Listing["status"], string> = {
-  active: "#1a7f37",
-  pending: "#9a6700",
-  closed: "#57606a",
+const STATUS_VARIANT: Record<Listing["status"], BadgeProps["variant"]> = {
+  active: "success",
+  pending: "warning",
+  closed: "secondary",
 };
 
 const DEMO_FEEDBACK_CONTACT = "101"; // Jordan Pike in the FUB stub
@@ -61,74 +65,45 @@ export function ListingCard({
   };
 
   return (
-    <article
-      style={{
-        border: "1px solid #d0d7de",
-        borderRadius: 8,
-        padding: "1rem",
-        textAlign: "left",
-        background: "#fff",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-        <strong style={{ fontSize: "1.15rem" }}>{listing.list_price != null ? price.format(listing.list_price) : "Price on request"}</strong>
-        <span
-          style={{
-            color: "#fff",
-            background: STATUS_COLORS[listing.status],
-            borderRadius: 999,
-            padding: "0.1rem 0.6rem",
-            fontSize: "0.75rem",
-            textTransform: "uppercase",
-          }}
-        >
+    <Card as="article" className="text-left">
+      <CardHeader>
+        <strong className="text-lg">
+          {listing.list_price != null ? price.format(listing.list_price) : "Price on request"}
+        </strong>
+        <Badge variant={STATUS_VARIANT[listing.status]} className="uppercase">
           {listing.status}
-        </span>
-      </div>
-      <div style={{ margin: "0.4rem 0" }}>{listing.address}</div>
-      <div style={{ color: "#57606a", fontSize: "0.9rem" }}>
-        {listing.bedrooms != null && listing.bathrooms != null
-          ? `${listing.bedrooms} bd · ${listing.bathrooms} ba`
-          : "—"}
-        {listing.living_area_sqft ? ` · ${listing.living_area_sqft.toLocaleString()} sqft` : ""}
-        {listing.year_built ? ` · built ${listing.year_built}` : ""}
-      </div>
-      <div style={{ color: "#57606a", fontSize: "0.8rem", marginTop: "0.4rem" }}>
-        {listing.mls_id} — {listing.agent_name}
-      </div>
-      {listing.status === "active" && hasRole("operator") && (
-        <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem", flexWrap: "wrap" }}>
-          <button
-            onClick={startWorkflow}
-            disabled={starting}
-            style={{
-              padding: "0.4rem 0.9rem",
-              borderRadius: 6,
-              border: "1px solid #1a7f37",
-              background: starting ? "#f6f8fa" : "#2da44e",
-              color: starting ? "#57606a" : "#fff",
-              cursor: starting ? "wait" : "pointer",
-            }}
-          >
-            {starting ? "Starting…" : "Start marketing workflow"}
-          </button>
-          <button
-            onClick={startFeedbackCall}
-            disabled={calling}
-            style={{
-              padding: "0.4rem 0.9rem",
-              borderRadius: 6,
-              border: "1px solid #0969da",
-              background: "#fff",
-              color: "#0969da",
-              cursor: calling ? "wait" : "pointer",
-            }}
-          >
-            {calling ? "Calling…" : "Feedback call"}
-          </button>
+        </Badge>
+      </CardHeader>
+      <CardContent>
+        <div className="mb-1">{listing.address}</div>
+        <div className="text-sm text-muted-foreground">
+          {listing.bedrooms != null && listing.bathrooms != null
+            ? `${listing.bedrooms} bd · ${listing.bathrooms} ba`
+            : "—"}
+          {listing.living_area_sqft ? ` · ${listing.living_area_sqft.toLocaleString()} sqft` : ""}
+          {listing.year_built ? ` · built ${listing.year_built}` : ""}
         </div>
-      )}
-    </article>
+        <div className="mt-1 text-xs text-muted-foreground">
+          {listing.mls_id} — {listing.agent_name}
+        </div>
+        {listing.status === "active" && hasRole("operator") && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button variant="success" size="sm" onClick={startWorkflow} disabled={starting}>
+              {starting ? "Starting…" : "Start marketing workflow"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-primary text-primary hover:bg-info-soft"
+              onClick={startFeedbackCall}
+              disabled={calling}
+            >
+              {calling ? "Calling…" : "Feedback call"}
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -139,45 +114,27 @@ export default function ListingsBoard() {
   return (
     <>
       {error && (
-        <p style={{ textAlign: "center", color: "#cf222e" }}>
+        <p className="text-center text-destructive">
           Could not load listings: {String(error)} — is the api running on :8000?
         </p>
       )}
-      {isPending && <p style={{ textAlign: "center", color: "#57606a" }}>Loading listings…</p>}
+      {isPending && <p className="text-center text-muted-foreground">Loading listings…</p>}
       {!isPending && !error && listings.length === 0 && (
-        <p style={{ textAlign: "center", color: "#57606a" }}>No listings found.</p>
+        <p className="text-center text-muted-foreground">No listings found.</p>
       )}
       {notice && (
-        <p
-          style={{
-            textAlign: "center",
-            color: "#1a7f37",
-            background: "#dafbe1",
-            borderRadius: 6,
-            padding: "0.5rem",
-            maxWidth: 700,
-            margin: "0 auto 1rem",
-          }}
-        >
+        <p className="mx-auto mb-4 max-w-2xl rounded-md bg-success-soft p-2 text-center text-success-soft-foreground">
           {notice}
         </p>
       )}
-      <section
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-          gap: "1rem",
-          maxWidth: 1100,
-          margin: "0 auto",
-        }}
-      >
+      <section className="mx-auto grid max-w-[1100px] grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
         {listings.map((listing) => (
-          <div key={listing.mls_id} style={{ display: "grid", gap: "0.35rem" }}>
+          <div key={listing.mls_id} className="grid gap-1.5">
             <ListingCard listing={listing} onStarted={setNotice} />
             <Link
               to="/listings/$key"
               params={{ key: listing.mls_id }}
-              style={{ ...PERMALINK_STYLE, textAlign: "right" }}
+              className={cn(PERMALINK_CLASS, "block text-right")}
             >
               Open listing ↗
             </Link>

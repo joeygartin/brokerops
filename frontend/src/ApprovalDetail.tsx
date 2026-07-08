@@ -20,32 +20,21 @@ export default function ApprovalDetail() {
   const noLongerPending = missing || decided;
 
   return (
-    <section style={{ maxWidth: 700, margin: "0 auto" }}>
-      <div style={{ textAlign: "center" }}>
+    <section className="mx-auto max-w-2xl">
+      <div className="text-center">
         <BackLink to="/approvals" label="All approvals" />
       </div>
       {isPending && <CenteredMessage title="Loading approval…" />}
       {noLongerPending && (
         <CenteredMessage title="This approval is no longer pending.">
-          <p style={{ fontSize: "0.85rem", margin: 0 }}>
+          <p className="m-0 text-sm">
             It may have already been decided, or the link is out of date.
           </p>
         </CenteredMessage>
       )}
-      {error && !missing && (
-        <p style={{ textAlign: "center", color: "#cf222e" }}>{String(error)}</p>
-      )}
+      {error && !missing && <p className="text-center text-destructive">{String(error)}</p>}
       {notice && (
-        <p
-          style={{
-            textAlign: "center",
-            color: "#1a7f37",
-            background: "#dafbe1",
-            borderRadius: 6,
-            padding: "0.5rem",
-            margin: "0 0 1rem",
-          }}
-        >
+        <p className="mb-4 rounded-md bg-success-soft p-2 text-center text-success-soft-foreground">
           {notice}
         </p>
       )}

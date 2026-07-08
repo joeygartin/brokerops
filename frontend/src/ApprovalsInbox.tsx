@@ -1,9 +1,13 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "./authContext";
 import { type ApprovalRequest } from "./client";
 import { useApprovals, useDecideApproval } from "./hooks/approvals";
-import { PERMALINK_STYLE } from "./routeElements";
+import { PERMALINK_CLASS } from "./routeElements";
 
 // The backend deliberately types ApprovalRequest.payload as an open dict — the
 // HITL spine carries every approval kind through one model, discriminated by
@@ -54,24 +58,13 @@ function MarketingPreview({ approval }: { approval: ApprovalRequest }) {
   if (!draft) return null;
   return (
     <>
-      <h3 style={{ margin: "0.6rem 0 0.3rem" }}>{draft.headline}</h3>
-      <p style={{ whiteSpace: "pre-wrap", color: "#24292f", fontSize: "0.9rem" }}>{draft.body}</p>
-      <div style={{ margin: "0.5rem 0" }}>
+      <h3 className="mb-1 mt-2 font-semibold">{draft.headline}</h3>
+      <p className="whitespace-pre-wrap text-sm text-foreground">{draft.body}</p>
+      <div className="my-2 flex flex-wrap gap-1.5">
         {draft.channels.map((channel) => (
-          <span
-            key={channel}
-            style={{
-              display: "inline-block",
-              background: "#ddf4ff",
-              color: "#0969da",
-              borderRadius: 999,
-              padding: "0.1rem 0.6rem",
-              fontSize: "0.75rem",
-              marginRight: "0.4rem",
-            }}
-          >
+          <Badge key={channel} variant="info">
             {channel}
-          </span>
+          </Badge>
         ))}
       </div>
     </>
@@ -81,10 +74,10 @@ function MarketingPreview({ approval }: { approval: ApprovalRequest }) {
 function EscalationPreview({ approval }: { approval: ApprovalRequest }) {
   const milestones = payloadOf(approval).milestones ?? [];
   return (
-    <ul style={{ margin: "0.6rem 0", paddingLeft: "1.2rem" }}>
+    <ul className="my-2 list-disc pl-5">
       {milestones.map((m) => (
-        <li key={m.id} style={{ marginBottom: "0.35rem", fontSize: "0.9rem" }}>
-          <strong style={{ color: "#cf222e" }}>
+        <li key={m.id} className="mb-1 text-sm">
+          <strong className="text-destructive">
             {m.title} — {m.days_overdue} day(s) overdue
           </strong>{" "}
           (was due {m.due_date}, escalation level {m.escalation_level})
@@ -107,50 +100,28 @@ function OutboundMessagePreview({
 }) {
   const payload = payloadOf(approval);
   return (
-    <div style={{ margin: "0.6rem 0", fontSize: "0.9rem", textAlign: "left" }}>
-      <p style={{ margin: "0 0 0.3rem", color: "#24292f" }}>
+    <div className="my-2 text-left text-sm">
+      <p className="mb-1 text-foreground">
         To <strong>{payload.recipient}</strong>
-        <span
-          style={{
-            display: "inline-block",
-            background: "#ddf4ff",
-            color: "#0969da",
-            borderRadius: 999,
-            padding: "0.1rem 0.6rem",
-            fontSize: "0.75rem",
-            marginLeft: "0.5rem",
-          }}
-        >
+        <Badge variant="info" className="ml-2">
           {payload.channel}
-        </span>
+        </Badge>
       </p>
-      {payload.subject && (
-        <p style={{ margin: "0 0 0.3rem", fontWeight: 600 }}>{payload.subject}</p>
-      )}
-      <textarea
+      {payload.subject && <p className="mb-1 font-semibold">{payload.subject}</p>}
+      <Textarea
         aria-label="Draft body"
         value={editedBody}
         onChange={(event) => onEditBody(event.target.value)}
         readOnly={!canEdit}
         rows={7}
-        style={{
-          width: "100%",
-          boxSizing: "border-box",
-          fontFamily: "inherit",
-          fontSize: "0.9rem",
-          color: "#24292f",
-          border: "1px solid #d0d7de",
-          borderRadius: 6,
-          padding: "0.5rem",
-        }}
       />
       {canEdit && editedBody.trim() === "" ? (
-        <p style={{ color: "#cf222e", fontSize: "0.8rem", margin: "0.3rem 0 0" }}>
+        <p className="mt-1 text-xs text-destructive">
           The draft body is empty — nothing would send. Restore some text to approve, or
           Reject to discard the draft.
         </p>
       ) : (
-        <p style={{ color: "#57606a", fontSize: "0.8rem", margin: "0.3rem 0 0" }}>
+        <p className="mt-1 text-xs text-muted-foreground">
           {canEdit
             ? "Edit the draft before approving — the text above is exactly what sends."
             : "The draft text above is what an admin can approve and send."}
@@ -163,12 +134,10 @@ function OutboundMessagePreview({
 function HotLeadPreview({ approval }: { approval: ApprovalRequest }) {
   const payload = payloadOf(approval);
   return (
-    <div style={{ margin: "0.6rem 0", fontSize: "0.9rem" }}>
-      <p style={{ color: "#cf222e", fontWeight: 600, margin: "0 0 0.3rem" }}>
-        🔥 {payload.reason}
-      </p>
-      <p style={{ color: "#24292f", margin: 0 }}>{payload.summary}</p>
-      <p style={{ color: "#57606a", fontSize: "0.8rem", margin: "0.3rem 0 0" }}>
+    <div className="my-2 text-sm">
+      <p className="mb-1 font-semibold text-destructive">🔥 {payload.reason}</p>
+      <p className="m-0 text-foreground">{payload.summary}</p>
+      <p className="mt-1 text-xs text-muted-foreground">
         Contact {payload.contact_id} · call {payload.call_id}
       </p>
     </div>
@@ -240,74 +209,54 @@ export function ApprovalCard({
   };
 
   return (
-    <article
-      style={{
-        border: "1px solid #d0d7de",
-        borderRadius: 8,
-        padding: "1rem",
-        textAlign: "left",
-        background: "#fff",
-        maxWidth: 700,
-        margin: "0 auto 1rem",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+    <Card as="article" className="mx-auto mb-4 max-w-2xl text-left">
+      <CardHeader>
         <strong>{subject}</strong>
-        <span style={{ color: "#57606a", fontSize: "0.75rem" }}>
+        <span className="text-xs text-muted-foreground">
           thread {approval.graph_thread_id.slice(0, 8)}
         </span>
-      </div>
-      {isEscalation ? (
-        <EscalationPreview approval={approval} />
-      ) : isHotLead ? (
-        <HotLeadPreview approval={approval} />
-      ) : isOutboundMessage ? (
-        <OutboundMessagePreview
-          approval={approval}
-          editedBody={editedBody}
-          onEditBody={setEditedBody}
-          canEdit={hasRole("admin") && !busy}
-        />
-      ) : (
-        <MarketingPreview approval={approval} />
-      )}
+      </CardHeader>
+      <CardContent>
+        {isEscalation ? (
+          <EscalationPreview approval={approval} />
+        ) : isHotLead ? (
+          <HotLeadPreview approval={approval} />
+        ) : isOutboundMessage ? (
+          <OutboundMessagePreview
+            approval={approval}
+            editedBody={editedBody}
+            onEditBody={setEditedBody}
+            canEdit={hasRole("admin") && !busy}
+          />
+        ) : (
+          <MarketingPreview approval={approval} />
+        )}
+      </CardContent>
       {hasRole("admin") ? (
-        <div style={{ display: "flex", gap: "0.6rem", marginTop: "0.6rem" }}>
-          <button
+        <CardFooter>
+          <Button
+            variant="success"
+            size="sm"
             onClick={() => decide("approved")}
             disabled={busy || blankDraftBody}
-            style={{
-              padding: "0.4rem 1.1rem",
-              borderRadius: 6,
-              border: "1px solid #1a7f37",
-              background: "#2da44e",
-              color: "#fff",
-              cursor: busy ? "wait" : "pointer",
-            }}
           >
             Approve
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
             onClick={() => decide("rejected")}
             disabled={busy}
-            style={{
-              padding: "0.4rem 1.1rem",
-              borderRadius: 6,
-              border: "1px solid #cf222e",
-              background: "#fff",
-              color: "#cf222e",
-              cursor: busy ? "wait" : "pointer",
-            }}
           >
             Reject
-          </button>
-        </div>
+          </Button>
+        </CardFooter>
       ) : (
-        <p style={{ color: "#57606a", fontSize: "0.8rem", marginTop: "0.6rem" }}>
-          Awaiting an admin decision.
-        </p>
+        <CardFooter>
+          <p className="text-xs text-muted-foreground">Awaiting an admin decision.</p>
+        </CardFooter>
       )}
-    </article>
+    </Card>
   );
 }
 
@@ -321,33 +270,23 @@ export default function ApprovalsInbox() {
 
   return (
     <>
-      {error && <p style={{ textAlign: "center", color: "#cf222e" }}>{String(error)}</p>}
+      {error && <p className="text-center text-destructive">{String(error)}</p>}
       {notice && (
-        <p
-          style={{
-            textAlign: "center",
-            color: "#1a7f37",
-            background: "#dafbe1",
-            borderRadius: 6,
-            padding: "0.5rem",
-            maxWidth: 700,
-            margin: "0 auto 1rem",
-          }}
-        >
+        <p className="mx-auto mb-4 max-w-2xl rounded-md bg-success-soft p-2 text-center text-success-soft-foreground">
           {notice}
         </p>
       )}
       {isPending ? (
-        <p style={{ textAlign: "center", color: "#57606a" }}>Loading approvals…</p>
+        <p className="text-center text-muted-foreground">Loading approvals…</p>
       ) : approvals.length === 0 ? (
-        <p style={{ textAlign: "center", color: "#57606a" }}>
+        <p className="text-center text-muted-foreground">
           No pending approvals. Start a marketing workflow from the Listings tab.
         </p>
       ) : (
         approvals.map((approval) => (
-          <div key={approval.id} style={{ maxWidth: 700, margin: "0 auto" }}>
-            <div style={{ textAlign: "right", marginBottom: "0.25rem" }}>
-              <Link to="/approvals/$id" params={{ id: approval.id }} style={PERMALINK_STYLE}>
+          <div key={approval.id} className="mx-auto max-w-2xl">
+            <div className="mb-1 text-right">
+              <Link to="/approvals/$id" params={{ id: approval.id }} className={PERMALINK_CLASS}>
                 Open ↗
               </Link>
             </div>

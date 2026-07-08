@@ -6,6 +6,8 @@ import {
   createRouter,
   redirect,
 } from "@tanstack/react-router";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import ApprovalDetail from "./ApprovalDetail";
 import ApprovalsInbox from "./ApprovalsInbox";
 import AuditTrail from "./AuditTrail";
@@ -30,21 +32,23 @@ const NAV = [
   { to: "/audit", label: "Audit trail" },
 ] as const;
 
-const NAV_BASE_STYLE = {
-  padding: "0.5rem 1.2rem",
-  borderRadius: 6,
-  border: "1px solid #d0d7de",
-  background: "#fff",
-  color: "#24292f",
-  textDecoration: "none",
-  cursor: "pointer",
-} as const;
-
-const NAV_ACTIVE_STYLE = { ...NAV_BASE_STYLE, background: "#24292f", color: "#fff" } as const;
+// TanStack Router concatenates `className` + the active/inactive `className`
+// verbatim (no tailwind-merge), so colour utilities live entirely in the
+// active/inactive sets — never the shared base — to keep exactly one `bg-*`
+// applied per state. The base carries only non-conflicting layout + focus.
+const NAV_BASE_CLASS =
+  "rounded-md border px-4 py-2 text-sm font-medium no-underline transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+const NAV_INACTIVE_CLASS = "border-border bg-card text-foreground hover:bg-muted";
+const NAV_ACTIVE_CLASS = "border-strong bg-strong text-strong-foreground";
 
 function NavTab({ to, label }: { to: string; label: string }) {
   return (
-    <Link to={to} style={NAV_BASE_STYLE} activeProps={{ style: NAV_ACTIVE_STYLE }}>
+    <Link
+      to={to}
+      className={NAV_BASE_CLASS}
+      activeProps={{ className: NAV_ACTIVE_CLASS }}
+      inactiveProps={{ className: NAV_INACTIVE_CLASS }}
+    >
       {label}
     </Link>
   );
@@ -62,61 +66,22 @@ function RootLayout() {
   const { email, role, signOut } = useAuth();
 
   return (
-    <main
-      style={{
-        fontFamily: "system-ui",
-        padding: "2rem",
-        background: "#f6f8fa",
-        minHeight: "100vh",
-      }}
-    >
+    <main className="min-h-screen p-8">
       {email && (
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            alignItems: "center",
-            gap: "0.6rem",
-            fontSize: "0.85rem",
-            color: "#57606a",
-          }}
-        >
+        <div className="flex items-center justify-end gap-2 text-sm text-muted-foreground">
           <span>{email}</span>
           {role && (
-            <span
-              style={{
-                textTransform: "uppercase",
-                fontSize: "0.7rem",
-                fontWeight: 600,
-                letterSpacing: "0.03em",
-                padding: "0.1rem 0.5rem",
-                borderRadius: 999,
-                background: "#eaeef2",
-                color: "#57606a",
-              }}
-            >
+            <Badge variant="secondary" className="uppercase tracking-wide">
               {role}
-            </span>
+            </Badge>
           )}
-          <button
-            onClick={signOut}
-            style={{
-              padding: "0.2rem 0.7rem",
-              borderRadius: 6,
-              border: "1px solid #d0d7de",
-              background: "#fff",
-              color: "#24292f",
-              cursor: "pointer",
-            }}
-          >
+          <Button variant="outline" size="sm" onClick={signOut}>
             Sign out
-          </button>
+          </Button>
         </div>
       )}
-      <h1 style={{ textAlign: "center" }}>brokerops</h1>
-      <nav
-        style={{ display: "flex", gap: "0.6rem", justifyContent: "center", margin: "1rem 0 2rem" }}
-      >
+      <h1 className="text-center text-3xl font-semibold tracking-tight">brokerops</h1>
+      <nav className="my-6 flex flex-wrap justify-center gap-2">
         {NAV.map((item) => (
           <NavTab key={item.to} to={item.to} label={item.label} />
         ))}
@@ -130,10 +95,10 @@ function RootLayout() {
 // nav stays put and the user can recover without a reload.
 function NotFound() {
   return (
-    <div style={{ textAlign: "center" }}>
+    <div className="text-center">
       <BackLink to="/listings" label="Back to listings" />
       <CenteredMessage title="Page not found.">
-        <p style={{ fontSize: "0.85rem", margin: 0 }}>That link doesn't point anywhere here.</p>
+        <p className="m-0 text-sm">That link doesn't point anywhere here.</p>
       </CenteredMessage>
     </div>
   );

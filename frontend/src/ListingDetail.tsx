@@ -16,29 +16,19 @@ export default function ListingDetail() {
   const notFound = error instanceof ApiError && error.status === 404;
 
   return (
-    <section style={{ maxWidth: 700, margin: "0 auto", textAlign: "center" }}>
+    <section className="mx-auto max-w-2xl text-center">
       <BackLink to="/listings" label="All listings" />
       {isPending && <CenteredMessage title="Loading listing…" />}
       {notFound && (
         <CenteredMessage title={`No listing found for ${key}.`}>
-          <p style={{ fontSize: "0.85rem", margin: 0 }}>
-            It may have closed or the link is out of date.
-          </p>
+          <p className="m-0 text-sm">It may have closed or the link is out of date.</p>
         </CenteredMessage>
       )}
       {error && !notFound && (
-        <p style={{ color: "#cf222e" }}>Could not load listing: {String(error)}</p>
+        <p className="text-destructive">Could not load listing: {String(error)}</p>
       )}
       {notice && (
-        <p
-          style={{
-            color: "#1a7f37",
-            background: "#dafbe1",
-            borderRadius: 6,
-            padding: "0.5rem",
-            margin: "0 0 1rem",
-          }}
-        >
+        <p className="mb-4 rounded-md bg-success-soft p-2 text-success-soft-foreground">
           {notice}
         </p>
       )}

@@ -1,4 +1,8 @@
 import { useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { type MutationRecord } from "./client";
 import { useMutations } from "./hooks/audit";
 
@@ -10,67 +14,37 @@ const INTEGRATION_LABELS: Record<string, string> = {
 function OutcomeBadge({ outcome }: { outcome: MutationRecord["outcome"] }) {
   const ok = outcome === "success";
   return (
-    <span
-      style={{
-        textTransform: "uppercase",
-        fontSize: "0.7rem",
-        fontWeight: 600,
-        letterSpacing: "0.03em",
-        padding: "0.1rem 0.5rem",
-        borderRadius: 999,
-        background: ok ? "#dafbe1" : "#ffebe9",
-        color: ok ? "#1a7f37" : "#cf222e",
-      }}
-    >
+    <Badge variant={ok ? "successSoft" : "dangerSoft"} className="uppercase tracking-wide">
       {outcome}
-    </span>
+    </Badge>
   );
 }
 
 function MutationRow({ record }: { record: MutationRecord }) {
   return (
-    <article
-      style={{
-        border: "1px solid #d0d7de",
-        borderRadius: 8,
-        padding: "0.8rem 1rem",
-        textAlign: "left",
-        background: "#fff",
-        maxWidth: 760,
-        margin: "0 auto 0.7rem",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-        <strong style={{ fontFamily: "ui-monospace, monospace" }}>
-          {INTEGRATION_LABELS[record.integration] ?? record.integration} · {record.tool}
-        </strong>
-        <OutcomeBadge outcome={record.outcome} />
-      </div>
-      <p style={{ color: "#57606a", fontSize: "0.8rem", margin: "0.3rem 0" }}>
-        {record.workflow} · run {record.workflow_run_id.slice(0, 8)}
-        {record.approval_id ? ` · approval ${record.approval_id.slice(0, 8)}` : ""}
-        {record.actor ? ` · by ${record.actor}` : ""}
-      </p>
-      <pre
-        style={{
-          background: "#f6f8fa",
-          borderRadius: 6,
-          padding: "0.5rem",
-          fontSize: "0.78rem",
-          overflowX: "auto",
-          margin: "0.3rem 0",
-        }}
-      >
-        {JSON.stringify(record.args, null, 2)}
-      </pre>
-      <p style={{ color: "#57606a", fontSize: "0.78rem", margin: 0 }}>
-        {record.external_id ? `external id ${record.external_id} · ` : ""}
-        {new Date(record.created_at).toLocaleString()}
-      </p>
-      {record.error && (
-        <p style={{ color: "#cf222e", fontSize: "0.8rem", margin: "0.3rem 0 0" }}>{record.error}</p>
-      )}
-    </article>
+    <Card as="article" className="mx-auto mb-3 max-w-[760px] text-left">
+      <CardContent className="p-4">
+        <div className="flex items-baseline justify-between gap-3">
+          <strong className="font-mono">
+            {INTEGRATION_LABELS[record.integration] ?? record.integration} · {record.tool}
+          </strong>
+          <OutcomeBadge outcome={record.outcome} />
+        </div>
+        <p className="my-1 text-xs text-muted-foreground">
+          {record.workflow} · run {record.workflow_run_id.slice(0, 8)}
+          {record.approval_id ? ` · approval ${record.approval_id.slice(0, 8)}` : ""}
+          {record.actor ? ` · by ${record.actor}` : ""}
+        </p>
+        <pre className="my-1 overflow-x-auto rounded-md bg-muted p-2 text-xs">
+          {JSON.stringify(record.args, null, 2)}
+        </pre>
+        <p className="m-0 text-xs text-muted-foreground">
+          {record.external_id ? `external id ${record.external_id} · ` : ""}
+          {new Date(record.created_at).toLocaleString()}
+        </p>
+        {record.error && <p className="mt-1 text-xs text-destructive">{record.error}</p>}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -80,38 +54,22 @@ export default function AuditTrail() {
 
   return (
     <>
-      <div
-        style={{ display: "flex", gap: "0.6rem", justifyContent: "center", marginBottom: "1.2rem" }}
-      >
-        <input
+      <div className="mb-5 flex justify-center gap-2">
+        <Input
           value={runFilter}
           onChange={(event) => setRunFilter(event.target.value)}
           placeholder="Filter by workflow run id"
-          style={{
-            padding: "0.4rem 0.7rem",
-            borderRadius: 6,
-            border: "1px solid #d0d7de",
-            minWidth: 320,
-          }}
+          className="min-w-[320px] max-w-md"
         />
-        <button
-          onClick={() => refetch()}
-          style={{
-            padding: "0.4rem 1.1rem",
-            borderRadius: 6,
-            border: "1px solid #d0d7de",
-            background: "#fff",
-            cursor: "pointer",
-          }}
-        >
+        <Button variant="outline" onClick={() => refetch()}>
           Refresh
-        </button>
+        </Button>
       </div>
-      {error && <p style={{ textAlign: "center", color: "#cf222e" }}>{String(error)}</p>}
+      {error && <p className="text-center text-destructive">{String(error)}</p>}
       {isPending ? (
-        <p style={{ textAlign: "center", color: "#57606a" }}>Loading audit trail…</p>
+        <p className="text-center text-muted-foreground">Loading audit trail…</p>
       ) : records.length === 0 ? (
-        <p style={{ textAlign: "center", color: "#57606a" }}>
+        <p className="text-center text-muted-foreground">
           No recorded actions yet. Approve a workflow to see its CRM writes here.
         </p>
       ) : (

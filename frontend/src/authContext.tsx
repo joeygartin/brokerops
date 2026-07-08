@@ -1,4 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   createContext,
   useCallback,
@@ -219,64 +221,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   if (phase === "login") {
     const methods = config?.methods ?? [];
     return (
-      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center" }}>
-        <div style={{ textAlign: "center", width: 320 }}>
-          <h1>brokerops</h1>
-          <p style={{ color: "#57606a" }}>Sign in to continue</p>
+      <div className="grid min-h-screen place-items-center p-4">
+        <div className="w-80 text-center">
+          <h1 className="text-2xl font-semibold tracking-tight">brokerops</h1>
+          <p className="text-muted-foreground">Sign in to continue</p>
 
           {methods.includes("magic") &&
             (magicSent ? (
-              <p
-                style={{
-                  background: "#dafbe1",
-                  color: "#1a7f37",
-                  borderRadius: 6,
-                  padding: "0.75rem",
-                }}
-              >
+              <p className="rounded-md bg-success-soft p-3 text-success-soft-foreground">
                 Check your email for a sign-in link.
               </p>
             ) : (
-              <form onSubmit={submitMagic} style={{ display: "grid", gap: "0.5rem" }}>
-                <input
+              <form onSubmit={submitMagic} className="grid gap-2">
+                <Input
                   type="email"
                   required
                   placeholder="you@example.com"
                   value={magicEmail}
                   onChange={(e) => setMagicEmail(e.target.value)}
-                  style={{
-                    padding: "0.5rem 0.7rem",
-                    borderRadius: 6,
-                    border: "1px solid #d0d7de",
-                    fontSize: "0.95rem",
-                  }}
                 />
-                <button
-                  type="submit"
-                  style={{
-                    padding: "0.5rem 1.1rem",
-                    borderRadius: 6,
-                    border: "1px solid #1a7f37",
-                    background: "#2da44e",
-                    color: "#fff",
-                    cursor: "pointer",
-                  }}
-                >
+                <Button type="submit" variant="success">
                   Email me a sign-in link
-                </button>
+                </Button>
               </form>
             ))}
 
-          {magicError && (
-            <p style={{ color: "#cf222e", fontSize: "0.85rem" }}>{magicError}</p>
-          )}
+          {magicError && <p className="text-sm text-destructive">{magicError}</p>}
 
           {methods.includes("magic") && methods.includes("google") && (
-            <div style={{ color: "#57606a", margin: "1rem 0", fontSize: "0.8rem" }}>or</div>
+            <div className="my-4 text-xs text-muted-foreground">or</div>
           )}
 
           {methods.includes("google") && (
-            <div ref={buttonRef} style={{ display: "inline-block", marginTop: "0.5rem" }} />
+            <div ref={buttonRef} className="mt-2 inline-block" />
           )}
         </div>
       </div>
@@ -296,8 +273,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 function CenteredNote({ text, tone }: { text: string; tone: "error" | "muted" }) {
   return (
-    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center" }}>
-      <p style={{ color: tone === "error" ? "#cf222e" : "#57606a" }}>{text}</p>
+    <div className="grid min-h-screen place-items-center p-4">
+      <p className={tone === "error" ? "text-destructive" : "text-muted-foreground"}>{text}</p>
     </div>
   );
 }

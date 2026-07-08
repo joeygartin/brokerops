@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens — the single source of truth for brokerops' look (BOP-026,
+ * ADR-0024): color, spacing, and the type scale. Every component consumes these
+ * via Tailwind utilities (`bg-card`, `text-muted-foreground`, `border-border`,
+ * `p-4`, `text-sm`, …); no view hardcodes a color. One light theme today; a
+ * client override later is a matter of replacing the values below, nothing else.
+ * Every foreground/background pair here clears WCAG AA (checked by
+ * `tokens.contrast.test.ts`, not eyeballed).
+ */
+@theme {
+  /* Surfaces + text */
+  --color-background: #f6f8fa;
+  --color-foreground: #1f2328;
+  --color-card: #ffffff;
+  --color-card-foreground: #1f2328;
+  --color-muted: #eaeef2;
+  --color-muted-foreground: #59636e;
+
+  /* Lines + focus */
+  --color-border: #d0d7de;
+  --color-input: #d0d7de;
+  --color-ring: #0969da;
+
+  /* Intents (solid: white text) */
+  --color-primary: #0969da;
+  --color-primary-foreground: #ffffff;
+  --color-success: #1a7f37;
+  --color-success-foreground: #ffffff;
+  --color-warning: #9a6700;
+  --color-warning-foreground: #ffffff;
+  --color-destructive: #cf222e;
+  --color-destructive-foreground: #ffffff;
+  --color-blocked: #8250df;
+  --color-blocked-foreground: #ffffff;
+  --color-strong: #24292f;
+  --color-strong-foreground: #ffffff;
+
+  /* Soft intent surfaces (tinted background, saturated text) */
+  --color-info-soft: #ddf4ff;
+  --color-info-soft-foreground: #0969da;
+  --color-success-soft: #dafbe1;
+  --color-success-soft-foreground: #1a7f37;
+  --color-danger-soft: #ffebe9;
+  --color-danger-soft-foreground: #cf222e;
+
+  /* Spacing scale — one base unit; every padding, gap, and margin utility
+   * derives from it (e.g. `p-4` = 4 × --spacing). Retune density fleet-wide. */
+  --spacing: 0.25rem;
+
+  /* Type scale — family + the size/line-height ramp the views consume via
+   * text-xs … text-3xl. Values match the ramp already in use, now sourced here. */
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg: 1.125rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.75rem;
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: 2rem;
+  --text-3xl: 1.875rem;
+  --text-3xl--line-height: 2.25rem;
+
+  --radius: 0.5rem;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+}

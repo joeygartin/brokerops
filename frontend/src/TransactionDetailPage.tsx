@@ -14,18 +14,16 @@ export default function TransactionDetailPage() {
 
   return (
     <section>
-      <div style={{ textAlign: "center" }}>
+      <div className="text-center">
         <BackLink to="/transactions" label="All transactions" />
       </div>
       {isPending && <CenteredMessage title="Loading transaction…" />}
       {notFound && (
         <CenteredMessage title={`No transaction found for ${id}.`}>
-          <p style={{ fontSize: "0.85rem", margin: 0 }}>The link may be out of date.</p>
+          <p className="m-0 text-sm">The link may be out of date.</p>
         </CenteredMessage>
       )}
-      {error && !notFound && (
-        <p style={{ textAlign: "center", color: "#cf222e" }}>{String(error)}</p>
-      )}
+      {error && !notFound && <p className="text-center text-destructive">{String(error)}</p>}
       {detail && <TransactionCard detail={detail} />}
     </section>
   );
