@@ -87,7 +87,10 @@ async def test_recording_sms_records_success_with_provider_id() -> None:
     assert record.tool == "send_sms"
     assert record.outcome is MutationOutcome.SUCCESS
     assert record.external_id == provider_id
+    assert record.args is not None
     assert record.args["recipient"] == "+15551230101"
+    # Metadata-only ledger (BOP-027 r3): the freeform SMS body is NOT recorded.
+    assert "body" not in record.args
     assert record.workflow_run_id == "run-1"
     assert record.approval_id == "ap-1"
     assert record.actor == "op@x"

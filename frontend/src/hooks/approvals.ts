@@ -42,6 +42,19 @@ export function useApproval(approvalId: string) {
   });
 }
 
+// A transaction's full approval history for the hub (BOP-027): pending AND
+// decided, via GET /approvals?transaction_id=. Distinct from the pending-only
+// inbox query — the hub shows related approvals whatever their status, each
+// linking out to its /approvals/:id permalink to act on.
+export function useTransactionApprovals(transactionId: string) {
+  return useQuery({
+    queryKey: queryKeys.transactionApprovals(transactionId),
+    queryFn: async () =>
+      unwrap(await listApprovalsApprovalsGet({ query: { transaction_id: transactionId } })),
+    staleTime: 5_000,
+  });
+}
+
 export function useDecideApproval() {
   const client = useQueryClient();
   return useMutation({

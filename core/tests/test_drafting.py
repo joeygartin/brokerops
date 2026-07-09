@@ -59,7 +59,9 @@ class DictMessageStore:
                 return message
         return None
 
-    async def list_messages(self, contact_id: str | None = None, limit: int = 100) -> list[Message]:
+    async def list_messages(
+        self, contact_id: str | None = None, limit: int = 100, transaction_id: str | None = None
+    ) -> list[Message]:
         return list(self.rows.values())[:limit]
 
     async def advance_message_status(

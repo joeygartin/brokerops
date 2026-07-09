@@ -317,7 +317,10 @@ async def test_scoped_advance_message_status_confines_to_the_bound_tenant() -> N
             return None
 
         async def list_messages(
-            self, contact_id: str | None = None, limit: int = 100
+            self,
+            contact_id: str | None = None,
+            limit: int = 100,
+            transaction_id: str | None = None,
         ) -> list[Message]:
             return list(self.rows.values())[:limit]
 

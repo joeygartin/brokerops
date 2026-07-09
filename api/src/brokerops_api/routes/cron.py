@@ -46,9 +46,9 @@ async def run_milestone_checks(
 
     def _awaiting(kind: str) -> set[str]:
         return {
-            str(approval.payload.get("transaction_id"))
+            str((approval.payload or {}).get("transaction_id"))
             for approval in pending
-            if approval.kind == kind and approval.payload.get("transaction_id")
+            if approval.kind == kind and (approval.payload or {}).get("transaction_id")
         }
 
     awaiting_escalation = _awaiting("approve_escalation")

@@ -13,7 +13,7 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict
 
-from brokerops_core.models.sensitivity import CONTACT_PII
+from brokerops_core.models.sensitivity import CONTACT_PII, RESTRICTED_CONTENT
 
 
 class MessageChannel(StrEnum):
@@ -73,9 +73,14 @@ class Message(BaseModel):
     channel: MessageChannel = MessageChannel.EMAIL
     # An email address or phone number — role-restricted PII at egress (BOP-012).
     recipient: Annotated[str, CONTACT_PII]
-    # Empty for channels that have no subject line (SMS).
-    subject: str = ""
-    body: str = ""
+    # Empty for channels that have no subject line (SMS). Freeform (a drafting
+    # backend may author it), so role-restricted at egress with the body (BOP-027):
+    # redacted for viewers on route responses.
+    subject: Annotated[str, RESTRICTED_CONTENT] = ""
+    # The rendered client-facing message text — role-restricted at egress (BOP-027):
+    # redacted for viewers on route responses, so a viewer-open hub shows a comms
+    # row's channel/status but never the message body itself.
+    body: Annotated[str, RESTRICTED_CONTENT] = ""
     # The versioned template this message was rendered from, e.g. "showing_followup:v1".
     template_ref: str = ""
     # Related entities, so the comms history is queryable by who/what it was about.

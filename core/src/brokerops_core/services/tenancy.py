@@ -133,6 +133,7 @@ async def record_cross_tenant_attempt(
         id=uuid4().hex,
         workflow_run_id=context.workflow_run_id if context else "",
         workflow=context.workflow if context else "",
+        transaction_id=context.transaction_id if context else "",
         tool=tool,
         integration=SECURITY_INTEGRATION,
         args={"attempted_tenant": error.attempted, "bound_tenant": error.bound},

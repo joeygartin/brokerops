@@ -45,9 +45,16 @@
             "type": "string"
           },
           "payload": {
-            "additionalProperties": true,
-            "title": "Payload",
-            "type": "object"
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payload"
           },
           "status": {
             "$ref": "#/components/schemas/ApprovalStatus",
@@ -842,9 +849,16 @@
             "title": "Approval Id"
           },
           "args": {
-            "additionalProperties": true,
-            "title": "Args",
-            "type": "object"
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Args"
           },
           "created_at": {
             "format": "date-time",
@@ -886,6 +900,11 @@
           },
           "tool": {
             "title": "Tool",
+            "type": "string"
+          },
+          "transaction_id": {
+            "default": "",
+            "title": "Transaction Id",
             "type": "string"
           },
           "workflow": {
@@ -1494,6 +1513,7 @@
     },
     "/approvals": {
       "get": {
+        "description": "List approvals, newest first.\n\nDefault: the pending inbox (payload intact \u2014 the inbox renders each gate's\npreview, gated to its role at the control level). `transaction_id` returns one\ndeal's full approval history for the transaction hub (BOP-027) \u2014 pending AND\ndecided, so `status` is not applied in that mode \u2014 and is role-filtered: a\nviewer receives kind/status but the draft payload is redacted, since that hub\nsurface only links out to /approvals/:id (where the existing role gate applies).\nThe transaction id lives in the open payload, so the filter reads it there.",
         "operationId": "list_approvals_approvals_get",
         "parameters": [
           {
@@ -1511,6 +1531,22 @@
               ],
               "default": "pending",
               "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "transaction_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Transaction Id"
             }
           },
           {
@@ -1690,7 +1726,7 @@
     },
     "/audit": {
       "get": {
-        "description": "The action audit-ledger: external writes this system performed, newest first.\n\nRead-only and open to any authenticated operator (viewer and up) \u2014 the trail is\na review surface, not a privileged action. Filter to one run with\n`workflow_run_id` to see everything done under a single workflow run.",
+        "description": "The action audit-ledger: external writes this system performed, newest first.\n\nRead-only and open to any authenticated operator (viewer and up) \u2014 the trail is\na review surface, not a privileged action. Filter to one run with\n`workflow_run_id`, or to one deal with `transaction_id` for the transaction hub\n(BOP-027) \u2014 every write from a transaction-scoped run is stamped with the deal\nid, so that slice is a complete, direct match (no approval-derived guesswork).\n\nThe response is role-filtered: the argument snapshot and error text are redacted\nfor viewers, so a viewer-open hub receives the action metadata (tool, integration,\noutcome, actor, time) but never the raw mutation payload.",
         "operationId": "list_mutations_audit_get",
         "parameters": [
           {
@@ -1707,6 +1743,22 @@
                 }
               ],
               "title": "Workflow Run Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "transaction_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Transaction Id"
             }
           },
           {
@@ -2668,7 +2720,7 @@
     },
     "/messages": {
       "get": {
-        "description": "The outbound comms history, newest first \u2014 read-open like the audit trail.",
+        "description": "The outbound comms history, newest first \u2014 read-open like the audit trail.\n\n`transaction_id` scopes the history to one deal for the transaction hub\n(BOP-027); both filters compose (AND) when supplied together. The response is\nrole-filtered: the freeform body (and contact PII) is redacted for viewers so a\nviewer-open hub never receives message content over the wire.",
         "operationId": "list_messages_messages_get",
         "parameters": [
           {
@@ -2685,6 +2737,22 @@
                 }
               ],
               "title": "Contact Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "transaction_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Transaction Id"
             }
           },
           {

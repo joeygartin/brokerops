@@ -4,13 +4,19 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 
-from brokerops_api.deps import get_document_store, get_transaction_store, require_role
+from brokerops_api.deps import (
+    get_current_principal,
+    get_document_store,
+    get_transaction_store,
+    require_role,
+)
 from brokerops_core.models.document import Document
 from brokerops_core.models.milestone import Milestone, MilestoneStatus
 from brokerops_core.models.transaction import Transaction, TransactionParty
 from brokerops_core.ports.documents import DocumentStore
 from brokerops_core.ports.identity import Principal, Role
 from brokerops_core.ports.transactions import TransactionAlreadyExists, TransactionStore
+from brokerops_core.services.egress import scrub_payload
 from brokerops_core.services.milestone_engine import assess_milestone, expected_document_satisfied
 from brokerops_core.services.transaction_open import build_open_transaction
 
@@ -20,6 +26,10 @@ StoreDep = Annotated[TransactionStore, Depends(get_transaction_store)]
 DocumentsDep = Annotated[DocumentStore, Depends(get_document_store)]
 # Opening a transaction is an action, not a read — operators and up, not viewers.
 OperatorDep = Annotated[Principal, Depends(require_role(Role.OPERATOR))]
+# The board and the hub read transactions viewer-open; the response is filtered to
+# the caller's role (BOP-027) so a viewer receives party names/roles but not their
+# contact email (TransactionParty.email is CONTACT_PII).
+ReaderDep = Annotated[Principal, Depends(get_current_principal)]
 
 
 class MilestoneView(Milestone):
@@ -138,16 +148,22 @@ async def open_transaction(
 
 
 @router.get("")
-async def list_transactions(store: StoreDep, docs: DocumentsDep) -> list[TransactionDetail]:
+async def list_transactions(
+    store: StoreDep, docs: DocumentsDep, principal: ReaderDep
+) -> list[TransactionDetail]:
     active = await store.list_active_transactions()
-    return [await _detail(store, docs, transaction) for transaction in active]
+    details = [await _detail(store, docs, transaction) for transaction in active]
+    scrubbed: list[TransactionDetail] = scrub_payload(details, recipient_role=principal.role)
+    return scrubbed
 
 
 @router.get("/{transaction_id}")
 async def get_transaction(
-    transaction_id: str, store: StoreDep, docs: DocumentsDep
+    transaction_id: str, store: StoreDep, docs: DocumentsDep, principal: ReaderDep
 ) -> TransactionDetail:
     transaction = await store.get_transaction(transaction_id)
     if transaction is None:
         raise HTTPException(status_code=404, detail=f"transaction {transaction_id!r} not found")
-    return await _detail(store, docs, transaction)
+    detail = await _detail(store, docs, transaction)
+    scrubbed: TransactionDetail = scrub_payload(detail, recipient_role=principal.role)
+    return scrubbed

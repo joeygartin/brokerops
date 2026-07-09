@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 from brokerops_api.db import ApprovalRepo, TransactionStoreAdmin
 from brokerops_api.workflows import WorkflowEngine
-from brokerops_core.ports.audit import AuditLog
+from brokerops_core.ports.audit import TransactionAuditLog
 from brokerops_core.ports.auth import MagicTokenStore
 from brokerops_core.ports.crm import CRMPort
 from brokerops_core.ports.documents import DocumentStore
@@ -757,8 +757,12 @@ def get_document_store(request: Request) -> DocumentStore:
     return cast(DocumentStore, request.app.state.document_store)
 
 
-def get_audit_log(request: Request) -> AuditLog:
-    return cast(AuditLog, request.app.state.audit_log)
+def get_audit_log(request: Request) -> TransactionAuditLog:
+    # The API's ledger accessor exposes the full read surface — plain listing plus
+    # the per-transaction slice (BOP-027); both production stores (Sql/InMemory)
+    # implement it. The narrower `AuditLog` remains the type the recording seam's
+    # write-side callers depend on.
+    return cast(TransactionAuditLog, request.app.state.audit_log)
 
 
 def get_message_store(request: Request) -> MessageStore:

@@ -97,7 +97,11 @@ async def test_recording_email_records_success_with_provider_id() -> None:
     assert record.tool == "send_email"
     assert record.outcome is MutationOutcome.SUCCESS
     assert record.external_id == "provider-1"
+    assert record.args is not None
     assert record.args["recipient"] == "sam@example.com"
+    # Metadata-only ledger (BOP-027 r3): the freeform body is NOT recorded — it
+    # lives in outbound_messages, so the trail never carries client-facing text.
+    assert "body" not in record.args
     assert record.workflow_run_id == "run-1"
     assert record.approval_id == "ap-1"
     assert record.actor == "op@x"

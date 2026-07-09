@@ -147,7 +147,9 @@ class DictMessageStore:
                 return message
         return None
 
-    async def list_messages(self, contact_id: str | None = None, limit: int = 100) -> list[Message]:
+    async def list_messages(
+        self, contact_id: str | None = None, limit: int = 100, transaction_id: str | None = None
+    ) -> list[Message]:
         return list(self.rows.values())[:limit]
 
     async def advance_message_status(
@@ -282,6 +284,7 @@ async def test_vapi_followup_syncs_note_and_call_log_to_sierra(harness: Harness)
     assert result.status == "awaiting_approval"
     assert result.approval is not None
     assert result.approval.kind == "approve_outbound_message"
+    assert result.approval.payload is not None
     assert result.approval.payload["recipient"] == "morgan.ellis@example.test"
 
     decided = await _approve(engine, repo, result.approval.id)

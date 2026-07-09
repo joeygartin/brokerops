@@ -202,10 +202,21 @@ def test_contact_pii_passes_through_for_operator_and_admin() -> None:
     assert scrub_payload(contact, recipient_role=Role.ADMIN) is contact
 
 
-def test_message_recipient_is_redacted_for_a_viewer() -> None:
+def test_message_content_is_redacted_for_a_viewer() -> None:
+    # recipient (CONTACT_PII) and the freeform subject + body (RESTRICTED_CONTENT,
+    # BOP-027) are all operator+ — a viewer sees none of the message content.
     message = Message(id="MSG-1", recipient="jane@example.com", subject="hi", body="hello")
     scrubbed = scrub_payload(message, recipient_role=Role.VIEWER)
     assert scrubbed.recipient == PII_REDACTED
+    assert scrubbed.subject == PII_REDACTED
+    assert scrubbed.body == PII_REDACTED
+
+
+def test_message_content_visible_to_an_operator() -> None:
+    message = Message(id="MSG-1", recipient="jane@example.com", subject="hi", body="hello")
+    scrubbed = scrub_payload(message, recipient_role=Role.OPERATOR)
+    assert scrubbed.recipient == "jane@example.com"
+    assert scrubbed.subject == "hi"
     assert scrubbed.body == "hello"
 
 

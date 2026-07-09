@@ -12,4 +12,13 @@ export const queryKeys = {
   approval: (approvalId: string) => ["approvals", approvalId] as const,
   audit: (workflowRunId: string) => ["audit", workflowRunId] as const,
   folderFiles: (folder: string) => ["files", folder] as const,
+  // The transaction hub's per-deal slices (BOP-027). Nested under the transaction
+  // detail key so invalidating a transaction (prefix match — e.g. after the cron
+  // raises an escalation or an approval is decided) also refreshes its hub slices.
+  transactionMessages: (transactionId: string) =>
+    ["transactions", transactionId, "messages"] as const,
+  transactionApprovals: (transactionId: string) =>
+    ["transactions", transactionId, "approvals"] as const,
+  transactionAudit: (transactionId: string) =>
+    ["transactions", transactionId, "audit"] as const,
 };

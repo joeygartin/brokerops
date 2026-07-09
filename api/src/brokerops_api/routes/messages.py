@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from brokerops_api.deps import (
     get_approval_repo,
+    get_current_principal,
     get_message_service,
     get_message_store,
     require_role,
@@ -33,6 +34,7 @@ from brokerops_core.models.message_templates import TemplateParamError, UnknownT
 from brokerops_core.ports.identity import Principal, Role
 from brokerops_core.ports.messaging import MessageStore
 from brokerops_core.services.audit import AuditContext, audit_scope
+from brokerops_core.services.egress import scrub_payload
 from brokerops_core.services.idempotency import ReplayInProgressError
 from brokerops_core.services.message_send import MessageSendService, UnknownOutboundMessageError
 
@@ -43,6 +45,10 @@ StoreDep = Annotated[MessageStore, Depends(get_message_store)]
 ApprovalRepoDep = Annotated[ApprovalRepo, Depends(get_approval_repo)]
 # Sending a client-facing email is an action — operators and up, not viewers.
 OperatorDep = Annotated[Principal, Depends(require_role(Role.OPERATOR))]
+# Reads are open to any authenticated role, but the response is filtered to the
+# caller's role (BOP-027): the freeform body is redacted for viewers so a
+# viewer-open surface never receives the message text over the wire.
+ReaderDep = Annotated[Principal, Depends(get_current_principal)]
 # Retrying a FAILED send re-drives an already-approved decision — admins only,
 # like the decide route it completes (BOP-037).
 AdminDep = Annotated[Principal, Depends(require_role(Role.ADMIN))]
@@ -82,6 +88,9 @@ async def send_message(
         workflow_run_id=body.request_id or uuid4().hex,
         workflow="message_send",
         actor=principal.email,
+        # Tags this direct send's ledger entry with the deal (BOP-027) so it joins
+        # the transaction's audit slice like a workflow-driven send does.
+        transaction_id=body.transaction_id,
     )
     send = service.send_sms if body.channel is MessageChannel.SMS else service.send_email
     with audit_scope(context):
@@ -131,7 +140,8 @@ async def retry_failed_message(
         (
             a
             for a in approvals
-            if a.kind == APPROVE_OUTBOUND_MESSAGE and a.payload.get("message_id") == message_id
+            if a.kind == APPROVE_OUTBOUND_MESSAGE
+            and (a.payload or {}).get("message_id") == message_id
         ),
         None,
     )
@@ -142,6 +152,8 @@ async def retry_failed_message(
         workflow="message_retry",
         approval_id=original.id if original is not None else None,
         actor=principal.email,
+        # The retried send stays attributed to the same deal (BOP-027).
+        transaction_id=row.transaction_id,
     )
     with audit_scope(context):
         try:
@@ -157,18 +169,29 @@ async def retry_failed_message(
 
 
 @router.get("/{message_id}")
-async def get_message(message_id: str, store: StoreDep) -> Message:
+async def get_message(message_id: str, store: StoreDep, principal: ReaderDep) -> Message:
     message = await store.get_message(message_id)
     if message is None:
         raise HTTPException(status_code=404, detail=f"message {message_id!r} not found")
-    return message
+    scrubbed: Message = scrub_payload(message, recipient_role=principal.role)
+    return scrubbed
 
 
 @router.get("")
 async def list_messages(
     store: StoreDep,
+    principal: ReaderDep,
     contact_id: Annotated[str | None, Query()] = None,
+    transaction_id: Annotated[str | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
 ) -> list[Message]:
-    """The outbound comms history, newest first — read-open like the audit trail."""
-    return await store.list_messages(contact_id, limit)
+    """The outbound comms history, newest first — read-open like the audit trail.
+
+    `transaction_id` scopes the history to one deal for the transaction hub
+    (BOP-027); both filters compose (AND) when supplied together. The response is
+    role-filtered: the freeform body (and contact PII) is redacted for viewers so a
+    viewer-open hub never receives message content over the wire.
+    """
+    rows = await store.list_messages(contact_id, limit, transaction_id)
+    scrubbed: list[Message] = scrub_payload(rows, recipient_role=principal.role)
+    return scrubbed

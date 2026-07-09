@@ -36,6 +36,7 @@ async def test_create_get_roundtrip(engine: AsyncEngine) -> None:
     await repo.create(approval)
     loaded = await repo.get(approval.id)
     assert loaded is not None
+    assert loaded.payload is not None
     assert loaded.payload["draft"]["headline"] == "Just Listed"
     assert loaded.status is ApprovalStatus.PENDING
 

@@ -109,6 +109,7 @@ async def test_records_successful_write_with_run_context() -> None:
     assert record.workflow_run_id == "run-7"
     assert record.approval_id == "ap-3"
     assert record.actor == "joey@x"
+    assert record.args is not None
     assert record.args["name"] == "Order signage"
     assert record.error is None
 

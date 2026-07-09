@@ -28,3 +28,10 @@ class Pii:
 # draft, approve, and send comms, so they are entitled to contact reach; viewers read
 # dashboards and are not (ADR-0009's read/act split, applied to data instead of routes).
 CONTACT_PII = Pii(min_role=Role.OPERATOR)
+
+# Freeform client-facing / operational payload — a rendered message body, an audit
+# record's argument snapshot or error text (BOP-027). Same read/act bar as contact
+# reach: operators who send comms and drive workflows see the content; viewers, who
+# read summary dashboards, do not. Redacted on viewer-open route responses so a hub
+# never hands a viewer the message text or a raw mutation payload.
+RESTRICTED_CONTENT = Pii(min_role=Role.OPERATOR)

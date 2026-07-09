@@ -69,5 +69,8 @@ class MessageStore(Protocol):
         ...
 
     async def list_messages(
-        self, contact_id: str | None = None, limit: int = 100
+        self,
+        contact_id: str | None = None,
+        limit: int = 100,
+        transaction_id: str | None = None,
     ) -> list[Message]: ...

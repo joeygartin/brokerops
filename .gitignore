@@ -12,6 +12,7 @@ credentials*
 
 # ── Local-only / agent-tooling files ─────────────────────────────────
 CLAUDE.local.md
+.envrc
 .claude/
 .internal/
 .internal-denylist

@@ -174,6 +174,9 @@ mutation_records = sa.Table(
     sa.Column("tenant_id", sa.String(64), nullable=False, server_default="", index=True),
     sa.Column("workflow_run_id", sa.String(64), nullable=False, server_default="", index=True),
     sa.Column("workflow", sa.String(64), nullable=False, server_default=""),
+    # The deal a write concerns (BOP-027); indexed so the transaction hub's audit
+    # slice is a direct column match. Authoritative DDL is migration 0011.
+    sa.Column("transaction_id", sa.String(36), nullable=False, server_default="", index=True),
     sa.Column("tool", sa.String(64), nullable=False),
     sa.Column("integration", sa.String(32), nullable=False, index=True),
     sa.Column("args", sa.JSON(), nullable=False),
@@ -647,12 +650,19 @@ class SqlMessageStore:
             row = result.first()
         return Message.model_validate(dict(row._mapping)) if row is not None else None
 
-    async def list_messages(self, contact_id: str | None = None, limit: int = 100) -> list[Message]:
+    async def list_messages(
+        self,
+        contact_id: str | None = None,
+        limit: int = 100,
+        transaction_id: str | None = None,
+    ) -> list[Message]:
         query = (
             outbound_messages.select().order_by(outbound_messages.c.created_at.desc()).limit(limit)
         )
         if contact_id is not None:
             query = query.where(outbound_messages.c.contact_id == contact_id)
+        if transaction_id is not None:
+            query = query.where(outbound_messages.c.transaction_id == transaction_id)
         async with self._engine.connect() as conn:
             result = await conn.execute(query)
             rows = result.all()
@@ -700,9 +710,17 @@ class InMemoryMessageStore:
                 return message
         return None
 
-    async def list_messages(self, contact_id: str | None = None, limit: int = 100) -> list[Message]:
+    async def list_messages(
+        self,
+        contact_id: str | None = None,
+        limit: int = 100,
+        transaction_id: str | None = None,
+    ) -> list[Message]:
         found = [
-            m for m in self._messages.values() if contact_id is None or m.contact_id == contact_id
+            m
+            for m in self._messages.values()
+            if (contact_id is None or m.contact_id == contact_id)
+            and (transaction_id is None or m.transaction_id == transaction_id)
         ]
         epoch = datetime.min.replace(tzinfo=UTC)
         found.sort(key=lambda m: m.created_at or epoch, reverse=True)
@@ -784,6 +802,27 @@ class SqlAuditLog:
         async with self._engine.begin() as conn:
             await conn.execute(mutation_records.insert().values(**values))
 
+    # Defined before `list` so its `-> list[MutationRecord]` annotation resolves to
+    # the builtin, not this class's later-bound `list` method (a real mypy
+    # valid-type trap when a method named `list` precedes another annotation).
+    async def list_for_transaction(
+        self, transaction_id: str, limit: int = 200
+    ) -> list[MutationRecord]:
+        # A direct indexed column match (BOP-027): every write from a
+        # transaction-scoped run is stamped with the deal id at record time, so the
+        # slice is complete regardless of whether the run raised an approval, and
+        # never bounded by a scan window.
+        query = (
+            mutation_records.select()
+            .where(mutation_records.c.transaction_id == transaction_id)
+            .order_by(mutation_records.c.created_at.desc())
+            .limit(limit)
+        )
+        async with self._engine.connect() as conn:
+            result = await conn.execute(query)
+            rows = result.all()
+        return [MutationRecord.model_validate(dict(row._mapping)) for row in rows]
+
     async def list(
         self, workflow_run_id: str | None = None, limit: int = 200
     ) -> list[MutationRecord]:
@@ -804,6 +843,14 @@ class InMemoryAuditLog:
 
     async def record(self, record: MutationRecord) -> None:
         self._items.append(record)
+
+    # Before `list` for the same valid-type reason as SqlAuditLog above.
+    async def list_for_transaction(
+        self, transaction_id: str, limit: int = 200
+    ) -> list[MutationRecord]:
+        items = sorted(self._items, key=lambda r: r.created_at, reverse=True)
+        matched = [r for r in items if r.transaction_id == transaction_id]
+        return matched[:limit]
 
     async def list(
         self, workflow_run_id: str | None = None, limit: int = 200

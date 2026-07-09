@@ -39,7 +39,7 @@ export type ApprovalRequest = {
      */
     payload: {
         [key: string]: unknown;
-    };
+    } | null;
     status?: ApprovalStatus;
     /**
      * Tenant Id
@@ -649,7 +649,7 @@ export type MutationRecord = {
      */
     args: {
         [key: string]: unknown;
-    };
+    } | null;
     /**
      * Created At
      */
@@ -675,6 +675,10 @@ export type MutationRecord = {
      * Tool
      */
     tool: string;
+    /**
+     * Transaction Id
+     */
+    transaction_id?: string;
     /**
      * Workflow
      */
@@ -1094,6 +1098,10 @@ export type ListApprovalsApprovalsGetData = {
          * Status
          */
         status?: ApprovalStatus | null;
+        /**
+         * Transaction Id
+         */
+        transaction_id?: string | null;
     };
     url: '/approvals';
 };
@@ -1204,6 +1212,10 @@ export type ListMutationsAuditGetData = {
          * Workflow Run Id
          */
         workflow_run_id?: string | null;
+        /**
+         * Transaction Id
+         */
+        transaction_id?: string | null;
         /**
          * Limit
          */
@@ -1778,6 +1790,10 @@ export type ListMessagesMessagesGetData = {
          * Contact Id
          */
         contact_id?: string | null;
+        /**
+         * Transaction Id
+         */
+        transaction_id?: string | null;
         /**
          * Limit
          */

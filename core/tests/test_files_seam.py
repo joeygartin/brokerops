@@ -76,6 +76,7 @@ async def test_put_is_recorded_with_digest_not_bytes() -> None:
     assert record.tool == "put_file"
     assert record.outcome is MutationOutcome.SUCCESS
     assert record.external_id == "f-1"
+    assert record.args is not None
     assert record.args["name"] == "a.pdf" and record.args["folder"] == "RM1"
     assert record.args["size_bytes"] == len(b"synthetic body")
     # the ledger carries a digest, never the content itself

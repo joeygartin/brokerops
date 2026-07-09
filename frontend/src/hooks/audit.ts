@@ -15,3 +15,14 @@ export function useMutations(workflowRunId: string) {
     staleTime: 5_000,
   });
 }
+
+// The audit slice scoped to one transaction for the hub (BOP-027): the writes
+// across all of that deal's workflow runs, via GET /audit?transaction_id=.
+export function useTransactionMutations(transactionId: string) {
+  return useQuery({
+    queryKey: queryKeys.transactionAudit(transactionId),
+    queryFn: async () =>
+      unwrap(await listMutationsAuditGet({ query: { transaction_id: transactionId } })),
+    staleTime: 5_000,
+  });
+}

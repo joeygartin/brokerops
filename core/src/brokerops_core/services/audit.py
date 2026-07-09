@@ -80,6 +80,11 @@ class AuditContext:
     workflow: str
     approval_id: str | None = None
     actor: str | None = None
+    # The deal this run concerns, when it has one (BOP-027) — every write it
+    # publishes is stamped with it, so a transaction's action history is queryable
+    # regardless of whether the run raised an approval. "" when the run is not
+    # transaction-scoped.
+    transaction_id: str = ""
 
 
 _audit_context: ContextVar[AuditContext | None] = ContextVar("audit_context", default=None)
@@ -120,6 +125,7 @@ class _Recorder:
             id=uuid4().hex,
             workflow_run_id=context.workflow_run_id if context else "",
             workflow=context.workflow if context else "",
+            transaction_id=context.transaction_id if context else "",
             tool=tool,
             integration=self._integration,
             args=redact(args),
@@ -286,7 +292,15 @@ class RecordingEmail:
         self._rec = _Recorder(audit, "email")
 
     async def send(self, message: Message) -> str:
-        args = message.model_dump(mode="json", exclude={"status", "provider_message_id", "sent_at"})
+        # Metadata-only, like `file_write_args` records a digest not the bytes
+        # (BOP-027 review r3): the freeform `body` is client-facing text whose home
+        # is the `outbound_messages` history, not the action ledger — excluding it
+        # keeps the trail (which surfaces on a viewer-open review screen) from
+        # carrying message content. Recipient/subject/template/ids stay as the
+        # auditable identity of the send.
+        args = message.model_dump(
+            mode="json", exclude={"status", "provider_message_id", "sent_at", "body"}
+        )
         try:
             provider_id = await self._inner.send(message)
         except Exception as exc:
@@ -309,7 +323,15 @@ class RecordingSMS:
         self._rec = _Recorder(audit, "twilio_sms")
 
     async def send(self, message: Message) -> str:
-        args = message.model_dump(mode="json", exclude={"status", "provider_message_id", "sent_at"})
+        # Metadata-only, like `file_write_args` records a digest not the bytes
+        # (BOP-027 review r3): the freeform `body` is client-facing text whose home
+        # is the `outbound_messages` history, not the action ledger — excluding it
+        # keeps the trail (which surfaces on a viewer-open review screen) from
+        # carrying message content. Recipient/subject/template/ids stay as the
+        # auditable identity of the send.
+        args = message.model_dump(
+            mode="json", exclude={"status", "provider_message_id", "sent_at", "body"}
+        )
         try:
             provider_id = await self._inner.send(message)
         except Exception as exc:

@@ -46,7 +46,16 @@ class LangGraphWorkflowEngine:
         self, workflow: str, run_input: dict[str, Any], actor: str | None = None
     ) -> WorkflowRunResult:
         thread_id = uuid4().hex
-        context = AuditContext(workflow_run_id=thread_id, workflow=workflow, actor=actor)
+        # transaction_coordination runs carry the deal id in their input; other
+        # workflows have none. Stamping it here tags every write the run performs
+        # (BOP-027), so the transaction's audit slice is complete even for runs
+        # that never raise an approval (e.g. a due-soon reminder with no gate).
+        context = AuditContext(
+            workflow_run_id=thread_id,
+            workflow=workflow,
+            actor=actor,
+            transaction_id=str(run_input.get("transaction_id", "")),
+        )
         with audit_scope(context):
             return await self._run(workflow, thread_id, run_input)
 
@@ -68,6 +77,9 @@ class LangGraphWorkflowEngine:
             workflow=approval.workflow,
             approval_id=approval.id,
             actor=decision.decided_by,
+            # The gate payload carries the deal id for transaction-scoped gates
+            # (escalation, outbound-message); "" for others (marketing, hot-lead).
+            transaction_id=str((approval.payload or {}).get("transaction_id", "")),
         )
         with audit_scope(context):
             return await self._run(

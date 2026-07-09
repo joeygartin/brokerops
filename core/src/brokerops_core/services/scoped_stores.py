@@ -241,9 +241,14 @@ class ScopedMessageStore:
             return None
         return message
 
-    async def list_messages(self, contact_id: str | None = None, limit: int = 100) -> list[Message]:
+    async def list_messages(
+        self,
+        contact_id: str | None = None,
+        limit: int = 100,
+        transaction_id: str | None = None,
+    ) -> list[Message]:
         ambient = require_tenant()
-        rows = await self._inner.list_messages(contact_id, limit)
+        rows = await self._inner.list_messages(contact_id, limit, transaction_id)
         return [m for m in rows if not _is_foreign(m.tenant_id, ambient)]
 
     async def advance_message_status(
