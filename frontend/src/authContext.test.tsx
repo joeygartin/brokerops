@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { anyDraftDirty, clearAllDrafts, getDraft, setDraft } from "./approvalDrafts";
 import { AuthProvider, useAuth } from "./authContext";
 import { API_BASE, apiFetch, setToken } from "./auth";
 import { queryKeys } from "./hooks/keys";
@@ -58,6 +59,7 @@ beforeEach(() => {
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
   setToken(null);
+  clearAllDrafts();
 });
 
 afterEach(() => {
@@ -122,6 +124,9 @@ describe("AuthProvider", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     // Seed the cache as the prior (admin) session would have.
     client.setQueryData(queryKeys.approvals, [{ id: "prior-session-approval" }]);
+    // …and an in-flight edited draft (BOP-028): teardown must wipe this too, or the
+    // next operator on the same browser inherits it.
+    setDraft("prior-session-approval", "prior operator's edit", "original");
 
     setToken("session.jwt");
     routeFetch({ enabled: true, methods: ["magic"], client_id: null }, {
@@ -149,10 +154,12 @@ describe("AuthProvider", () => {
 
     await waitFor(() => expect(screen.getByTestId("role")).toHaveTextContent("admin"));
     expect(client.getQueryData(queryKeys.approvals)).toBeDefined();
+    expect(getDraft("prior-session-approval")).toBe("prior operator's edit");
 
     fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
 
     await waitFor(() => expect(client.getQueryData(queryKeys.approvals)).toBeUndefined());
+    expect(getDraft("prior-session-approval")).toBeUndefined();
   });
 
   // BOP-025: a live session that 401s mid-use (unrefreshable) must stash the deep
@@ -161,6 +168,8 @@ describe("AuthProvider", () => {
   it("saves the current deep link when a live session 401s, so re-login can restore it", async () => {
     window.history.pushState({}, "", "/approvals/APR-9");
     setToken("session.jwt"); // access-only: no refresh token, so the 401 is terminal
+    // A dirty edit that the terminal-401 teardown must also drop (BOP-028).
+    setDraft("APR-9", "edit that died with the session", "original");
     fetchMock.mockImplementation((url: string) => {
       if (String(url).endsWith("/auth/config"))
         return Promise.resolve(jsonResponse({ enabled: true, methods: ["magic"], client_id: null }));
@@ -194,6 +203,9 @@ describe("AuthProvider", () => {
     await waitFor(() => expect(screen.getByText("Sign in to continue")).toBeInTheDocument());
     // …with the deep link stashed for the index route to restore after re-login.
     expect(localStorage.getItem("brokerops_post_login_redirect")).toBe("/approvals/APR-9");
+    // …and the dirty draft wiped, so it can't leak to whoever logs in next.
+    expect(anyDraftDirty()).toBe(false);
+    expect(getDraft("APR-9")).toBeUndefined();
 
     window.history.pushState({}, "", "/"); // restore jsdom location for later specs
   });

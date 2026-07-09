@@ -1,9 +1,10 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { unwrap } from "../api";
 import {
   decideApprovalApprovalsApprovalIdDecidePost,
   getApprovalApprovalsApprovalIdGet,
   listApprovalsApprovalsGet,
+  type ApprovalRequest,
   type DecideRequest,
   type DecisionResponse,
 } from "../client";
@@ -55,6 +56,31 @@ export function useTransactionApprovals(transactionId: string) {
   });
 }
 
+// The decided-history view (BOP-028): approved ∪ rejected, most-recently-decided
+// first. Two keyed queries (the list route filters by a single `status`) combined
+// into one result — no API change, and each terminal status caches independently.
+// Nested under the ["approvals"] prefix so a decision invalidates history too.
+const DECIDED_STATUSES = ["approved", "rejected"] as const;
+
+export function useDecidedApprovals(enabled: boolean) {
+  return useQueries({
+    queries: DECIDED_STATUSES.map((status) => ({
+      queryKey: queryKeys.approvalsByStatus(status),
+      queryFn: async () =>
+        unwrap(await listApprovalsApprovalsGet({ query: { status } })),
+      staleTime: 5_000,
+      // Only fetch the history once its tab is opened — the pending inbox is the
+      // default surface and does its own polling.
+      enabled,
+    })),
+    combine: (results) => ({
+      data: results.flatMap((r) => r.data ?? []),
+      isPending: results.some((r) => r.isPending),
+      error: results.find((r) => r.error)?.error ?? null,
+    }),
+  });
+}
+
 export function useDecideApproval() {
   const client = useQueryClient();
   return useMutation({
@@ -68,7 +94,27 @@ export function useDecideApproval() {
           body: input.body,
         }),
       ),
-    onSuccess: () => {
+    // Optimistic triage (BOP-028): a decided approval leaves the pending inbox
+    // immediately — the badge counts derive from that same cached list, so they
+    // fall too — and is restored on failure. onSettled reconciles with the
+    // server (and refreshes the decided-history + transactions views).
+    onMutate: async (input) => {
+      await client.cancelQueries({ queryKey: queryKeys.approvals });
+      const previous = client.getQueryData<ApprovalRequest[]>(queryKeys.approvals);
+      if (previous) {
+        client.setQueryData<ApprovalRequest[]>(
+          queryKeys.approvals,
+          previous.filter((a) => a.id !== input.approvalId),
+        );
+      }
+      return { previous };
+    },
+    onError: (_error, _input, context) => {
+      if (context?.previous) {
+        client.setQueryData(queryKeys.approvals, context.previous);
+      }
+    },
+    onSettled: () => {
       client.invalidateQueries({ queryKey: queryKeys.approvals });
       client.invalidateQueries({ queryKey: queryKeys.transactions });
     },

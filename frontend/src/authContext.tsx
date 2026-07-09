@@ -11,6 +11,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
+import { clearAllDrafts } from "./approvalDrafts";
 import { roleAtLeast, type Role } from "./roles";
 import {
   API_BASE,
@@ -112,6 +113,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(() => {
     clearSession();
     queryClient.clear();
+    // Protected cached state is wiped on teardown (ADR-0022 §Decision 6) — the
+    // in-memory approval draft store is such state, so a next operator in the same
+    // browser can't inherit a prior operator's edited draft.
+    clearAllDrafts();
     setEmail(null);
     setRole(null);
     window.google?.accounts.id.disableAutoSelect();
@@ -128,6 +133,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // cold deep-link visit does (BOP-025). The URL still shows that path here.
       savePostLoginRedirect(window.location.pathname + window.location.search);
       queryClient.clear();
+      // Same teardown discipline as signOut — drop any in-memory draft edits so a
+      // died-mid-use session can't leak them to the next operator (ADR-0022 §Dec 6).
+      clearAllDrafts();
       setEmail(null);
       setRole(null);
       setPhase("login");

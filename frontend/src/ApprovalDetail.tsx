@@ -38,7 +38,13 @@ export default function ApprovalDetail() {
           {notice}
         </p>
       )}
-      {approval && !decided && <ApprovalCard approval={approval} onDecided={setNotice} />}
+      {/* Key by id: ApprovalCard seeds its react-hook-form default only on mount,
+          so moving between two cached permalinks must remount it — otherwise the
+          previous approval's draft body would carry over and could send as this
+          one's edited_payload (BOP-028 review-gate r6). */}
+      {approval && !decided && (
+        <ApprovalCard key={approval.id} approval={approval} onDecided={setNotice} />
+      )}
     </section>
   );
 }

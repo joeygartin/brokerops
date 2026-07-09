@@ -10,6 +10,10 @@ export const queryKeys = {
   listing: (listingKey: string) => ["listings", listingKey] as const,
   transaction: (transactionId: string) => ["transactions", transactionId] as const,
   approval: (approvalId: string) => ["approvals", approvalId] as const,
+  // The decided-history view (BOP-028) fetches per terminal status. Nested under
+  // the collection key so deciding an approval (which invalidates ["approvals"])
+  // also refreshes the history, and the pending inbox and history stay in sync.
+  approvalsByStatus: (status: string) => ["approvals", "status", status] as const,
   audit: (workflowRunId: string) => ["audit", workflowRunId] as const,
   folderFiles: (folder: string) => ["files", folder] as const,
   // The transaction hub's per-deal slices (BOP-027). Nested under the transaction

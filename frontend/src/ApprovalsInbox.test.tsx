@@ -23,6 +23,7 @@ vi.mock("./authContext", () => ({
 const apiFetchMock = vi.hoisted(() => vi.fn());
 vi.mock("./auth", () => ({ apiFetch: apiFetchMock, API_BASE: "http://localhost:8000" }));
 
+import { clearAllDrafts } from "./approvalDrafts";
 import ApprovalsInbox from "./ApprovalsInbox";
 
 const MARKETING_APPROVAL: ApprovalRequest = {
@@ -87,6 +88,7 @@ function mockInbox(approvals: ApprovalRequest[]) {
 
 beforeEach(() => {
   roleState.role = "admin";
+  clearAllDrafts(); // module-scoped draft edits must not leak across tests
   apiFetchMock.mockReset();
   apiFetchMock.mockResolvedValue(
     new Response(JSON.stringify([MARKETING_APPROVAL]), {
@@ -182,6 +184,334 @@ describe("Outbound-message card (approve_outbound_message)", () => {
     const body = (await screen.findByLabelText("Draft body")) as HTMLTextAreaElement;
     expect(body.readOnly).toBe(true);
     expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+  });
+});
+
+const HOT_LEAD_APPROVAL: ApprovalRequest = {
+  id: "ap-3",
+  workflow: "vapi_followup",
+  graph_thread_id: "thread-abcdef03",
+  kind: "notify_agent",
+  payload: {
+    kind: "notify_agent",
+    listing_key: "MLS-300",
+    reason: "Ready to make an offer",
+    summary: "Caller wants to move fast.",
+    contact_id: "c-9",
+    call_id: "call-9",
+  },
+  status: "pending",
+  decided_by: null,
+  created_at: "2026-07-02T00:00:00Z",
+  decided_at: null,
+};
+
+const APPROVED_HISTORY: ApprovalRequest = {
+  id: "ap-4",
+  workflow: "listing_to_contract",
+  graph_thread_id: "thread-abcdef04",
+  kind: "approve_marketing",
+  payload: { kind: "approve_marketing", listing_key: "MLS-400" },
+  status: "approved",
+  decided_by: "admin@example.test",
+  created_at: "2026-07-01T00:00:00Z",
+  decided_at: "2026-07-05T12:00:00Z",
+};
+
+const REJECTED_HISTORY: ApprovalRequest = {
+  ...APPROVED_HISTORY,
+  id: "ap-5",
+  kind: "notify_agent",
+  payload: { kind: "notify_agent", listing_key: "MLS-500" },
+  status: "rejected",
+  decided_by: "admin@example.test",
+  decided_at: "2026-07-06T12:00:00Z",
+};
+
+// A route-aware mock: the pending list on a bare GET, per-status lists when the
+// decided-history queries send ?status=, and a decision on POST.
+function mockRoutes(opts: {
+  pending: ApprovalRequest[];
+  approved?: ApprovalRequest[];
+  rejected?: ApprovalRequest[];
+  postStatus?: number;
+}) {
+  apiFetchMock.mockReset();
+  // Stateful, like the real backend: a successful decide drops the approval from
+  // the pending list its next GET returns, so optimistic removal doesn't bounce
+  // back on refetch. A failed decide (>=400) leaves it pending.
+  const decided = new Set<string>();
+  apiFetchMock.mockImplementation((request: Request) => {
+    const json = (data: unknown, status = 200) =>
+      Promise.resolve(
+        new Response(JSON.stringify(data), {
+          status,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    if (request.method === "POST") {
+      const status = opts.postStatus ?? 200;
+      const match = request.url.match(/\/approvals\/([^/]+)\/decide/);
+      if (match && status < 400) decided.add(match[1]);
+      return json({ approval: opts.pending[0], workflow: { status: "completed", output: {} } }, status);
+    }
+    const status = new URL(request.url).searchParams.get("status");
+    if (status === "approved") return json(opts.approved ?? []);
+    if (status === "rejected") return json(opts.rejected ?? []);
+    return json(opts.pending.filter((a) => !decided.has(a.id)));
+  });
+}
+
+describe("Triage filters (BOP-028)", () => {
+  it("filters the pending list by kind and shows per-kind count badges", async () => {
+    mockRoutes({ pending: [MARKETING_APPROVAL, HOT_LEAD_APPROVAL, OUTBOUND_MESSAGE_APPROVAL] });
+    renderRouted(<ApprovalsInbox />);
+
+    // All three render first; the count badges reflect the unfiltered set.
+    await screen.findByText(/Approve marketing/);
+    const counts = screen.getByLabelText("Pending counts by kind");
+    expect(counts).toHaveTextContent("Marketing 1");
+    expect(counts).toHaveTextContent("Hot lead 1");
+    expect(counts).toHaveTextContent("Outbound message 1");
+
+    fireEvent.change(screen.getByRole("combobox", { name: /Kind/ }), {
+      target: { value: "notify_agent" },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Hot lead — notify listing agent/)).toBeInTheDocument();
+      expect(screen.queryByText(/Approve marketing/)).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe("Keyboard triage flow (BOP-028)", () => {
+  it("moves focus with j/k and marks the focused card", async () => {
+    // Oldest-first: marketing (07-01) then hot lead (07-02).
+    mockRoutes({ pending: [MARKETING_APPROVAL, HOT_LEAD_APPROVAL] });
+    renderRouted(<ApprovalsInbox />);
+    await screen.findByText(/Approve marketing/);
+
+    const list = screen.getByRole("list");
+    const items = screen.getAllByRole("listitem");
+    expect(items[0]).toHaveAttribute("aria-current", "true");
+
+    fireEvent.keyDown(list, { key: "j" });
+    expect(screen.getAllByRole("listitem")[1]).toHaveAttribute("aria-current", "true");
+
+    fireEvent.keyDown(list, { key: "k" });
+    expect(screen.getAllByRole("listitem")[0]).toHaveAttribute("aria-current", "true");
+  });
+
+  it("approves the focused card on 'a' after a confirm", async () => {
+    mockRoutes({ pending: [MARKETING_APPROVAL, HOT_LEAD_APPROVAL] });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderRouted(<ApprovalsInbox />);
+    await screen.findByText(/Approve marketing/);
+
+    fireEvent.keyDown(screen.getByRole("list"), { key: "a" });
+
+    await waitFor(() => {
+      const post = apiFetchMock.mock.calls
+        .map(([request]) => request as Request)
+        .find((request) => request.method === "POST");
+      expect(post?.url).toContain("/approvals/ap-1/decide");
+    });
+    expect(confirm).toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+
+  it("does not decide when the confirm is dismissed", async () => {
+    mockRoutes({ pending: [MARKETING_APPROVAL] });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    renderRouted(<ApprovalsInbox />);
+    await screen.findByText(/Approve marketing/);
+
+    fireEvent.keyDown(screen.getByRole("list"), { key: "r" });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(
+      apiFetchMock.mock.calls.map(([r]) => r as Request).some((r) => r.method === "POST"),
+    ).toBe(false);
+    confirm.mockRestore();
+  });
+
+  it("ignores a/j shortcuts while typing in the draft body", async () => {
+    mockRoutes({ pending: [OUTBOUND_MESSAGE_APPROVAL] });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderRouted(<ApprovalsInbox />);
+
+    const body = await screen.findByLabelText("Draft body");
+    fireEvent.keyDown(body, { key: "a" });
+
+    expect(confirm).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+});
+
+describe("Keyboard flow edge cases (BOP-028 review-gate r1)", () => {
+  it("rejects a blank-draft outbound card via 'r' even though approve is blocked", async () => {
+    mockRoutes({ pending: [OUTBOUND_MESSAGE_APPROVAL] });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderRouted(<ApprovalsInbox />);
+
+    const body = await screen.findByLabelText("Draft body");
+    fireEvent.change(body, { target: { value: "   " } }); // blank → Approve disabled
+
+    fireEvent.keyDown(screen.getByRole("list"), { key: "r" });
+
+    await waitFor(() => {
+      const post = apiFetchMock.mock.calls
+        .map(([r]) => r as Request)
+        .find((r) => r.method === "POST");
+      expect(post?.url).toContain("/approvals/ap-2/decide");
+    });
+    const post = apiFetchMock.mock.calls
+      .map(([r]) => r as Request)
+      .find((r) => r.method === "POST");
+    expect(await post?.clone().json()).toEqual({ decision: "rejected" });
+    confirm.mockRestore();
+  });
+
+  it("carries focus to the next card after a keyboard decision, so triage continues", async () => {
+    // Oldest-first: marketing (ap-1, 07-01) then hot lead (ap-3, 07-02).
+    mockRoutes({ pending: [MARKETING_APPROVAL, HOT_LEAD_APPROVAL] });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderRouted(<ApprovalsInbox />);
+    await screen.findByText(/Approve marketing/);
+
+    // Approve the focused (first) card from the keyboard; it is optimistically
+    // removed and focus must land on the surviving card — not fall off the DOM.
+    fireEvent.keyDown(screen.getByRole("list"), { key: "a" });
+
+    await waitFor(() => {
+      const items = screen.getAllByRole("listitem");
+      expect(items).toHaveLength(1);
+      expect(items[0]).toHaveFocus();
+    });
+    // The next decision reaches the list without tabbing back in.
+    fireEvent.keyDown(screen.getByRole("list"), { key: "a" });
+    await waitFor(() =>
+      expect(screen.getByText(/No pending approvals/)).toBeInTheDocument(),
+    );
+    confirm.mockRestore();
+  });
+
+  it("does not fire triage shortcuts when a card button holds focus", async () => {
+    mockRoutes({ pending: [MARKETING_APPROVAL] });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderRouted(<ApprovalsInbox />);
+
+    const approve = await screen.findByRole("button", { name: "Approve" });
+    // The keydown bubbles to the list handler, but focus is on an interactive
+    // descendant, so the shortcut must be suppressed (native button keeps the key).
+    fireEvent.keyDown(approve, { key: "a" });
+
+    expect(confirm).not.toHaveBeenCalled();
+    expect(
+      apiFetchMock.mock.calls.map(([r]) => r as Request).some((r) => r.method === "POST"),
+    ).toBe(false);
+    confirm.mockRestore();
+  });
+});
+
+describe("Draft persistence across unmount (BOP-028 review-gate r2)", () => {
+  it("keeps the edited draft when a failed decide rolls the card back", async () => {
+    mockRoutes({ pending: [OUTBOUND_MESSAGE_APPROVAL], postStatus: 500 });
+    renderRouted(<ApprovalsInbox />);
+
+    const body = (await screen.findByLabelText("Draft body")) as HTMLTextAreaElement;
+    fireEvent.change(body, { target: { value: "Carefully edited copy." } });
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+    // The decide fails → optimistic removal rolls back → the card returns still
+    // holding the operator's edit (not the original server body).
+    await screen.findByText(/Failed to decide/);
+    const restored = (await screen.findByLabelText("Draft body")) as HTMLTextAreaElement;
+    expect(restored.value).toBe("Carefully edited copy.");
+  });
+
+  it("keeps the edited draft across a filter change that hides then reshows it", async () => {
+    mockRoutes({ pending: [OUTBOUND_MESSAGE_APPROVAL, MARKETING_APPROVAL] });
+    renderRouted(<ApprovalsInbox />);
+
+    const body = (await screen.findByLabelText("Draft body")) as HTMLTextAreaElement;
+    fireEvent.change(body, { target: { value: "Draft in progress." } });
+
+    // Filter to marketing only — the outbound card unmounts.
+    fireEvent.change(screen.getByRole("combobox", { name: /Kind/ }), {
+      target: { value: "approve_marketing" },
+    });
+    await waitFor(() =>
+      expect(screen.queryByLabelText("Draft body")).not.toBeInTheDocument(),
+    );
+
+    // Back to all kinds — the outbound card returns with the edit intact.
+    fireEvent.change(screen.getByRole("combobox", { name: /Kind/ }), {
+      target: { value: "all" },
+    });
+    const restored = (await screen.findByLabelText("Draft body")) as HTMLTextAreaElement;
+    expect(restored.value).toBe("Draft in progress.");
+  });
+
+  it("still blocks a hard unload after a dirty draft is filtered out of view", async () => {
+    mockRoutes({ pending: [OUTBOUND_MESSAGE_APPROVAL, MARKETING_APPROVAL] });
+    renderRouted(<ApprovalsInbox />);
+
+    const body = await screen.findByLabelText("Draft body");
+    fireEvent.change(body, { target: { value: "Draft still in progress." } });
+
+    // Hide the dirty card behind a filter — its own card-scoped effect (if any)
+    // would be torn down, but the module-level guard reads draftStore directly.
+    fireEvent.change(screen.getByRole("combobox", { name: /Kind/ }), {
+      target: { value: "approve_marketing" },
+    });
+    await waitFor(() =>
+      expect(screen.queryByLabelText("Draft body")).not.toBeInTheDocument(),
+    );
+
+    const unload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(true);
+  });
+
+  it("does not block a hard unload when nothing is dirty", () => {
+    const unload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(false);
+  });
+});
+
+describe("Editable draft (react-hook-form, BOP-028)", () => {
+  it("surfaces an unsaved-edits indicator once the body is dirty", async () => {
+    mockRoutes({ pending: [OUTBOUND_MESSAGE_APPROVAL] });
+    renderRouted(<ApprovalsInbox />);
+
+    const body = await screen.findByLabelText("Draft body");
+    expect(screen.queryByText(/Unsaved edits/)).not.toBeInTheDocument();
+
+    fireEvent.change(body, { target: { value: "A meaningfully edited draft." } });
+    expect(await screen.findByText(/Unsaved edits/)).toBeInTheDocument();
+  });
+});
+
+describe("Decided-history view (BOP-028)", () => {
+  it("switches to the decided tab and lists approved/rejected with who and status", async () => {
+    mockRoutes({
+      pending: [MARKETING_APPROVAL],
+      approved: [APPROVED_HISTORY],
+      rejected: [REJECTED_HISTORY],
+    });
+    renderRouted(<ApprovalsInbox />);
+    await screen.findByText(/Approve marketing/);
+
+    fireEvent.click(screen.getByRole("button", { name: /Decided/ }));
+
+    expect(await screen.findByText(/MLS-400/)).toBeInTheDocument();
+    expect(screen.getByText(/MLS-500/)).toBeInTheDocument();
+    expect(screen.getAllByText(/admin@example.test/).length).toBeGreaterThan(0);
+    expect(screen.getByText("approved")).toBeInTheDocument();
+    expect(screen.getByText("rejected")).toBeInTheDocument();
   });
 });
 
