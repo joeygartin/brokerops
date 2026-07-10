@@ -104,3 +104,16 @@ The same path, as assertions (used by CI's e2e job):
 ```bash
 make demo && scripts/e2e_demo_check.sh
 ```
+
+The golden path above is also **CI-enforced in a real browser**: a Playwright spec
+(`frontend/e2e/golden-path.spec.ts`) drives Chromium through boot → Listings → start
+marketing → approve → CRM-task confirmation, plus a transaction detail visit — on every
+push to `main` (the `e2e-browser` job). To run it locally against the demo stack:
+
+```bash
+make demo                              # brings the stack up and seeds the demo data
+cd frontend
+npm ci                                 # install frontend deps (incl. @playwright/test)
+npx playwright install chromium        # one-time browser download
+npx playwright test                    # drives the golden path in Chromium
+```

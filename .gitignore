@@ -44,3 +44,6 @@ docs/tasks/
 
 # Internal review-gate artifacts (never committed to the public repo)
 docs/findings/
+
+# Internal session summaries (local record only; never committed)
+docs/sessions/

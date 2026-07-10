@@ -1,0 +1,4 @@
+# Playwright (BOP-029) — generated on each run, never committed.
+/test-results/
+/playwright-report/
+/playwright/.cache/

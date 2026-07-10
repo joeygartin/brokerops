@@ -13,6 +13,10 @@ export default defineConfig({
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
   test: {
+    // Scope collection to src/ so the Playwright browser specs under e2e/ (which
+    // also match the default `*.spec.ts` glob but use @playwright/test, not
+    // vitest) are never pulled into the jsdom unit run (BOP-029).
+    include: ["src/**/*.{test,spec}.{ts,tsx}"],
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
