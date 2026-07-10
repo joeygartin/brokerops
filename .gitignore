@@ -39,6 +39,10 @@ frontend/dist/
 .idea/
 .vscode/
 
+# Fleet registry overlay — the identifying counterpart to the committed manifest
+# (real project ids, display names, fee amounts); keyed by slug, never committed (BOP-032)
+infra/clients/fleet-overlay.local.yml
+
 # Internal task backlog — system of record is GitHub Issues
 docs/tasks/
 

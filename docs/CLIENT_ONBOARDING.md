@@ -196,7 +196,12 @@ The bridge from a listing going under contract to a tracked escrow **now exists*
 4. Provision: `README.md → Deploying to GCP` (bootstrap → tfvars → cut a release
    → `make deploy CLIENT=<c> VERSION=vX.Y.Z` → `make secrets`). Releases are git
    tags (`docs/RELEASING.md`, ADR-0025).
-5. Smoke-test against their real integrations before handing over.
+5. Register the instance in the fleet: add an opaque-slug entry to
+   `infra/clients/fleet.yml` (version + posture + `billing_model` + onboarding
+   flags) and its identifying counterpart to the gitignored
+   `infra/clients/fleet-overlay.local.yml`. `make fleet-status` then tracks the
+   client's version drift and onboarding completeness (`docs/fleet-registry.md`).
+6. Smoke-test against their real integrations before handing over.
 
 ## 8. Sign-off
 

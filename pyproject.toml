@@ -51,5 +51,9 @@ testpaths = [
     "integrations/twilio_sms/tests",
     "integrations/vapi/tests",
     "orchestration/langgraph/tests",
+    "scripts/tests",
 ]
+# scripts/ is not a workspace package; put it on the path so scripts/tests can
+# import the fleet-registry validator (BOP-032).
+pythonpath = ["scripts"]
 asyncio_mode = "auto"

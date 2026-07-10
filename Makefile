@@ -1,4 +1,4 @@
-.PHONY: dev test frontend-test lint generate demo migrate gcp-bootstrap gcp-images deploy deploy-dev secrets
+.PHONY: dev test frontend-test lint generate demo migrate fleet-status gcp-bootstrap gcp-images deploy deploy-dev secrets
 
 TF := terraform -chdir=infra
 
@@ -47,6 +47,11 @@ demo:
 	@echo "waiting for api…" && sleep 8
 	curl -sf -X POST http://localhost:8000/demo/seed | python3 -m json.tool
 	@echo "demo ready → frontend http://localhost:5173 | api http://localhost:8000"
+
+# Render the fleet registry: which clients exist, on what version, onboarding done.
+# Merges the gitignored overlay (display name/project) when present. See BOP-032.
+fleet-status:
+	uv run python scripts/fleet.py status
 
 # ── GCP deploy (per client) ──────────────────────────────────────────────
 # One-time per project: make gcp-bootstrap GCP_PROJECT=… GCP_REGION=… TF_STATE_BUCKET=…

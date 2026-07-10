@@ -1,0 +1,37 @@
+# Fleet registry — the committed source of truth for which client instances exist,
+# on what version, with which onboarding steps done (BOP-032).
+#
+# OPAQUE/PUBLIC FIELDS ONLY. This file is committed to a public repo. Anything that
+# can encode a client identity — the real GCP project id, the tfvars path, the
+# display name, the actual fee amount — lives in the gitignored overlay
+# (infra/clients/fleet-overlay.local.yml), keyed by slug. The validator
+# (scripts/fleet.py) rejects any identifying field found here. Schema + the
+# slug↔overlay split: docs/fleet-registry.md.
+#
+# Fields per entry:
+#   slug           opaque lowercase token [a-z0-9-] — NOT derived from the brokerage name
+#   version        pinned release "vX.Y.Z", or "latest" for the CD-tracked demo
+#   posture        hosted | client-infra
+#   billing_model  flat | tiered            (enum only — the amount lives in the overlay)
+#   last_upgraded  YYYY-MM-DD
+#   onboarding     booleans only, never the underlying values:
+#     ses_identity   SES domain identity verified
+#     sandbox_exit   SES production access (out of sandbox)
+#     ten_dlc        10DLC / A2P SMS registration approved
+#     drive_sa       Google Drive service account provisioned
+#     crm_keys       CRM API keys pushed to Secret Manager
+
+clients:
+  # The demo proves the format without exposing anything: an opaque slug, tracks
+  # `latest` via the main-branch CD roll (ADR-0025), flat billing, hosted.
+  - slug: demo
+    version: latest
+    posture: hosted
+    billing_model: flat
+    last_upgraded: 2026-07-08
+    onboarding:
+      ses_identity: true # SES domain identity verified (EasyDKIM)
+      sandbox_exit: true # SES account is production (out of sandbox)
+      ten_dlc: false # demo has no SMS
+      drive_sa: false # demo uses the in-process Drive stub
+      crm_keys: false # demo uses the in-process CRM stub
