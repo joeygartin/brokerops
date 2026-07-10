@@ -83,6 +83,101 @@ variable "enable_redis" {
   }
 }
 
+# Outbound business-email provider (EmailPort, ADR-0015). Empty → the bundled
+# stub, so a demo/keyless deploy stays zero-credential. "ses" (BOP-016) and
+# "sendgrid" (BOP-017) each require their companion config below + their secret
+# (make secrets) and fail loud without them — never a silent downgrade.
+variable "email_provider" {
+  description = "Outbound email provider: \"\" (stub), \"ses\", or \"sendgrid\"."
+  type        = string
+  default     = ""
+  validation {
+    condition     = contains(["", "stub", "ses", "sendgrid"], var.email_provider)
+    error_message = "email_provider must be one of \"\", \"stub\", \"ses\", \"sendgrid\"."
+  }
+}
+
+variable "email_base_url" {
+  description = "Override base URL for the stub email adapter (tests/tooling); empty = the in-process stub."
+  type        = string
+  default     = ""
+}
+
+# SES companion config (email_provider = \"ses\"). The access-key id and from-
+# address are non-secret deploy vars; the secret access key rides in from Secret
+# Manager (brokerops-<client>-ses-secret-access-key, pushed by scripts/setup_ses.sh).
+variable "ses_region" {
+  description = "AWS region for SES; empty = the adapter's default region."
+  type        = string
+  default     = ""
+}
+
+variable "ses_access_key_id" {
+  description = "SES IAM access-key id (non-secret); required when email_provider = \"ses\"."
+  type        = string
+  default     = ""
+}
+
+variable "ses_from_address" {
+  description = "Verified SES sender address; required when email_provider = \"ses\"."
+  type        = string
+  default     = ""
+}
+
+variable "ses_base_url" {
+  description = "Override SES endpoint for an SES-shaped stub (tests/tooling); empty = the real regional endpoint."
+  type        = string
+  default     = ""
+}
+
+# SendGrid companion config (email_provider = \"sendgrid\"). The API key rides in
+# from Secret Manager (brokerops-<client>-sendgrid-api-key); the sender and base
+# URL are non-secret.
+variable "sendgrid_from_email" {
+  description = "Domain-authenticated SendGrid sender; required when email_provider = \"sendgrid\"."
+  type        = string
+  default     = ""
+}
+
+variable "sendgrid_base_url" {
+  description = "Override SendGrid endpoint for a stub (tests/tooling); empty = the real API."
+  type        = string
+  default     = ""
+}
+
+# Outbound-message drafting backend (BOP-019/020). Empty → deterministic template
+# rendering (zero-credential); "pydantic_ai" is the LLM drafter and needs an LLM
+# key — the same brokerops-<client>-llm-api-key secret extraction uses, injected
+# automatically when this is set (services.tf).
+variable "drafting_backend" {
+  description = "Outbound drafting backend: \"\" (deterministic) or \"pydantic_ai\" (LLM, BOP-020)."
+  type        = string
+  default     = ""
+  validation {
+    condition     = contains(["", "deterministic", "pydantic_ai"], var.drafting_backend)
+    error_message = "drafting_backend must be one of \"\", \"deterministic\", \"pydantic_ai\"."
+  }
+}
+
+# Outbound SMS provider (SMSPort, BOP-018). Empty → the bundled Twilio stub
+# (zero-credential); "twilio" requires the auth token (Secret Manager) and its
+# sender companions and fails loud without them.
+variable "sms_provider" {
+  description = "Outbound SMS provider: \"\" (stub) or \"twilio\"."
+  type        = string
+  default     = ""
+  validation {
+    condition     = contains(["", "stub", "twilio"], var.sms_provider)
+    error_message = "sms_provider must be one of \"\", \"stub\", \"twilio\"."
+  }
+}
+
+variable "sms_base_url" {
+  description = "Override base URL for the SMS provider (stub/tooling); empty = the provider default."
+  type        = string
+  default     = ""
+}
+
 variable "vapi_assistant_id" {
   description = "Vapi assistant id used for outbound feedback calls."
   type        = string

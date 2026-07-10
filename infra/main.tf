@@ -36,6 +36,17 @@ module "client" {
   extraction_backend    = var.extraction_backend
   llm_model             = var.llm_model
   enable_redis          = var.enable_redis
+  email_provider        = var.email_provider
+  email_base_url        = var.email_base_url
+  ses_region            = var.ses_region
+  ses_access_key_id     = var.ses_access_key_id
+  ses_from_address      = var.ses_from_address
+  ses_base_url          = var.ses_base_url
+  sendgrid_from_email   = var.sendgrid_from_email
+  sendgrid_base_url     = var.sendgrid_base_url
+  drafting_backend      = var.drafting_backend
+  sms_provider          = var.sms_provider
+  sms_base_url          = var.sms_base_url
   vapi_assistant_id     = var.vapi_assistant_id
   reso_base_url         = var.reso_base_url
   fub_base_url          = var.fub_base_url

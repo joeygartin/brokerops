@@ -8,36 +8,18 @@ automatically — each variable must be interpolated in the api service's
 EMAIL_PROVIDER=ses (or a typo) silently runs the default inside the container:
 the exact silent downgrade the selectors exist to prevent, on the primary local
 deploy surface. This test pins the passthrough for every selector env var the
-api reads, so adding a selector without plumbing it fails CI.
+api reads, so adding a selector without plumbing it fails CI. The terraform
+sibling (`test_terraform_selector_parity.py`) pins the Cloud Run deploy surface
+from the same shared `SELECTOR_VARS`. Adding a selector is a five-part edit — see
+docs/adding-a-selector.md.
 """
 
 from pathlib import Path
 
 import pytest
+from selector_contract import SELECTOR_VARS
 
 COMPOSE = Path(__file__).resolve().parents[2] / "docker-compose.yml"
-
-# Every closed-enum selector (and its companion config) build_* wiring reads.
-SELECTOR_VARS = (
-    "ORCHESTRATOR",
-    "EXTRACTION_BACKEND",
-    "EMAIL_PROVIDER",
-    "EMAIL_BASE_URL",
-    "SES_REGION",
-    "SES_ACCESS_KEY_ID",
-    "SES_SECRET_ACCESS_KEY",
-    "SES_FROM_ADDRESS",
-    "SES_BASE_URL",
-    "SENDGRID_API_KEY",
-    "SENDGRID_FROM_EMAIL",
-    "SENDGRID_BASE_URL",
-    "DRAFTING_BACKEND",
-    "SMS_PROVIDER",
-    "SMS_BASE_URL",
-    # Not a selector, but the SMS delivery webhook's fail-closed signing key
-    # (BOP-018): if it doesn't reach the container, every callback 500s.
-    "TWILIO_AUTH_TOKEN",
-)
 
 
 @pytest.mark.parametrize("var", SELECTOR_VARS)

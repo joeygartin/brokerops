@@ -11,6 +11,8 @@ locals {
     "llm-api-key",
     "reso-auth-token",
     "ses-secret-access-key",
+    "sendgrid-api-key",
+    "twilio-auth-token",
     "smtp-password",
   ]
 }

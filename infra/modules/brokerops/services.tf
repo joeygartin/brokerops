@@ -9,6 +9,12 @@ locals {
   registry       = "${var.region}-docker.pkg.dev/${var.project_id}/brokerops"
   api_image      = "${local.registry}/api:${var.image_version}"
   frontend_image = "${local.registry}/frontend:${var.image_version}"
+
+  # The LLM API key (brokerops-<client>-llm-api-key) feeds two independent
+  # backends: feedback extraction (enable_llm_extraction, ADR-0006/0014) and the
+  # pydantic_ai outbound drafter (BOP-020). Either selecting an LLM path needs the
+  # key injected, so the drafter isn't left half-wired (BOP-034).
+  llm_key_needed = var.enable_llm_extraction || var.drafting_backend == "pydantic_ai"
 }
 
 resource "google_cloud_run_v2_service" "api" {
@@ -51,6 +57,14 @@ resource "google_cloud_run_v2_service" "api" {
       env {
         name  = "TENANT_ID"
         value = var.client_name
+      }
+      # Orchestration engine (ADR-0019). langgraph is the sole engine; the app's
+      # selector is fail-loud (any other value refuses to start), so pin it
+      # explicitly rather than leaning on the in-app default — parity with the
+      # compose surface (BOP-034).
+      env {
+        name  = "ORCHESTRATOR"
+        value = "langgraph"
       }
       env {
         name  = "RESO_BASE_URL"
@@ -315,7 +329,9 @@ resource "google_cloud_run_v2_service" "api" {
         }
       }
       dynamic "env" {
-        for_each = var.enable_llm_extraction ? [1] : []
+        # Injected for extraction OR the pydantic_ai drafter (BOP-020/034) — one
+        # key secret feeds both LLM paths.
+        for_each = local.llm_key_needed ? [1] : []
         content {
           name = "LLM_API_KEY"
           value_source {
@@ -327,10 +343,141 @@ resource "google_cloud_run_v2_service" "api" {
         }
       }
       dynamic "env" {
-        for_each = var.enable_llm_extraction && var.llm_model != "" ? [1] : []
+        for_each = local.llm_key_needed && var.llm_model != "" ? [1] : []
         content {
           name  = "LLM_MODEL"
           value = var.llm_model
+        }
+      }
+
+      # Outbound business email (EmailPort, ADR-0015). Off (empty) → no
+      # EMAIL_PROVIDER env, so the api runs the zero-credential stub. ses/sendgrid
+      # each fail loud without their companion config + secret below — a client's
+      # tfvars value must reach the container or it would silently stub (BOP-016/034).
+      dynamic "env" {
+        for_each = var.email_provider != "" ? [1] : []
+        content {
+          name  = "EMAIL_PROVIDER"
+          value = var.email_provider
+        }
+      }
+      dynamic "env" {
+        for_each = var.email_base_url != "" ? [1] : []
+        content {
+          name  = "EMAIL_BASE_URL"
+          value = var.email_base_url
+        }
+      }
+      dynamic "env" {
+        for_each = var.ses_region != "" ? [1] : []
+        content {
+          name  = "SES_REGION"
+          value = var.ses_region
+        }
+      }
+      dynamic "env" {
+        for_each = var.ses_access_key_id != "" ? [1] : []
+        content {
+          name  = "SES_ACCESS_KEY_ID"
+          value = var.ses_access_key_id
+        }
+      }
+      dynamic "env" {
+        # The only SES secret (scripts/setup_ses.sh pushes it); the id + from-
+        # address are non-secret vars above. Referenced only when SES is selected.
+        for_each = var.email_provider == "ses" ? [1] : []
+        content {
+          name = "SES_SECRET_ACCESS_KEY"
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.client["ses-secret-access-key"].secret_id
+              version = "latest"
+            }
+          }
+        }
+      }
+      dynamic "env" {
+        for_each = var.ses_from_address != "" ? [1] : []
+        content {
+          name  = "SES_FROM_ADDRESS"
+          value = var.ses_from_address
+        }
+      }
+      dynamic "env" {
+        for_each = var.ses_base_url != "" ? [1] : []
+        content {
+          name  = "SES_BASE_URL"
+          value = var.ses_base_url
+        }
+      }
+      dynamic "env" {
+        # SendGrid's API key (make secrets); referenced only when selected.
+        for_each = var.email_provider == "sendgrid" ? [1] : []
+        content {
+          name = "SENDGRID_API_KEY"
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.client["sendgrid-api-key"].secret_id
+              version = "latest"
+            }
+          }
+        }
+      }
+      dynamic "env" {
+        for_each = var.sendgrid_from_email != "" ? [1] : []
+        content {
+          name  = "SENDGRID_FROM_EMAIL"
+          value = var.sendgrid_from_email
+        }
+      }
+      dynamic "env" {
+        for_each = var.sendgrid_base_url != "" ? [1] : []
+        content {
+          name  = "SENDGRID_BASE_URL"
+          value = var.sendgrid_base_url
+        }
+      }
+
+      # Outbound-message drafting (DraftingPort, BOP-019/020). Off (empty) → the
+      # deterministic template drafter (zero-credential); pydantic_ai is the LLM
+      # drafter and gets its key via local.llm_key_needed above.
+      dynamic "env" {
+        for_each = var.drafting_backend != "" ? [1] : []
+        content {
+          name  = "DRAFTING_BACKEND"
+          value = var.drafting_backend
+        }
+      }
+
+      # Outbound SMS (SMSPort, BOP-018). Off (empty) → the bundled Twilio stub
+      # (zero-credential). twilio fails loud without its auth token (the fail-closed
+      # webhook signing key too) + sender config.
+      dynamic "env" {
+        for_each = var.sms_provider != "" ? [1] : []
+        content {
+          name  = "SMS_PROVIDER"
+          value = var.sms_provider
+        }
+      }
+      dynamic "env" {
+        for_each = var.sms_base_url != "" ? [1] : []
+        content {
+          name  = "SMS_BASE_URL"
+          value = var.sms_base_url
+        }
+      }
+      dynamic "env" {
+        # Twilio's auth token doubles as the delivery-webhook signing key (BOP-018);
+        # referenced only when twilio is selected.
+        for_each = var.sms_provider == "twilio" ? [1] : []
+        content {
+          name = "TWILIO_AUTH_TOKEN"
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.client["twilio-auth-token"].secret_id
+              version = "latest"
+            }
+          }
         }
       }
     }

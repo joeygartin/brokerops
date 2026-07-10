@@ -50,6 +50,72 @@ variable "enable_redis" {
   default = false
 }
 
+# Outbound business-email provider (ADR-0015) + companion config. Empty = the
+# bundled stub (zero-credential). ses/sendgrid fail loud without their secret +
+# config. The SES secret access key and SendGrid API key ride in from Secret
+# Manager (make secrets); everything here is non-secret.
+variable "email_provider" {
+  description = "Outbound email provider: \"\" (stub), \"ses\", or \"sendgrid\"."
+  type        = string
+  default     = ""
+}
+
+variable "email_base_url" {
+  type    = string
+  default = ""
+}
+
+variable "ses_region" {
+  type    = string
+  default = ""
+}
+
+variable "ses_access_key_id" {
+  type    = string
+  default = ""
+}
+
+variable "ses_from_address" {
+  type    = string
+  default = ""
+}
+
+variable "ses_base_url" {
+  type    = string
+  default = ""
+}
+
+variable "sendgrid_from_email" {
+  type    = string
+  default = ""
+}
+
+variable "sendgrid_base_url" {
+  type    = string
+  default = ""
+}
+
+# Outbound drafting backend (BOP-020). Empty = deterministic; "pydantic_ai" is the
+# LLM drafter (reuses the llm-api-key secret, injected when set).
+variable "drafting_backend" {
+  description = "Outbound drafting backend: \"\" (deterministic) or \"pydantic_ai\"."
+  type        = string
+  default     = ""
+}
+
+# Outbound SMS provider (BOP-018). Empty = the bundled Twilio stub; "twilio" needs
+# the auth-token secret (make secrets) + sender config.
+variable "sms_provider" {
+  description = "Outbound SMS provider: \"\" (stub) or \"twilio\"."
+  type        = string
+  default     = ""
+}
+
+variable "sms_base_url" {
+  type    = string
+  default = ""
+}
+
 variable "vapi_assistant_id" {
   type    = string
   default = "demo-assistant"
