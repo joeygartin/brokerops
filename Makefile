@@ -1,4 +1,4 @@
-.PHONY: dev test frontend-test lint generate demo migrate fleet-status gcp-bootstrap gcp-images deploy deploy-dev secrets
+.PHONY: dev test frontend-test lint generate demo migrate fleet-status fleet-upgrade gcp-bootstrap gcp-images deploy deploy-dev secrets
 
 TF := terraform -chdir=infra
 
@@ -52,6 +52,16 @@ demo:
 # Merges the gitignored overlay (display name/project) when present. See BOP-032.
 fleet-status:
 	uv run python scripts/fleet.py status
+
+# Upgrade the fleet to a pinned release: plan → apply → verify per client, stop on the
+# first failure (BOP-033). VERSION is required; CLIENT filters to one slug; FLEET_ARGS
+# passes flags (e.g. --dry-run, --yes). Needs TF_STATE_BUCKET for a real run/plans.
+#   make fleet-upgrade VERSION=v0.2.0                      # every client, confirm each
+#   make fleet-upgrade VERSION=v0.2.0 CLIENT=demo FLEET_ARGS=--yes
+#   make fleet-upgrade VERSION=v0.2.0 FLEET_ARGS=--dry-run # plans/table only
+fleet-upgrade:
+	@test -n "$(VERSION)" || (echo "usage: make fleet-upgrade VERSION=vX.Y.Z [CLIENT=<slug>] [FLEET_ARGS=--dry-run]"; exit 1)
+	uv run python scripts/fleet_upgrade.py $(VERSION) $(if $(CLIENT),--client $(CLIENT),) $(FLEET_ARGS)
 
 # ── GCP deploy (per client) ──────────────────────────────────────────────
 # One-time per project: make gcp-bootstrap GCP_PROJECT=… GCP_REGION=… TF_STATE_BUCKET=…

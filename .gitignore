@@ -9,6 +9,7 @@ credentials*
 *.tfstate.*
 .terraform/
 *.tfvars.json
+*.tfplan
 
 # ── Local-only / agent-tooling files ─────────────────────────────────
 CLAUDE.local.md
