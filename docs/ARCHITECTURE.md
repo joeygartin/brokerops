@@ -293,12 +293,14 @@ rate-limit protection and voice-path reads — never for anything HITL-adjacent.
 
 ## Deploy
 
-`make deploy CLIENT=acme` applies a per-client Terraform module: two Cloud Run
-services, Cloud SQL (an owner DB role for migrations + a non-owner least-privilege
-runtime role, BOP-013), Secret Manager shells (real keys pushed interactively by
-`make secrets` — values never touch the repo or state), the milestone Scheduler job,
-and least-privilege service accounts. Per-client tfvars are committed and contain no
-secrets; Terraform state lives in GCS with a per-client prefix.
+`make deploy CLIENT=acme VERSION=vX.Y.Z` applies a per-client Terraform module: two
+Cloud Run services (pinned to a git-tagged release image — ADR-0025), Cloud SQL (an
+owner DB role for migrations + a non-owner least-privilege runtime role, BOP-013),
+Secret Manager shells (real keys pushed interactively by `make secrets` — values
+never touch the repo or state), the milestone Scheduler job, and least-privilege
+service accounts. Per-client tfvars are committed and contain no secrets (not even an
+image path — the registry ref is derived from the version); Terraform state lives in
+GCS with a per-client prefix.
 
 Hard-won deploy details are encoded in the module: Cloud SQL's edition pin for
 shared-core tiers, real `.uri` references instead of predicted URLs (ADR-0003), and

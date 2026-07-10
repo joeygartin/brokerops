@@ -1,4 +1,4 @@
-.PHONY: dev test frontend-test lint generate demo migrate gcp-bootstrap gcp-images deploy secrets
+.PHONY: dev test frontend-test lint generate demo migrate gcp-bootstrap gcp-images deploy deploy-dev secrets
 
 TF := terraform -chdir=infra
 
@@ -57,14 +57,31 @@ gcp-bootstrap:
 gcp-images:
 	scripts/build_push_images.sh $(CLIENT)
 
-# Deploy a client: TF_STATE_BUCKET=… make deploy CLIENT=demo
+# Deploy a client at a pinned release (ADR-0025):
+#   TF_STATE_BUCKET=… make deploy CLIENT=acme VERSION=v0.1.0
+# VERSION is required — a prod deploy must reference a built, tagged release.
+# Its images (built once per tag by cloudbuild.release.yaml) must already be in
+# Artifact Registry. For a throwaway working-tree build, use `make deploy-dev`.
 deploy:
-	@test -n "$(CLIENT)" || (echo "usage: make deploy CLIENT=<name>"; exit 1)
+	@test -n "$(CLIENT)" || (echo "usage: make deploy CLIENT=<name> VERSION=vX.Y.Z"; exit 1)
 	@test -n "$(TF_STATE_BUCKET)" || (echo "set TF_STATE_BUCKET (see .env.example)"; exit 1)
+	@test -n "$(VERSION)" || (echo "set VERSION=vX.Y.Z (a tagged release) — or use 'make deploy-dev CLIENT=$(CLIENT)' for a working-tree build"; exit 1)
 	$(TF) init -reconfigure -input=false \
 		-backend-config="bucket=$(TF_STATE_BUCKET)" \
 		-backend-config="prefix=brokerops/$(CLIENT)"
-	$(TF) apply -var-file="clients/$(CLIENT).tfvars"
+	$(TF) apply -var-file="clients/$(CLIENT).tfvars" -var "image_version=$(VERSION)"
+
+# DEV ONLY — build the images from the current working tree, push them as
+# `:latest`, and deploy that tag. Unversioned and unreproducible: for iterating
+# on a demo/sandbox instance, never for a client release. TF_STATE_BUCKET=… make deploy-dev CLIENT=demo
+deploy-dev:
+	@test -n "$(CLIENT)" || (echo "usage: make deploy-dev CLIENT=<name>"; exit 1)
+	@test -n "$(TF_STATE_BUCKET)" || (echo "set TF_STATE_BUCKET (see .env.example)"; exit 1)
+	scripts/build_push_images.sh $(CLIENT)
+	$(TF) init -reconfigure -input=false \
+		-backend-config="bucket=$(TF_STATE_BUCKET)" \
+		-backend-config="prefix=brokerops/$(CLIENT)"
+	$(TF) apply -var-file="clients/$(CLIENT).tfvars" -var "image_version=latest"
 
 # Push real integration keys to Secret Manager: make secrets CLIENT=acme
 secrets:

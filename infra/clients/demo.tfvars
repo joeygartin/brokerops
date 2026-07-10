@@ -5,8 +5,9 @@ client_name = "demo"
 project_id  = "brokerops-demo" # set after creating the dedicated GCP project
 region      = "us-west1"
 
-api_image      = "us-west1-docker.pkg.dev/brokerops-demo/brokerops/api:latest"
-frontend_image = "us-west1-docker.pkg.dev/brokerops-demo/brokerops/frontend:latest"
+# The demo tracks `latest` (rolled by Cloud Build on every push to main; ADR-0025).
+# A pinned client instead sets a release tag via `make deploy VERSION=vX.Y.Z`.
+image_version = "latest"
 
 reso_base_url = "internal"
 fub_base_url  = "internal"

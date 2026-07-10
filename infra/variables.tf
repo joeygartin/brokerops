@@ -16,12 +16,10 @@ variable "db_tier" {
   default = "db-f1-micro"
 }
 
-variable "api_image" {
-  type = string
-}
-
-variable "frontend_image" {
-  type = string
+variable "image_version" {
+  description = "Image tag both services pin to (ADR-0025). Set via `make deploy VERSION=vX.Y.Z`; `latest` only for demo/dev."
+  type        = string
+  default     = ""
 }
 
 variable "enable_langsmith" {

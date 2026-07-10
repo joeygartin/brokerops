@@ -30,8 +30,7 @@ module "client" {
   project_id            = var.project_id
   region                = var.region
   db_tier               = var.db_tier
-  api_image             = var.api_image
-  frontend_image        = var.frontend_image
+  image_version         = var.image_version
   enable_langsmith      = var.enable_langsmith
   enable_llm_extraction = var.enable_llm_extraction
   extraction_backend    = var.extraction_backend

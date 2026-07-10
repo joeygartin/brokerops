@@ -193,8 +193,9 @@ The bridge from a listing going under contract to a tracked escrow **now exists*
 1. Fill out §1–§5 above with the client.
 2. Hand-code §3–§4 rules into `core/services/` for this client (V1 model).
 3. Build the §6 handoff if this client manages escrows.
-4. Provision: `README.md → Deploying to GCP` (bootstrap → tfvars → images →
-   `make deploy` → `make secrets`).
+4. Provision: `README.md → Deploying to GCP` (bootstrap → tfvars → cut a release
+   → `make deploy CLIENT=<c> VERSION=vX.Y.Z` → `make secrets`). Releases are git
+   tags (`docs/RELEASING.md`, ADR-0025).
 5. Smoke-test against their real integrations before handing over.
 
 ## 8. Sign-off

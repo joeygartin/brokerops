@@ -1,0 +1,58 @@
+# Release pipeline: on a git tag `v*`, build both images ONCE and push them to
+# Artifact Registry tagged with the version (ADR-0025). This is the fleet's
+# source of reproducible releases — an image is built exactly once per tag, and a
+# client deploy pins that tag (`make deploy CLIENT=x VERSION=vX.Y.Z`).
+#
+# Wire it with a 2nd-gen Cloud Build trigger on tag push matching `^v.*$` (see
+# docs/RELEASING.md). Unlike cloudbuild.yaml (the main→demo CD path), this build
+# does NOT deploy: promoting a release to a client is a deliberate, per-client
+# terraform step. It also does NOT move `:latest` — that tag belongs to the
+# main-branch CD roll, so a release build can never disturb a running demo.
+#
+# The registry is a substitution, not hardcoded: override `_AR` in the trigger to
+# publish a fleet's releases into a shared registry/project (task note — registry
+# choice is deploy-side config). The default matches the existing image home.
+
+substitutions:
+  _AR: us-west1-docker.pkg.dev/brokerops-demo/brokerops
+
+steps:
+  # ── build (tag the image with the release version) ─────────────────────────
+  - id: build-api
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - api/Dockerfile
+      - -t
+      - ${_AR}/api:$TAG_NAME
+      - .
+
+  - id: build-frontend
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - frontend/Dockerfile.prod
+      - -t
+      - ${_AR}/frontend:$TAG_NAME
+      - frontend/
+
+  # ── push the version-tagged images ─────────────────────────────────────────
+  - id: push-api
+    name: gcr.io/cloud-builders/docker
+    args: [push, "${_AR}/api:$TAG_NAME"]
+  - id: push-frontend
+    name: gcr.io/cloud-builders/docker
+    args: [push, "${_AR}/frontend:$TAG_NAME"]
+
+images:
+  - ${_AR}/api:$TAG_NAME
+  - ${_AR}/frontend:$TAG_NAME
+
+options:
+  # A user-specified build service account requires an explicit logs destination.
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+
+timeout: 1800s

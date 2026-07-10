@@ -1,6 +1,14 @@
 locals {
   # "magic" present in the comma-separated auth_methods (whitespace-tolerant).
   magic_enabled = contains([for m in split(",", var.auth_methods) : trimspace(m)], "magic")
+
+  # Images are pinned by version (ADR-0025): a release is a git tag, images are
+  # built once per tag, and a deploy references exactly that tag. The full refs
+  # are derived from project + region + image_version so a client's tfvars carries
+  # only the version, never a hand-maintained registry path.
+  registry       = "${var.region}-docker.pkg.dev/${var.project_id}/brokerops"
+  api_image      = "${local.registry}/api:${var.image_version}"
+  frontend_image = "${local.registry}/frontend:${var.image_version}"
 }
 
 resource "google_cloud_run_v2_service" "api" {
@@ -25,7 +33,7 @@ resource "google_cloud_run_v2_service" "api" {
     }
 
     containers {
-      image = var.api_image
+      image = local.api_image
 
       ports {
         container_port = 8000
@@ -360,7 +368,7 @@ resource "google_cloud_run_v2_service" "frontend" {
     }
 
     containers {
-      image = var.frontend_image
+      image = local.frontend_image
 
       ports {
         container_port = 8080

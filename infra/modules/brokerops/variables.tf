@@ -24,14 +24,19 @@ variable "db_tier" {
   default     = "db-f1-micro"
 }
 
-variable "api_image" {
-  description = "Artifact Registry image ref for the api service."
+variable "image_version" {
+  description = <<-EOT
+    Image tag both services are pinned to (ADR-0025). A release is a git tag
+    `vMAJOR.MINOR.PATCH`, built once into version-tagged Artifact Registry images;
+    a deploy references exactly that tag. `latest` is reserved for the demo/CD
+    image-roll and `make deploy-dev` working-tree builds. The full image refs are
+    derived from project + region + this tag.
+  EOT
   type        = string
-}
-
-variable "frontend_image" {
-  description = "Artifact Registry image ref for the frontend service."
-  type        = string
+  validation {
+    condition     = var.image_version != ""
+    error_message = "Set image_version — deploy with VERSION=vX.Y.Z (or use `make deploy-dev` for a working-tree build)."
+  }
 }
 
 variable "enable_langsmith" {

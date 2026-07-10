@@ -114,37 +114,34 @@ make gcp-bootstrap GCP_PROJECT=<project-id> GCP_REGION=us-west1 TF_STATE_BUCKET=
 cp infra/clients/_template.tfvars infra/clients/acme.tfvars
 ```
 
-Edit `acme.tfvars`: set `client_name`, `project_id`, and the `api_image` /
-`frontend_image` registry paths (just substitute your `project_id`). These files
-are committed — **never put secrets here**; secrets go to Secret Manager in step 5.
-Real integrations, the workflow engine, auth, and RBAC are all configured here too
-(see [Configuration reference](#configuration-reference)).
+Edit `acme.tfvars`: set `client_name` and `project_id`. Image paths are **not** set
+here — a deploy pins a versioned image tag (step 3), and the full registry ref is
+derived from `project_id` + `region` + the version (ADR-0025). These files are
+committed — **never put secrets here**; secrets go to Secret Manager in step 5. Real
+integrations, the workflow engine, auth, and RBAC are all configured here too (see
+[Configuration reference](#configuration-reference)).
 
-### 3. Build & push images
+### 3. Cut a release, then deploy it
 
-```bash
-make gcp-images CLIENT=acme
-```
-
-Builds and pushes `api:latest` and `frontend:latest` to Artifact Registry
-(`linux/amd64`). The frontend is served same-origin and proxies `/api` to the api
-service at runtime (ADR-0003), so one image works across clients.
-
-### 4. Deploy
+A client deploy pins a **built, git-tagged release** — not the working tree. Tag the
+repo (`git tag v0.1.0 && git push origin v0.1.0`); the release Cloud Build
+(`cloudbuild.release.yaml`) builds the api + frontend images once and pushes them to
+Artifact Registry tagged with the version. Then:
 
 ```bash
-TF_STATE_BUCKET=<bucket> make deploy CLIENT=acme
+TF_STATE_BUCKET=<bucket> make deploy CLIENT=acme VERSION=v0.1.0
 ```
 
-Runs `terraform init` (pointing at the client's state prefix) then `apply` with
-`infra/clients/acme.tfvars`. On success Terraform prints the Cloud Run URLs.
+Runs `terraform init` (pointing at the client's state prefix) then `apply`, pinning
+both Cloud Run services to `…:v0.1.0`. `VERSION` is required — the prod path never
+falls back to `:latest`. `terraform plan` shows the exact pinned tag. The full
+release/rollback runbook is [docs/RELEASING.md](docs/RELEASING.md).
 
-> **Note on `:latest` images.** Terraform pins images by the `:latest` tag, so a
-> later same-tag re-push does **not** roll a new revision on its own. After
-> rebuilding images for an existing client, force a new revision:
-> `gcloud run deploy brokerops-acme-api --image <registry>/api:latest --region us-west1 --project <project-id>` (and likewise `…-frontend`).
+> **Sandbox shortcut.** To iterate on a demo/sandbox instance from the current
+> working tree (unversioned, unreproducible), `make deploy-dev CLIENT=acme` builds
+> the tree, pushes `:latest`, and deploys that tag. Never use it for a real client.
 
-### 5. Push real integration keys (only if flipping integrations live)
+### 4. Push real integration keys (only if flipping integrations live)
 
 ```bash
 make secrets CLIENT=acme
@@ -152,7 +149,7 @@ make secrets CLIENT=acme
 
 Prompts for each key and writes it straight to Secret Manager — values never touch
 the repo or tfstate. Press Enter to skip any you don't need (the stubs need none).
-Then redeploy (step 4) so the new revision picks them up.
+Then redeploy (step 3) so the new revision picks them up.
 
 For magic-link email over **AWS SES**, `scripts/setup_ses.sh <client> <domain>`
 automates the SES side: it creates the domain identity (EasyDKIM) and a send-only
@@ -167,7 +164,7 @@ those DNS records and running the deploy stay manual.
 | Variable | Purpose |
 |---|---|
 | `client_name`, `project_id`, `region` | Identity + GCP target (`region` default `us-west1`). |
-| `api_image`, `frontend_image` | Artifact Registry image paths. |
+| _(image)_ | Not a tfvar — pinned at deploy via `make deploy … VERSION=vX.Y.Z`; the registry ref is derived from `project_id`/`region`/version (ADR-0025). |
 | `reso_base_url`, `fub_base_url`, `vapi_base_url` | `internal` (default) runs the bundled stub; set a real base URL to go live. |
 | `vapi_assistant_id` | Vapi assistant for outbound calls (ADR-0005). |
 | `enable_llm_extraction`, `extraction_backend`, `llm_model` | Flip feedback extraction to an LLM backend — `llm` (ADR-0006) or `pydantic_ai` (ADR-0014); needs the `llm-api-key` secret. |
@@ -186,11 +183,11 @@ those DNS records and running the deploy stay manual.
 ### Self-contained demo deploy
 
 `infra/clients/demo.tfvars` deploys the whole stack with every integration on its
-in-process stub — zero secrets, even in the cloud:
+in-process stub — zero secrets, even in the cloud. `deploy-dev` builds the current
+tree and pins `:latest` (the demo tracks tip-of-main, not a pinned release):
 
 ```bash
-make gcp-images CLIENT=demo
-TF_STATE_BUCKET=<bucket> make deploy CLIENT=demo
+TF_STATE_BUCKET=<bucket> make deploy-dev CLIENT=demo
 ```
 
 To layer operator auth onto the demo, set the `enable_auth` / `auth_methods` /
