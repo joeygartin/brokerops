@@ -3,9 +3,11 @@ import { unwrap } from "../api";
 import { API_BASE } from "../auth";
 import {
   attachDocumentTransactionsTransactionIdDocumentsPost,
+  deadlineQueueTransactionsDeadlinesGet,
   getTransactionTransactionsTransactionIdGet,
   listFilesFilesGet,
   listTransactionsTransactionsGet,
+  searchTransactionsTransactionsSearchGet,
   seedDemoDataDemoSeedPost,
   type AttachDocument,
 } from "../client";
@@ -38,6 +40,30 @@ export function useTransaction(transactionId: string) {
           path: { transaction_id: transactionId },
         }),
       ),
+    staleTime: 10_000,
+  });
+}
+
+// The coordinator's cross-transaction deadline queue (BOP-030 operator home).
+// Portfolio-wide, so it shares the transactions collection's freshness and is
+// invalidated by the same mutations (seed, cron).
+export function useDeadlineQueue() {
+  return useQuery({
+    queryKey: queryKeys.deadlines,
+    queryFn: async () => unwrap(await deadlineQueueTransactionsDeadlinesGet()),
+    staleTime: 10_000,
+  });
+}
+
+// Transaction search (BOP-030 viewer home): active deals by listing key, party
+// name, or property address. A blank term is not a query — the view passes
+// `enabled` false so we never fire (and the server would return [] anyway).
+export function useTransactionSearch(query: string, options: { enabled: boolean }) {
+  return useQuery({
+    queryKey: queryKeys.transactionSearch(query),
+    queryFn: async () =>
+      unwrap(await searchTransactionsTransactionsSearchGet({ query: { q: query } })),
+    enabled: options.enabled,
     staleTime: 10_000,
   });
 }

@@ -21,7 +21,9 @@ demo transactions. When it finishes:
 
 ## 1. Marketing approval — the HITL pattern (1 min)
 
-1. Open the frontend → **Listings** tab. Twelve listings from the mock RESO MLS.
+1. Open the frontend. It lands on a role-shaped home (BOP-030) — the demo runs as a
+   full admin, so you arrive at the **Approvals** inbox. Click the **Listings** tab:
+   twelve listings from the mock RESO MLS.
 2. On any **active** listing, click **Start marketing workflow**.
 3. Switch to the **Approvals** tab. The workflow has paused at a human gate: review
    the generated marketing draft (headline, body, channels).

@@ -85,7 +85,7 @@ integrations/
 orchestration/
   langgraph/             # the engine: graphs/, checkpointer (state schemas in core)
 api/                     # FastAPI: routes, webhooks, cron, workflow engine, Alembic
-frontend/                # React + Vite: Listings, Transactions, Approval Inbox
+frontend/                # React + Vite: Listings, Transactions, Approval Inbox, role-shaped homes (deadline queue, search)
 infra/                   # Terraform: per-client module, client tfvars, bootstrap
 docs/                    # this file, DEMO.md, ADRs/
 ```
@@ -262,10 +262,14 @@ table, and `Pii` field annotations on the response models — never per-tool cod
 directions ride one wrapper (`guard_tool_ports`) on every port in
 `app.state.engine_tool_ports`, and the enumeration test asserts both markers on every
 registered port, so a new tool entry point cannot ship unguarded in either direction.
-The covered surface is the engine tool seam: HTTP route responses are RBAC-scoped
-(`require_role`, ADR-0009), not egress-role-scoped — store-backed routes read through
-ports filtered at the pinned OPERATOR tier regardless of the caller's actual role, and
-filtering route responses per the caller's role is a follow-on. Per-agent
+The always-on covered surface is the engine tool seam, filtered at the pinned OPERATOR
+tier regardless of caller. HTTP route responses are RBAC-scoped (`require_role`,
+ADR-0009); per-caller-role egress filtering of read responses
+(`scrub_payload(recipient_role=…)`) shipped for the transaction hub reads in BOP-027 and
+extends to the role-shaped home reads (`GET /transactions/deadlines`,
+`/transactions/search`) in BOP-030 — so a viewer receives party names but not their
+contact emails. Bringing the remaining store-backed reads under the same per-caller
+filter is tracked in BOP-040. Per-agent
 least-privilege infrastructure shipped in BOP-013 (ADR-0021): the non-owner runtime DB
 role above, plus per-client cloud isolation (own GCP project + per-secret IAM). Increment 4 (BOP-020) closes the
 *outbound* direction the result filter does not cover: `MessageSendService` runs every

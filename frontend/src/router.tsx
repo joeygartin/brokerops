@@ -1,5 +1,6 @@
 import {
   Link,
+  Navigate,
   Outlet,
   createRootRoute,
   createRoute,
@@ -13,10 +14,13 @@ import ApprovalsInbox from "./ApprovalsInbox";
 import AuditTrail from "./AuditTrail";
 import { useAuth } from "./authContext";
 import { takePostLoginRedirect } from "./auth";
+import DeadlineQueue from "./DeadlineQueue";
 import ListingDetail from "./ListingDetail";
 import ListingsBoard from "./ListingsBoard";
+import { homeFor } from "./roles";
 import { BackLink, CenteredMessage } from "./routeElements";
 import TransactionDetailPage from "./TransactionDetailPage";
+import TransactionSearch from "./TransactionSearch";
 import TransactionsBoard from "./TransactionsBoard";
 
 // URL-addressable app shell (BOP-025). The four flat tabs became top-level routes
@@ -28,7 +32,9 @@ import TransactionsBoard from "./TransactionsBoard";
 const NAV = [
   { to: "/listings", label: "Listings" },
   { to: "/transactions", label: "Transactions" },
+  { to: "/deadlines", label: "Deadlines" },
   { to: "/approvals", label: "Approvals" },
+  { to: "/search", label: "Search" },
   { to: "/audit", label: "Audit trail" },
 ] as const;
 
@@ -57,11 +63,12 @@ function NavTab({ to, label }: { to: string; label: string }) {
 // The app shell: header (identity + sign-out) and nav, with the active view in
 // the outlet. Role-based access is a UI mirror of the API's require_role, which
 // gates only *writes* — every read is viewer-open (ADR-0009 keeps all tabs
-// visible to all roles, hiding only controls). So there is deliberately no
-// route-level page lock here; the mirror lives at the control level, gated
-// in-card by `hasRole` (approve = admin, start-workflow / outbound-call =
-// operator). Route-level guards arrive with BOP-030's genuinely role-shaped
-// surfaces (and any accompanying server-side read gate), not before.
+// visible to all roles, hiding only controls). BOP-030 added genuinely
+// role-shaped *home* surfaces — "/" lands each role on their work (see
+// HomeRedirect) — but kept every route reachable: no route-level page lock, so
+// manual navigation to any tab is unchanged. The write mirror still lives at the
+// control level, gated in-card by `hasRole` (approve = admin, start-workflow /
+// outbound-call = operator).
 function RootLayout() {
   const { email, role, signOut } = useAuth();
 
@@ -106,16 +113,22 @@ function NotFound() {
 
 const rootRoute = createRootRoute({ component: RootLayout, notFoundComponent: NotFound });
 
-// "/" is never a destination: it restores the deep link saved before login
-// (BOP-025), falling back to the listings board.
+// "/" lands each role on their work (BOP-030): the broker (admin) in the approval
+// inbox, the coordinator (operator) on the deadline queue, the viewer on search.
+// A deep link saved before login (BOP-025) still wins over the role default.
+function HomeRedirect() {
+  const { role } = useAuth();
+  return <Navigate to={homeFor(role)} replace />;
+}
+
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
   beforeLoad: () => {
     const dest = takePostLoginRedirect();
     if (dest) throw redirect({ href: dest });
-    throw redirect({ to: "/listings" });
   },
+  component: HomeRedirect,
 });
 
 const listingsRoute = createRoute({
@@ -137,6 +150,16 @@ const transactionDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/transactions/$id",
   component: TransactionDetailPage,
+});
+const deadlinesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/deadlines",
+  component: DeadlineQueue,
+});
+const searchRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/search",
+  component: TransactionSearch,
 });
 const approvalsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -160,6 +183,8 @@ export const routeTree = rootRoute.addChildren([
   listingDetailRoute,
   transactionsRoute,
   transactionDetailRoute,
+  deadlinesRoute,
+  searchRoute,
   approvalsRoute,
   approvalDetailRoute,
   auditRoute,

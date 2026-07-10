@@ -7,12 +7,17 @@ import { expect, test } from "@playwright/test";
 // no engine matrix here — the default ORCHESTRATOR carries the run.
 //
 // The stack boots login-free (AUTH_METHODS unset → demo operator, full admin), so
-// there is no sign-in step: `/` redirects straight to the listings board.
+// there is no sign-in step. Role-shaped homes (BOP-030) land the full-admin demo
+// on its Approval inbox at `/`; the golden path opens on a listing, so step 1
+// asserts that role home and then clicks through to the Listings board.
 test("marketing HITL golden path, then a transaction detail visit", async ({ page }) => {
-  // 1. Boot → Listings. Twelve listings from the mock RESO MLS; at least one is
-  //    active and therefore carries the operator controls.
+  // 1. Boot → the admin's role home (the Approval inbox), then to Listings. Twelve
+  //    listings from the mock RESO MLS; at least one is active and therefore
+  //    carries the operator controls.
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "brokerops", level: 1 })).toBeVisible();
+  await expect(page).toHaveURL(/\/approvals$/);
+  await page.getByRole("link", { name: "Listings" }).click();
   const startButton = page.getByRole("button", { name: "Start marketing workflow" }).first();
   await expect(startButton).toBeVisible();
 

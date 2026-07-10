@@ -1,12 +1,15 @@
+import logging
 from datetime import date
 from typing import Annotated
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from brokerops_api.deps import (
     get_current_principal,
     get_document_store,
+    get_listing_service,
     get_transaction_store,
     require_role,
 )
@@ -17,13 +20,22 @@ from brokerops_core.ports.documents import DocumentStore
 from brokerops_core.ports.identity import Principal, Role
 from brokerops_core.ports.transactions import TransactionAlreadyExists, TransactionStore
 from brokerops_core.services.egress import scrub_payload
-from brokerops_core.services.milestone_engine import assess_milestone, expected_document_satisfied
+from brokerops_core.services.listing_service import ListingService
+from brokerops_core.services.milestone_engine import (
+    DeadlineItem,
+    assess_milestone,
+    build_deadline_queue,
+    expected_document_satisfied,
+)
 from brokerops_core.services.transaction_open import build_open_transaction
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
 StoreDep = Annotated[TransactionStore, Depends(get_transaction_store)]
 DocumentsDep = Annotated[DocumentStore, Depends(get_document_store)]
+ListingsDep = Annotated[ListingService, Depends(get_listing_service)]
 # Opening a transaction is an action, not a read — operators and up, not viewers.
 OperatorDep = Annotated[Principal, Depends(require_role(Role.OPERATOR))]
 # The board and the hub read transactions viewer-open; the response is filtered to
@@ -154,6 +166,104 @@ async def list_transactions(
     active = await store.list_active_transactions()
     details = [await _detail(store, docs, transaction) for transaction in active]
     scrubbed: list[TransactionDetail] = scrub_payload(details, recipient_role=principal.role)
+    return scrubbed
+
+
+class DeadlineRow(DeadlineItem):
+    # The core queue item plus the transaction context a coordinator needs to
+    # recognise the deal at a glance. `listing_key` comes free off the
+    # transaction; the row links back to the hub via `transaction_id` (BOP-027).
+    listing_key: str
+
+
+@router.get("/deadlines")
+async def deadline_queue(store: StoreDep, principal: ReaderDep) -> list[DeadlineRow]:
+    """The coordinator's cross-transaction deadline queue (BOP-030).
+
+    Every active transaction's pending milestones, classified due-soon / overdue /
+    blocked-external and sorted most-urgent-first. The classification and ordering
+    rules live in the core milestone engine; this route only enumerates and joins
+    the listing key for display.
+    """
+    today = date.today()
+    active = await store.list_active_transactions()
+    listing_key_by_txn = {transaction.id: transaction.listing_key for transaction in active}
+    milestones: list[Milestone] = []
+    for transaction in active:
+        milestones.extend(await store.list_milestones(transaction.id))
+    rows = [
+        DeadlineRow(
+            **item.model_dump(),
+            listing_key=listing_key_by_txn.get(item.transaction_id, ""),
+        )
+        for item in build_deadline_queue(milestones, today)
+    ]
+    # No PII on a deadline row, so this is a no-op today — kept for parity with the
+    # other hub reads so a future field carrying PII is filtered by default.
+    scrubbed: list[DeadlineRow] = scrub_payload(rows, recipient_role=principal.role)
+    return scrubbed
+
+
+class TransactionSearchRow(BaseModel):
+    transaction: Transaction
+    # Joined from the listing (transactions store only the key); "" when the
+    # listing has no address on file or the feed can't serve it.
+    property_address: str
+
+
+async def _listing_address(listings: ListingService, listing_key: str) -> str:
+    """Best-effort property address for a transaction's listing.
+
+    Address is an enrichment on a search result, never the backbone of the match
+    (listing key + party name carry that), so a listing the MLS can't serve — a
+    closed key, a sparse or unreachable feed — degrades to no address rather than
+    failing the whole search.
+
+    The degradation is scoped to *expected* feed failures (`httpx.HTTPError`: a 4xx
+    for an unknown key, a network/connection error for a down feed) and is logged at
+    WARNING so a real MLS-integration regression stays visible instead of being
+    silently swallowed. Any other exception propagates — a genuine bug should fail
+    loud, not hide behind a blank address.
+    """
+    try:
+        listing = await listings.get_with_media(listing_key)
+    except httpx.HTTPError as exc:
+        logger.warning(
+            "search: MLS listing lookup failed for %r, dropping address enrichment: %s",
+            listing_key,
+            exc,
+        )
+        return ""
+    return listing.address if listing is not None else ""
+
+
+@router.get("/search")
+async def search_transactions(
+    q: str,
+    store: StoreDep,
+    listings: ListingsDep,
+    principal: ReaderDep,
+) -> list[TransactionSearchRow]:
+    """Find active transactions by listing key, party (contact) name, or property
+    address (BOP-030 viewer home).
+
+    A thin case-insensitive substring match over the active transactions — the same
+    working set the board and the deadline queue read. A blank query returns
+    nothing. The response is filtered to the caller's role (BOP-027), so a viewer
+    sees party names but not their contact emails.
+    """
+    needle = q.strip().lower()
+    if not needle:
+        return []
+    rows: list[TransactionSearchRow] = []
+    for transaction in await store.list_active_transactions():
+        address = await _listing_address(listings, transaction.listing_key)
+        haystack = " ".join(
+            [transaction.listing_key, address, *(party.name for party in transaction.parties)]
+        ).lower()
+        if needle in haystack:
+            rows.append(TransactionSearchRow(transaction=transaction, property_address=address))
+    scrubbed: list[TransactionSearchRow] = scrub_payload(rows, recipient_role=principal.role)
     return scrubbed
 
 

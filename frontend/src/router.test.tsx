@@ -207,7 +207,7 @@ describe("router", () => {
   });
 
   describe("index redirect", () => {
-    it("restores the saved deep link after login", async () => {
+    it("restores the saved deep link after login (over the role home)", async () => {
       takeRedirectMock.mockReturnValue("/approvals/APR-7");
       const router = renderAt("/");
 
@@ -215,10 +215,26 @@ describe("router", () => {
       expect(takeRedirectMock).toHaveBeenCalled();
     });
 
-    it("falls back to the listings board when there is no saved destination", async () => {
+    // BOP-030: with no saved deep link, "/" lands each role on their work.
+    it("lands an admin on the approval inbox", async () => {
+      authState.role = "admin";
       const router = renderAt("/");
 
-      await waitFor(() => expect(router.state.location.pathname).toBe("/listings"));
+      await waitFor(() => expect(router.state.location.pathname).toBe("/approvals"));
+    });
+
+    it("lands an operator on the deadline queue", async () => {
+      authState.role = "operator";
+      const router = renderAt("/");
+
+      await waitFor(() => expect(router.state.location.pathname).toBe("/deadlines"));
+    });
+
+    it("lands a viewer on search", async () => {
+      authState.role = "viewer";
+      const router = renderAt("/");
+
+      await waitFor(() => expect(router.state.location.pathname).toBe("/search"));
     });
   });
 

@@ -160,6 +160,42 @@ export type Contact = {
 };
 
 /**
+ * DeadlineRow
+ */
+export type DeadlineRow = {
+    /**
+     * Blocked Reason
+     */
+    blocked_reason?: string | null;
+    classification: MilestoneClass;
+    /**
+     * Days Until Due
+     */
+    days_until_due: number;
+    /**
+     * Due Date
+     */
+    due_date: string;
+    /**
+     * Listing Key
+     */
+    listing_key: string;
+    /**
+     * Milestone Id
+     */
+    milestone_id: string;
+    milestone_type: MilestoneType;
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Transaction Id
+     */
+    transaction_id: string;
+};
+
+/**
  * DecideRequest
  *
  * Wire shape for a decision. `decided_by` is intentionally absent — the API
@@ -529,6 +565,21 @@ export const MessageStatus = {
  * delivery callback can also move SENT → FAILED.
  */
 export type MessageStatus = typeof MessageStatus[keyof typeof MessageStatus];
+
+/**
+ * MilestoneClass
+ */
+export const MilestoneClass = {
+    ON_TRACK: 'on_track',
+    DUE_SOON: 'due_soon',
+    OVERDUE: 'overdue',
+    BLOCKED_EXTERNAL: 'blocked_external'
+} as const;
+
+/**
+ * MilestoneClass
+ */
+export type MilestoneClass = typeof MilestoneClass[keyof typeof MilestoneClass];
 
 /**
  * MilestoneStatus
@@ -970,6 +1021,17 @@ export type TransactionParty = {
      * Role
      */
     role: string;
+};
+
+/**
+ * TransactionSearchRow
+ */
+export type TransactionSearchRow = {
+    /**
+     * Property Address
+     */
+    property_address: string;
+    transaction: Transaction;
 };
 
 /**
@@ -2008,6 +2070,77 @@ export type OpenTransactionTransactionsPostResponses = {
 };
 
 export type OpenTransactionTransactionsPostResponse = OpenTransactionTransactionsPostResponses[keyof OpenTransactionTransactionsPostResponses];
+
+export type DeadlineQueueTransactionsDeadlinesGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/transactions/deadlines';
+};
+
+export type DeadlineQueueTransactionsDeadlinesGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeadlineQueueTransactionsDeadlinesGetError = DeadlineQueueTransactionsDeadlinesGetErrors[keyof DeadlineQueueTransactionsDeadlinesGetErrors];
+
+export type DeadlineQueueTransactionsDeadlinesGetResponses = {
+    /**
+     * Response Deadline Queue Transactions Deadlines Get
+     *
+     * Successful Response
+     */
+    200: Array<DeadlineRow>;
+};
+
+export type DeadlineQueueTransactionsDeadlinesGetResponse = DeadlineQueueTransactionsDeadlinesGetResponses[keyof DeadlineQueueTransactionsDeadlinesGetResponses];
+
+export type SearchTransactionsTransactionsSearchGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path?: never;
+    query: {
+        /**
+         * Q
+         */
+        q: string;
+    };
+    url: '/transactions/search';
+};
+
+export type SearchTransactionsTransactionsSearchGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SearchTransactionsTransactionsSearchGetError = SearchTransactionsTransactionsSearchGetErrors[keyof SearchTransactionsTransactionsSearchGetErrors];
+
+export type SearchTransactionsTransactionsSearchGetResponses = {
+    /**
+     * Response Search Transactions Transactions Search Get
+     *
+     * Successful Response
+     */
+    200: Array<TransactionSearchRow>;
+};
+
+export type SearchTransactionsTransactionsSearchGetResponse = SearchTransactionsTransactionsSearchGetResponses[keyof SearchTransactionsTransactionsSearchGetResponses];
 
 export type GetTransactionTransactionsTransactionIdGetData = {
     body?: never;

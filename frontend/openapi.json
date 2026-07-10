@@ -226,6 +226,64 @@
         "title": "Contact",
         "type": "object"
       },
+      "DeadlineRow": {
+        "properties": {
+          "blocked_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked Reason"
+          },
+          "classification": {
+            "$ref": "#/components/schemas/MilestoneClass"
+          },
+          "days_until_due": {
+            "title": "Days Until Due",
+            "type": "integer"
+          },
+          "due_date": {
+            "format": "date",
+            "title": "Due Date",
+            "type": "string"
+          },
+          "listing_key": {
+            "title": "Listing Key",
+            "type": "string"
+          },
+          "milestone_id": {
+            "title": "Milestone Id",
+            "type": "string"
+          },
+          "milestone_type": {
+            "$ref": "#/components/schemas/MilestoneType"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "transaction_id": {
+            "title": "Transaction Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "transaction_id",
+          "milestone_id",
+          "milestone_type",
+          "title",
+          "due_date",
+          "classification",
+          "days_until_due",
+          "listing_key"
+        ],
+        "title": "DeadlineRow",
+        "type": "object"
+      },
       "DecideRequest": {
         "description": "Wire shape for a decision. `decided_by` is intentionally absent \u2014 the API\nstamps it from the authenticated principal, never the client.\n\n`edited_payload` stays a dict here because its shape depends on the approval\n*kind*, known only after the row is fetched; the decide route validates it\nagainst the kind's boundary model (EditedMessagePayload for the\noutbound-message gate) before anything reaches an engine.",
         "properties": {
@@ -699,6 +757,16 @@
           "rejected"
         ],
         "title": "MessageStatus",
+        "type": "string"
+      },
+      "MilestoneClass": {
+        "enum": [
+          "on_track",
+          "due_soon",
+          "overdue",
+          "blocked_external"
+        ],
+        "title": "MilestoneClass",
         "type": "string"
       },
       "MilestoneStatus": {
@@ -1342,6 +1410,23 @@
           "name"
         ],
         "title": "TransactionParty",
+        "type": "object"
+      },
+      "TransactionSearchRow": {
+        "properties": {
+          "property_address": {
+            "title": "Property Address",
+            "type": "string"
+          },
+          "transaction": {
+            "$ref": "#/components/schemas/Transaction"
+          }
+        },
+        "required": [
+          "transaction",
+          "property_address"
+        ],
+        "title": "TransactionSearchRow",
         "type": "object"
       },
       "TransactionStage": {
@@ -3120,6 +3205,123 @@
           }
         },
         "summary": "Open Transaction",
+        "tags": [
+          "transactions"
+        ]
+      }
+    },
+    "/transactions/deadlines": {
+      "get": {
+        "description": "The coordinator's cross-transaction deadline queue (BOP-030).\n\nEvery active transaction's pending milestones, classified due-soon / overdue /\nblocked-external and sorted most-urgent-first. The classification and ordering\nrules live in the core milestone engine; this route only enumerates and joins\nthe listing key for display.",
+        "operationId": "deadline_queue_transactions_deadlines_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DeadlineRow"
+                  },
+                  "title": "Response Deadline Queue Transactions Deadlines Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Deadline Queue",
+        "tags": [
+          "transactions"
+        ]
+      }
+    },
+    "/transactions/search": {
+      "get": {
+        "description": "Find active transactions by listing key, party (contact) name, or property\naddress (BOP-030 viewer home).\n\nA thin case-insensitive substring match over the active transactions \u2014 the same\nworking set the board and the deadline queue read. A blank query returns\nnothing. The response is filtered to the caller's role (BOP-027), so a viewer\nsees party names but not their contact emails.",
+        "operationId": "search_transactions_transactions_search_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TransactionSearchRow"
+                  },
+                  "title": "Response Search Transactions Transactions Search Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Transactions",
         "tags": [
           "transactions"
         ]

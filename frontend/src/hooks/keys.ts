@@ -14,6 +14,12 @@ export const queryKeys = {
   // the collection key so deciding an approval (which invalidates ["approvals"])
   // also refreshes the history, and the pending inbox and history stay in sync.
   approvalsByStatus: (status: string) => ["approvals", "status", status] as const,
+  // The role-shaped home reads (BOP-030). The deadline queue is portfolio-wide, so
+  // it hangs off the transactions collection — a mutation that invalidates
+  // ["transactions"] (a cron escalation, an opened deal) also refreshes the queue.
+  // Search is keyed by its query so each term caches independently.
+  deadlines: ["transactions", "deadlines"] as const,
+  transactionSearch: (query: string) => ["transactions", "search", query] as const,
   audit: (workflowRunId: string) => ["audit", workflowRunId] as const,
   folderFiles: (folder: string) => ["files", folder] as const,
   // The transaction hub's per-deal slices (BOP-027). Nested under the transaction

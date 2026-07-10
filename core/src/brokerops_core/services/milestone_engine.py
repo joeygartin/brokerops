@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from brokerops_core.models.document import Document
 from brokerops_core.models.drafting import DraftContext
 from brokerops_core.models.message_templates import MILESTONE_REMINDER_V1
-from brokerops_core.models.milestone import Milestone, MilestoneStatus
+from brokerops_core.models.milestone import Milestone, MilestoneStatus, MilestoneType
 from brokerops_core.models.transaction import Transaction
 from brokerops_core.services.drafting import SENDER_NAME
 
@@ -68,6 +68,74 @@ def worst_classification(assessments: list[MilestoneAssessment]) -> MilestoneCla
         if classification in present:
             return classification
     return MilestoneClass.ON_TRACK
+
+
+# The classes that belong on a coordinator's deadline queue: everything that
+# needs a human's attention. ON_TRACK milestones are dropped — a queue is a
+# worklist, not an inventory.
+QUEUE_CLASSES = frozenset(
+    {MilestoneClass.OVERDUE, MilestoneClass.DUE_SOON, MilestoneClass.BLOCKED_EXTERNAL}
+)
+
+_SEVERITY_RANK = {classification: rank for rank, classification in enumerate(SEVERITY_ORDER)}
+
+
+class DeadlineItem(BaseModel):
+    """One milestone on the portfolio-wide deadline queue (BOP-030).
+
+    Milestone-centric and framework-free: it carries `transaction_id` so a caller
+    can link the row back to its transaction hub, but knows nothing about listings
+    or presentation — the API layer joins that on.
+    """
+
+    transaction_id: str
+    milestone_id: str
+    milestone_type: MilestoneType
+    title: str
+    due_date: date
+    classification: MilestoneClass
+    days_until_due: int
+    blocked_reason: str | None = None
+
+
+def _urgency_key(item: DeadlineItem) -> tuple[int, int, str, str]:
+    # Most-urgent first: severity band (overdue < due_soon < blocked_external),
+    # then soonest due within the band (most-overdue and nearest deadlines rise),
+    # then a stable id tiebreak so the order is deterministic.
+    return (
+        _SEVERITY_RANK[item.classification],
+        item.days_until_due,
+        item.transaction_id,
+        item.milestone_id,
+    )
+
+
+def build_deadline_queue(milestones: list[Milestone], today: date) -> list[DeadlineItem]:
+    """Classify pending milestones across many transactions into an urgency-sorted
+    worklist (BOP-030).
+
+    Pass the milestones of every active transaction, flattened. Reuses
+    `assess_milestones` (so the date/blocked rules stay single-sourced), keeps only
+    the attention-worthy classes, and sorts most-urgent-first. Complete/waived
+    milestones and on-track ones are dropped.
+    """
+    by_id = {m.id: m for m in milestones}
+    items = [
+        DeadlineItem(
+            transaction_id=by_id[assessment.milestone_id].transaction_id,
+            milestone_id=assessment.milestone_id,
+            milestone_type=by_id[assessment.milestone_id].type,
+            title=by_id[assessment.milestone_id].title,
+            due_date=by_id[assessment.milestone_id].due_date,
+            classification=assessment.classification,
+            days_until_due=assessment.days_until_due,
+            blocked_reason=by_id[assessment.milestone_id].blocked_reason,
+        )
+        for assessment in assess_milestones(milestones, today)
+        if assessment.classification in QUEUE_CLASSES
+    ]
+    items.sort(key=_urgency_key)
+    return items
 
 
 def expected_document_satisfied(milestone: Milestone, documents: Sequence[Document]) -> bool | None:

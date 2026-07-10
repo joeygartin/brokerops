@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { roleAtLeast, type Role } from "./roles";
+import { homeFor, roleAtLeast, type Role } from "./roles";
 
 const ROLES: Role[] = ["viewer", "operator", "admin"];
 
@@ -24,5 +24,24 @@ describe("roleAtLeast", () => {
     for (const minimum of ROLES) {
       expect(roleAtLeast(null, minimum)).toBe(false);
     }
+  });
+});
+
+describe("homeFor", () => {
+  // BOP-030: each role lands on their work at "/".
+  it("routes admin to the approval inbox", () => {
+    expect(homeFor("admin")).toBe("/approvals");
+  });
+
+  it("routes operator to the deadline queue", () => {
+    expect(homeFor("operator")).toBe("/deadlines");
+  });
+
+  it("routes viewer to search", () => {
+    expect(homeFor("viewer")).toBe("/search");
+  });
+
+  it("defaults an unknown/absent role to the coordinator queue (PII-free)", () => {
+    expect(homeFor(null)).toBe("/deadlines");
   });
 });
