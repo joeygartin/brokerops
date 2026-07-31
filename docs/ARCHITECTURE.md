@@ -7,7 +7,8 @@ action gated by human approval.
 A production agent architecture: three workflows run on LangGraph behind a thin
 `WorkflowEngine` seam that keeps orchestration out of the domain core, with durable
 human-in-the-loop, an MCP tool boundary, hexagonal domain isolation, operator auth
-with role-based access, and per-client GCP deploys via Terraform.
+with role-based access, and deployed as a dedicated instance per brokerage
+(per-client GCP via Terraform — ADR-0026).
 
 ## Principles
 
@@ -292,6 +293,13 @@ contacts are read-through DTOs via `CRMPort`. Caching policy is ADR-0001: a thin
 rate-limit protection and voice-path reads — never for anything HITL-adjacent.
 
 ## Deploy
+
+brokerops is **deployed as a dedicated instance per brokerage** (posture A1 —
+ADR-0026): one WebDrvn-owned GCP project, Cloud SQL instance, and secret set per
+client. Client-infrastructure deploys (posture B) use the same Terraform module
+as an enterprise tier with no code fork; true multi-tenancy (A2) is deferred with
+maintained escape-hatch invariants (tenant columns + RLS, tenant in derived-id
+hashes, scoped stores — ADR-0012).
 
 `make deploy CLIENT=acme VERSION=vX.Y.Z` applies a per-client Terraform module: two
 Cloud Run services (pinned to a git-tagged release image — ADR-0025), Cloud SQL (an

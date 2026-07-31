@@ -10,10 +10,11 @@ human approval gate in front of every consequential action.
 
 Three workflows over an MCP tool boundary, a framework-free domain core, durable
 human-in-the-loop (Postgres-backed — approvals survive restarts and deploys), and
-per-client GCP deploys via Terraform. Workflows run on LangGraph, behind a thin
-`WorkflowEngine` seam that keeps the orchestrator swappable without touching the
-domain core (ADR-0019). Every push proves the whole path with an end-to-end demo
-script against the real compose stack.
+deployed as a dedicated instance per brokerage (per-client GCP via Terraform;
+ADR-0026). Workflows run on LangGraph, behind a thin `WorkflowEngine` seam that
+keeps the orchestrator swappable without touching the domain core (ADR-0019).
+Every push proves the whole path with an end-to-end demo script against the real
+compose stack.
 
 | Workflow | Trigger | Human gate |
 |---|---|---|
