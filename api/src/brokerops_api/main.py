@@ -1,13 +1,16 @@
 import os
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from brokerops_api.db import (
     InMemoryApprovalRepo,
     InMemoryAuditLog,
+    InMemoryCronRunStore,
     InMemoryDocumentStore,
     InMemoryFeedbackStore,
     InMemoryIdempotencyStore,
@@ -16,6 +19,7 @@ from brokerops_api.db import (
     InMemoryTransactionStore,
     SqlApprovalRepo,
     SqlAuditLog,
+    SqlCronRunStore,
     SqlDocumentStore,
     SqlFeedbackStore,
     SqlIdempotencyStore,
@@ -25,6 +29,8 @@ from brokerops_api.db import (
     TenantScopedEngine,
     create_engine,
 )
+from brokerops_api.logging_config import configure_logging
+from brokerops_api.status import build_status_payload
 from brokerops_api.deps import (
     FILES_INTEGRATION,
     build_crm_adapter,
@@ -41,7 +47,10 @@ from brokerops_api.deps import (
     crm_vendor,
     demo_routes_enabled,
     deploy_tenant,
+    get_cron_run_store,
     get_current_principal,
+    get_migration_engine,
+    get_started_at,
 )
 from brokerops_api.tenant_middleware import TenantScopeMiddleware
 from brokerops_api.routes.approvals import router as approvals_router
@@ -83,6 +92,10 @@ from brokerops_core.services.scoped_stores import (
 from brokerops_core.services.egress import guard_tool_ports
 from brokerops_langgraph.engine import build_engine as build_langgraph_engine
 
+# Install JSON log format on Cloud Run (or LOG_FORMAT=json) before uvicorn starts
+# emitting access lines — BOP-035 structured-logging hook.
+configure_logging()
+
 # LangGraph is the sole orchestrator (ADR-0019). The API depends only on the
 # WorkflowEngine protocol; the engine lives behind it in its own package, so the
 # seam that once made a second-engine port mechanical is retained. The selector stays
@@ -109,6 +122,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # MIGRATION_DATABASE_URL unset, so both collapse to one role, unchanged.
     database_url = os.environ.get("DATABASE_URL")
     schema_database_url = os.environ.get("MIGRATION_DATABASE_URL") or database_url
+    # Uptime clock for /statusz (monotonic — immune to wall-clock steps).
+    app.state.started_at = time.monotonic()
     mls = build_mls_adapter()
     crm = build_crm_adapter()
     voice = build_voice_adapter()
@@ -124,6 +139,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.email = email
     app.state.sms = sms
     engine = create_engine(database_url) if database_url else None
+    # Owner/migration engine for schema probes (/statusz alembic head-vs-current).
+    # When roles are split, the runtime DSN cannot SELECT alembic_version (0010).
+    if schema_database_url and schema_database_url != database_url:
+        app.state.migration_engine = create_engine(schema_database_url)
+    else:
+        app.state.migration_engine = engine
     magic_store: MagicTokenStore
     if engine is not None:
         # Durable path: workflow state, approvals, and the audit trail share
@@ -160,6 +181,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             SqlDocumentStore(scoped_engine), app.state.audit_log
         )
         app.state.idempotency_store = SqlIdempotencyStore(engine)
+        # Cron outcome store is instance-level (raw engine), not tenant-scoped — BOP-035.
+        app.state.cron_run_store = SqlCronRunStore(engine)
         magic_store = SqlMagicTokenStore(engine)
     else:
         # Database-less local dev: everything in memory, nothing survives. The same
@@ -183,6 +206,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.message_store = ScopedMessageStore(InMemoryMessageStore(), app.state.audit_log)
         app.state.document_store = ScopedDocumentStore(InMemoryDocumentStore(), app.state.audit_log)
         app.state.idempotency_store = InMemoryIdempotencyStore()
+        app.state.cron_run_store = InMemoryCronRunStore()
         magic_store = InMemoryMagicTokenStore()
     # Magic-link service is None unless the "magic" method is enabled; routes
     # that need it 404 otherwise.
@@ -302,6 +326,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     ) as workflow_engine:
         app.state.workflow_engine = workflow_engine
         yield
+    migration_engine = getattr(app.state, "migration_engine", None)
+    if migration_engine is not None and migration_engine is not engine:
+        await migration_engine.dispose()
     if engine is not None:
         await engine.dispose()
 
@@ -315,6 +342,10 @@ app = FastAPI(title="brokerops api", lifespan=lifespan)
 app.state.identity_verifier = build_identity_verifier()
 app.state.magic_link_service = None
 app.state.session_refresher = None
+# Defaults so tests that skip the lifespan still resolve /statusz deps.
+app.state.started_at = time.monotonic()
+app.state.cron_run_store = InMemoryCronRunStore()
+app.state.migration_engine = None
 
 app.add_middleware(
     CORSMiddleware,
@@ -365,7 +396,61 @@ async def healthz() -> dict[str, str]:
 
 @app.get("/readyz")
 async def readyz() -> dict[str, str]:
+    # Unauthenticated minimal readiness for load balancers + fleet-upgrade
+    # verify (BOP-033). Detail lives on /statusz (authenticated or internal key).
     return {"status": "ok"}
+
+
+async def _require_status_access(
+    authorization: Annotated[str | None, Header()] = None,
+    x_status_key: Annotated[str | None, Header()] = None,
+) -> None:
+    """Admit /statusz via viewer+ principal OR a matching internal status key.
+
+    Fail closed: no valid key and no authenticated principal → 401. A wrong key
+    does not short-circuit a valid bearer — operator tokens still work.
+    """
+    secret = os.environ.get("STATUS_INTERNAL_KEY", "")
+    if secret and x_status_key == secret:
+        return
+    # Reuse the same principal resolution as operator routes (demo verifier
+    # admits without a token; OIDC/magic require a real bearer). Detail requires
+    # viewer+ (task fail-closed posture) — never admit a verified-but-sub-viewer
+    # identity even if one is ever constructed.
+    verifier = app.state.identity_verifier
+    token = authorization
+    if token and token.lower().startswith("bearer "):
+        token = token[7:].strip()
+    try:
+        from brokerops_core.models.role import Role
+        from brokerops_core.ports.identity import AuthError
+
+        principal = await verifier.verify(token)
+    except AuthError as exc:
+        raise HTTPException(
+            status_code=403 if exc.forbidden else 401,
+            detail=str(exc),
+        ) from exc
+    if not principal.role.allows(Role.VIEWER):
+        raise HTTPException(
+            status_code=403,
+            detail=f"requires {Role.VIEWER.value} role (you are {principal.role.value})",
+        )
+
+
+@app.get("/statusz")
+async def statusz(
+    _: Annotated[None, Depends(_require_status_access)],
+    cron_store: Annotated[Any, Depends(get_cron_run_store)],
+    migration_engine: Annotated[Any, Depends(get_migration_engine)],
+    started_at: Annotated[float, Depends(get_started_at)],
+) -> dict[str, Any]:
+    """Per-instance health detail (BOP-035). Viewer role or X-Status-Key."""
+    return await build_status_payload(
+        started_at=started_at,
+        cron_store=cron_store,
+        migration_engine=migration_engine,
+    )
 
 
 @app.get("/")

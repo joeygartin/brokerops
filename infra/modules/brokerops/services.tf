@@ -66,6 +66,18 @@ resource "google_cloud_run_v2_service" "api" {
         name  = "ORCHESTRATOR"
         value = "langgraph"
       }
+      # Release pin (BOP-031/035): same tag the image was pulled as, so /statusz
+      # and structured logs can name the running version without parsing the image ref.
+      env {
+        name  = "IMAGE_VERSION"
+        value = var.image_version
+      }
+      # JSON logs on Cloud Run so log-based metrics filter on severity/service/version
+      # without a code change (BOP-035). Local compose stays text unless LOG_FORMAT=json.
+      env {
+        name  = "LOG_FORMAT"
+        value = "json"
+      }
       env {
         name  = "RESO_BASE_URL"
         value = var.reso_base_url

@@ -58,6 +58,10 @@ services:
       # Orchestration engine (ADR-0019): langgraph is the sole engine. The
       # selector stays fail-loud — any other value refuses to start.
       ORCHESTRATOR: ${ORCHESTRATOR:-langgraph}
+      # Release pin for /statusz (BOP-035); local default is "dev".
+      IMAGE_VERSION: ${IMAGE_VERSION:-dev}
+      # text locally; set LOG_FORMAT=json to exercise the Cloud Run log shape.
+      LOG_FORMAT: ${LOG_FORMAT:-text}
       # Every integration interpolates from the environment (or a gitignored
       # .env) with the bundled stub as the default — `docker compose up` stays
       # zero-credential, and a .env flips any integration to its real

@@ -2007,6 +2007,45 @@ export type ReadyzReadyzGetResponses = {
 
 export type ReadyzReadyzGetResponse = ReadyzReadyzGetResponses[keyof ReadyzReadyzGetResponses];
 
+export type StatuszStatuszGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+        /**
+         * X-Status-Key
+         */
+        'x-status-key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/statusz';
+};
+
+export type StatuszStatuszGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type StatuszStatuszGetError = StatuszStatuszGetErrors[keyof StatuszStatuszGetErrors];
+
+export type StatuszStatuszGetResponses = {
+    /**
+     * Response Statusz Statusz Get
+     *
+     * Successful Response
+     */
+    200: {
+        [key: string]: unknown;
+    };
+};
+
+export type StatuszStatuszGetResponse = StatuszStatuszGetResponses[keyof StatuszStatuszGetResponses];
+
 export type ListTransactionsTransactionsGetData = {
     body?: never;
     headers?: {

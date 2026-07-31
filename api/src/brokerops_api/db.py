@@ -205,6 +205,22 @@ idempotency_keys = sa.Table(
 )
 
 
+# Instance-level cron outcome (BOP-035). One row per job name (upserted on each
+# run) so /statusz can report "milestones haven't run in 24h". Not tenant-scoped:
+# scheduled triggers are per-deploy fleet infrastructure, not agent data.
+cron_runs = sa.Table(
+    "cron_runs",
+    metadata,
+    sa.Column("job", sa.String(64), primary_key=True),
+    sa.Column("outcome", sa.String(16), nullable=False),
+    sa.Column("finished_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("checked", sa.Integer(), nullable=False, server_default="0"),
+    sa.Column("skipped_pending_escalation", sa.Integer(), nullable=False, server_default="0"),
+    sa.Column("email_tail_suppressed", sa.Integer(), nullable=False, server_default="0"),
+    sa.Column("error", sa.Text()),
+)
+
+
 def sqlalchemy_url(database_url: str) -> str:
     """Normalize a plain postgres DSN to SQLAlchemy's psycopg dialect."""
     if database_url.startswith("postgresql://"):
@@ -938,3 +954,188 @@ class InMemoryMagicTokenStore:
         self._consumed.add(token_hash)
         email, expires_at = self._rows[token_hash]
         return ConsumedToken(email=email, expires_at=expires_at)
+
+
+class CronRunRecord:
+    """Latest outcome of one scheduled job (BOP-035). Plain dataclass-shaped
+    namespace kept next to the store so the status surface doesn't need a core
+    domain model for fleet-ops bookkeeping."""
+
+    __slots__ = (
+        "job",
+        "outcome",
+        "finished_at",
+        "checked",
+        "skipped_pending_escalation",
+        "email_tail_suppressed",
+        "error",
+    )
+
+    def __init__(
+        self,
+        *,
+        job: str,
+        outcome: str,
+        finished_at: datetime,
+        checked: int = 0,
+        skipped_pending_escalation: int = 0,
+        email_tail_suppressed: int = 0,
+        error: str | None = None,
+    ) -> None:
+        self.job = job
+        self.outcome = outcome
+        self.finished_at = finished_at
+        self.checked = checked
+        self.skipped_pending_escalation = skipped_pending_escalation
+        self.email_tail_suppressed = email_tail_suppressed
+        self.error = error
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "job": self.job,
+            "outcome": self.outcome,
+            "finished_at": self.finished_at.isoformat(),
+            "checked": self.checked,
+            "skipped_pending_escalation": self.skipped_pending_escalation,
+            "email_tail_suppressed": self.email_tail_suppressed,
+            "error": self.error,
+        }
+
+
+class CronRunStore(Protocol):
+    async def record(
+        self,
+        job: str,
+        *,
+        outcome: str,
+        checked: int = 0,
+        skipped_pending_escalation: int = 0,
+        email_tail_suppressed: int = 0,
+        error: str | None = None,
+    ) -> CronRunRecord: ...
+
+    async def latest(self, job: str) -> CronRunRecord | None: ...
+
+
+class SqlCronRunStore:
+    """Durable last-run upsert for scheduled jobs. Uses the raw engine (no
+    tenant GUC) — cron is per-instance infrastructure, not tenant agent data."""
+
+    def __init__(self, engine: AsyncEngine) -> None:
+        self._engine = engine
+
+    async def record(
+        self,
+        job: str,
+        *,
+        outcome: str,
+        checked: int = 0,
+        skipped_pending_escalation: int = 0,
+        email_tail_suppressed: int = 0,
+        error: str | None = None,
+    ) -> CronRunRecord:
+        finished_at = datetime.now(UTC)
+        record = CronRunRecord(
+            job=job,
+            outcome=outcome,
+            finished_at=finished_at,
+            checked=checked,
+            skipped_pending_escalation=skipped_pending_escalation,
+            email_tail_suppressed=email_tail_suppressed,
+            error=error,
+        )
+        values = {
+            "job": job,
+            "outcome": outcome,
+            "finished_at": finished_at,
+            "checked": checked,
+            "skipped_pending_escalation": skipped_pending_escalation,
+            "email_tail_suppressed": email_tail_suppressed,
+            "error": error,
+        }
+        # Dialect-aware atomic upsert (one row per job). Prefer the engine's
+        # native ON CONFLICT path so concurrent scheduler retries never race the
+        # primary key; fall back to insert-or-update on IntegrityError.
+        conflict_set = {
+            "outcome": outcome,
+            "finished_at": finished_at,
+            "checked": checked,
+            "skipped_pending_escalation": skipped_pending_escalation,
+            "email_tail_suppressed": email_tail_suppressed,
+            "error": error,
+        }
+        dialect = self._engine.dialect.name
+        async with self._engine.begin() as conn:
+            if dialect == "postgresql":
+                from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+                pg_stmt = pg_insert(cron_runs).values(**values)
+                await conn.execute(
+                    pg_stmt.on_conflict_do_update(
+                        index_elements=[cron_runs.c.job], set_=conflict_set
+                    )
+                )
+            elif dialect == "sqlite":
+                from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+                sqlite_stmt = sqlite_insert(cron_runs).values(**values)
+                await conn.execute(
+                    sqlite_stmt.on_conflict_do_update(
+                        index_elements=[cron_runs.c.job], set_=conflict_set
+                    )
+                )
+            else:
+                try:
+                    await conn.execute(cron_runs.insert().values(**values))
+                except IntegrityError:
+                    await conn.execute(
+                        cron_runs.update().where(cron_runs.c.job == job).values(**conflict_set)
+                    )
+        return record
+
+    async def latest(self, job: str) -> CronRunRecord | None:
+        async with self._engine.connect() as conn:
+            result = await conn.execute(cron_runs.select().where(cron_runs.c.job == job))
+            row = result.first()
+        if row is None:
+            return None
+        m = row._mapping
+        return CronRunRecord(
+            job=str(m["job"]),
+            outcome=str(m["outcome"]),
+            finished_at=m["finished_at"],
+            checked=int(m["checked"] or 0),
+            skipped_pending_escalation=int(m["skipped_pending_escalation"] or 0),
+            email_tail_suppressed=int(m["email_tail_suppressed"] or 0),
+            error=m["error"],
+        )
+
+
+class InMemoryCronRunStore:
+    def __init__(self) -> None:
+        self._rows: dict[str, CronRunRecord] = {}
+
+    async def record(
+        self,
+        job: str,
+        *,
+        outcome: str,
+        checked: int = 0,
+        skipped_pending_escalation: int = 0,
+        email_tail_suppressed: int = 0,
+        error: str | None = None,
+    ) -> CronRunRecord:
+        record = CronRunRecord(
+            job=job,
+            outcome=outcome,
+            finished_at=datetime.now(UTC),
+            checked=checked,
+            skipped_pending_escalation=skipped_pending_escalation,
+            email_tail_suppressed=email_tail_suppressed,
+            error=error,
+        )
+        self._rows[job] = record
+        return record
+
+    async def latest(self, job: str) -> CronRunRecord | None:
+        return self._rows.get(job)

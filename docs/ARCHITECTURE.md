@@ -305,7 +305,8 @@ GCS with a per-client prefix.
 Hard-won deploy details are encoded in the module: Cloud SQL's edition pin for
 shared-core tiers, real `.uri` references instead of predicted URLs (ADR-0003), and
 external health checks on `/readyz` because Google's frontend reserves `/healthz` on
-`*.run.app` hosts.
+`*.run.app` hosts. Per-instance detail (version, selectors, migration pin, last cron
+outcome) lives on authenticated `/statusz` — see [monitoring.md](monitoring.md) (BOP-035).
 
 ## Verification
 

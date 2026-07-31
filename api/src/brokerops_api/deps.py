@@ -2,7 +2,7 @@ import logging
 import os
 from collections.abc import Callable
 from functools import lru_cache
-from typing import TYPE_CHECKING, Annotated, cast
+from typing import TYPE_CHECKING, Annotated, Any, cast
 
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
@@ -771,3 +771,20 @@ def get_message_store(request: Request) -> MessageStore:
 
 def get_message_service(request: Request) -> MessageSendService:
     return cast(MessageSendService, request.app.state.message_service)
+
+
+def get_cron_run_store(request: Request) -> Any:
+    from brokerops_api.db import CronRunStore
+
+    return cast(CronRunStore, request.app.state.cron_run_store)
+
+
+def get_migration_engine(request: Request) -> Any:
+    # Optional engine used only to read alembic_version for /statusz. Prefer the
+    # owner/migration DSN when roles are split (runtime cannot SELECT that table).
+    engine = getattr(request.app.state, "migration_engine", None)
+    return engine
+
+
+def get_started_at(request: Request) -> float:
+    return float(getattr(request.app.state, "started_at", 0.0))
