@@ -1,4 +1,4 @@
-.PHONY: dev test frontend-test lint generate demo migrate fleet-status fleet-upgrade gcp-bootstrap gcp-images deploy deploy-dev secrets
+.PHONY: dev test frontend-test lint generate demo migrate fleet-status fleet-upgrade offboard gcp-bootstrap gcp-images deploy deploy-dev secrets
 
 TF := terraform -chdir=infra
 
@@ -62,6 +62,18 @@ fleet-status:
 fleet-upgrade:
 	@test -n "$(VERSION)" || (echo "usage: make fleet-upgrade VERSION=vX.Y.Z [CLIENT=<slug>] [FLEET_ARGS=--dry-run]"; exit 1)
 	uv run python scripts/fleet_upgrade.py $(VERSION) $(if $(CLIENT),--client $(CLIENT),) $(FLEET_ARGS)
+
+# Offboard a client: export → deliver → secret-scan → confirm-gated destroy → registry mark
+# (BOP-036). CLIENT and DEST required. OFFBOARD_ARGS passes flags (--dry-run, --yes,
+# --export-only, --mode client-infra, …). Needs CLIENT_DATABASE_URL for export and
+# TF_STATE_BUCKET for destroy. See docs/OFFBOARDING.md.
+#   make offboard CLIENT=demo DEST=./exports/demo
+#   make offboard CLIENT=demo DEST=./exports OFFBOARD_ARGS='--dry-run'
+#   make offboard CLIENT=demo DEST=gs://bucket/offboard/ OFFBOARD_ARGS='--yes'
+offboard:
+	@test -n "$(CLIENT)" || (echo "usage: make offboard CLIENT=<slug> DEST=<path|gs://…> [OFFBOARD_ARGS=--dry-run]"; exit 1)
+	@test -n "$(DEST)" || (echo "usage: make offboard CLIENT=<slug> DEST=<path|gs://…> [OFFBOARD_ARGS=--dry-run]"; exit 1)
+	scripts/offboard_client.sh $(CLIENT) --dest $(DEST) $(OFFBOARD_ARGS)
 
 # ── GCP deploy (per client) ──────────────────────────────────────────────
 # One-time per project: make gcp-bootstrap GCP_PROJECT=… GCP_REGION=… TF_STATE_BUCKET=…

@@ -94,6 +94,9 @@ class ClientEntry(BaseModel):
     billing_model: Literal["flat", "tiered"]  # design Q2: flat default, tiered optional
     last_upgraded: date
     onboarding: OnboardingStatus = Field(default_factory=OnboardingStatus)
+    # Set by the offboarding path (BOP-036) — entry is kept for history, never deleted.
+    # None / omitted means the client is still active.
+    offboarded_at: date | None = None
 
     @field_validator("slug")
     @classmethod
@@ -112,6 +115,10 @@ class ClientEntry(BaseModel):
                 f"version {v!r} must be a pinned release tag 'vX.Y.Z' or 'latest' (BOP-031/ADR-0025)"
             )
         return v
+
+    @property
+    def is_offboarded(self) -> bool:
+        return self.offboarded_at is not None
 
 
 class Fleet(BaseModel):
@@ -219,6 +226,7 @@ def render(fleet: Fleet, overlay: dict[str, OverlayEntry], latest: str | None) -
         "BILLING",
         "ONBOARD",
         "UPGRADED",
+        "STATUS",
         "PROJECT",
     ]
     rows: list[list[str]] = []
@@ -228,6 +236,10 @@ def render(fleet: Fleet, overlay: dict[str, OverlayEntry], latest: str | None) -
         project = ov.project_id if ov and ov.project_id else "—"
         done, total = c.onboarding.done(), OnboardingStatus.total()
         onboard = f"{done}/{total}" + ("" if done == total else " ⚠")
+        if c.offboarded_at is not None:
+            status = f"offboarded {c.offboarded_at.isoformat()}"
+        else:
+            status = "active"
         rows.append(
             [
                 name,
@@ -237,6 +249,7 @@ def render(fleet: Fleet, overlay: dict[str, OverlayEntry], latest: str | None) -
                 c.billing_model,
                 onboard,
                 c.last_upgraded.isoformat(),
+                status,
                 project,
             ]
         )

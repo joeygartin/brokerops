@@ -203,6 +203,10 @@ The bridge from a listing going under contract to a tracked escrow **now exists*
    client's version drift and onboarding completeness (`docs/fleet-registry.md`).
 6. Smoke-test against their real integrations before handing over.
 
+When a client **leaves**, use the reverse path — export, hand over, destroy, mark the
+registry — documented in [`docs/OFFBOARDING.md`](OFFBOARDING.md) (`scripts/offboard_client.sh`,
+BOP-036). Do not improvise a teardown.
+
 ## 8. Sign-off
 
 - [ ] All §1–§5 captured and confirmed with the client

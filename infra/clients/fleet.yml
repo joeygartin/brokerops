@@ -14,6 +14,7 @@
 #   posture        hosted | client-infra
 #   billing_model  flat | tiered            (enum only — the amount lives in the overlay)
 #   last_upgraded  YYYY-MM-DD
+#   offboarded_at  YYYY-MM-DD (optional) — set by BOP-036 offboarding; entry kept for history
 #   onboarding     booleans only, never the underlying values:
 #     ses_identity   SES domain identity verified
 #     sandbox_exit   SES production access (out of sandbox)

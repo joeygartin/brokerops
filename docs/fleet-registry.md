@@ -29,6 +29,7 @@ clients:
     posture: hosted       # hosted | client-infra
     billing_model: flat   # flat | tiered — enum ONLY, never an amount
     last_upgraded: 2026-07-08
+    # offboarded_at: 2026-07-31   # optional — set by BOP-036; entry kept for history
     onboarding:           # booleans only — the flag, never the underlying value
       ses_identity: true  #   SES domain identity verified
       sandbox_exit: true  #   SES production access (out of sandbox)
@@ -36,6 +37,10 @@ clients:
       drive_sa: false     #   Google Drive service account provisioned
       crm_keys: false     #   CRM API keys pushed to Secret Manager
 ```
+
+`offboarded_at` is set by `scripts/offboard_client.sh` when a client leaves. The entry is
+**never deleted** — history and status/invoicing still need the row. The upgrade driver
+skips offboarded clients. See `docs/OFFBOARDING.md`.
 
 `billing_model` records *which posture* applies (the design's Q2: flat-monthly is the
 default, tiered stays an option) — the *amount* is identifying and lives in the overlay.

@@ -129,6 +129,13 @@ def resolve_targets(
     for c in fleet_obj.clients:
         if client_filter is not None and c.slug != client_filter:
             continue
+        # Offboarded clients stay in the registry for history (BOP-036) but are never upgraded.
+        if c.is_offboarded:
+            print(
+                f"  · {c.slug}: skipped (offboarded {c.offboarded_at.isoformat()})",  # type: ignore[union-attr]
+                file=sys.stderr,
+            )
+            continue
         ov = overlay.get(c.slug)
         tfvars_rel = _infra_relative(ov.tfvars) if ov and ov.tfvars else f"clients/{c.slug}.tfvars"
         tfvars_abs = INFRA_DIR / tfvars_rel
