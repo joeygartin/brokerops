@@ -26,15 +26,15 @@ export const rootGet = <ThrowOnError extends boolean = false>(options?: Options<
 /**
  * List Approvals
  *
- * List approvals, newest first.
+ * List approvals, newest first — role-filtered on every path (BOP-040).
  *
- * Default: the pending inbox (payload intact — the inbox renders each gate's
- * preview, gated to its role at the control level). `transaction_id` returns one
- * deal's full approval history for the transaction hub (BOP-027) — pending AND
- * decided, so `status` is not applied in that mode — and is role-filtered: a
- * viewer receives kind/status but the draft payload is redacted, since that hub
- * surface only links out to /approvals/:id (where the existing role gate applies).
- * The transaction id lives in the open payload, so the filter reads it there.
+ * Default: the pending inbox. `transaction_id` returns one deal's full approval
+ * history for the transaction hub (BOP-027) — pending AND decided, so `status` is
+ * not applied in that mode. Both are caller-role filtered: a viewer receives each
+ * gate's kind/status but the draft payload (recipient/subject/body of an
+ * outbound-message gate) is redacted to null, so a viewer-open inbox never delivers
+ * draft content over the wire; an operator/admin sees it intact. The transaction id
+ * lives in the open payload, so the transaction filter reads it before scrubbing.
  */
 export const listApprovalsApprovalsGet = <ThrowOnError extends boolean = false>(options?: Options<ListApprovalsApprovalsGetData, ThrowOnError>): RequestResult<ListApprovalsApprovalsGetResponses, ListApprovalsApprovalsGetErrors, ThrowOnError> => (options?.client ?? client).get<ListApprovalsApprovalsGetResponses, ListApprovalsApprovalsGetErrors, ThrowOnError>({ url: '/approvals', ...options });
 
@@ -196,8 +196,9 @@ export const getListingListingsListingKeyGet = <ThrowOnError extends boolean = f
  *
  * `transaction_id` scopes the history to one deal for the transaction hub
  * (BOP-027); both filters compose (AND) when supplied together. The response is
- * role-filtered: the freeform body (and contact PII) is redacted for viewers so a
- * viewer-open hub never receives message content over the wire.
+ * caller-role filtered (BOP-040): the freeform body/subject and the recipient
+ * (contact PII) are redacted for viewers so a viewer-open hub never receives
+ * message content over the wire.
  */
 export const listMessagesMessagesGet = <ThrowOnError extends boolean = false>(options?: Options<ListMessagesMessagesGetData, ThrowOnError>): RequestResult<ListMessagesMessagesGetResponses, ListMessagesMessagesGetErrors, ThrowOnError> => (options?.client ?? client).get<ListMessagesMessagesGetResponses, ListMessagesMessagesGetErrors, ThrowOnError>({ url: '/messages', ...options });
 

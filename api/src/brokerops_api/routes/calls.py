@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from brokerops_api.deps import get_crm_port, get_feedback_store, get_voice_port, require_role
+from brokerops_api.routes._egress import ScrubDep
 from brokerops_core.models.call import CallRecord
 from brokerops_core.models.feedback import ShowingFeedback
 from brokerops_core.ports.crm import CRMPort
@@ -50,11 +51,14 @@ async def start_outbound_call(
 
 
 @router.get("/calls/{call_id}")
-async def get_call_record(call_id: str, store: FeedbackDep) -> CallRecord:
+async def get_call_record(call_id: str, store: FeedbackDep, scrub: ScrubDep) -> CallRecord:
+    # A call record is viewer-open, but the raw transcript is restricted content
+    # (RESTRICTED_CONTENT): the response is caller-role filtered (BOP-040) so a viewer
+    # sees the call's outcome/linkage but never the verbatim transcript.
     record = await store.get_call_record(call_id)
     if record is None:
         raise HTTPException(status_code=404, detail=f"call {call_id!r} not recorded")
-    return record
+    return scrub(record)
 
 
 @router.get("/feedback")

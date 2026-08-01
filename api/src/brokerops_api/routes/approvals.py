@@ -5,16 +5,15 @@ from pydantic import BaseModel, ValidationError
 
 from brokerops_api.deps import (
     get_approval_repo,
-    get_current_principal,
     get_workflow_engine,
     require_role,
 )
 from brokerops_api.db import ApprovalRepo
+from brokerops_api.routes._egress import ScrubDep
 from brokerops_api.workflows import WorkflowEngine, WorkflowRunResult
 from brokerops_core.models.approval import ApprovalDecision, ApprovalRequest, ApprovalStatus
 from brokerops_core.models.drafting import EditedMessagePayload
 from brokerops_core.ports.identity import Principal, Role
-from brokerops_core.services.egress import scrub_payload
 from brokerops_core.services.message_send import UnknownOutboundMessageError
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
@@ -26,10 +25,6 @@ APPROVE_OUTBOUND_MESSAGE = "approve_outbound_message"
 
 RepoDep = Annotated[ApprovalRepo, Depends(get_approval_repo)]
 EngineDep = Annotated[WorkflowEngine, Depends(get_workflow_engine)]
-# The transaction hub reads a deal's approvals viewer-open; its response is filtered
-# to the caller's role (BOP-027) so a viewer receives a gate's kind/status but not
-# its draft payload (recipient/subject/body of an outbound-message gate).
-ReaderDep = Annotated[Principal, Depends(get_current_principal)]
 # Deciding a human-in-the-loop approval is the one action with real-world side
 # effects (CRM writes, contract steps, outbound calls) — restricted to admins.
 AdminDep = Annotated[Principal, Depends(require_role(Role.ADMIN))]
@@ -56,34 +51,33 @@ class DecisionResponse(BaseModel):
 @router.get("")
 async def list_approvals(
     repo: RepoDep,
-    principal: ReaderDep,
+    scrub: ScrubDep,
     status: ApprovalStatus | None = ApprovalStatus.PENDING,
     transaction_id: Annotated[str | None, Query()] = None,
 ) -> list[ApprovalRequest]:
-    """List approvals, newest first.
+    """List approvals, newest first — role-filtered on every path (BOP-040).
 
-    Default: the pending inbox (payload intact — the inbox renders each gate's
-    preview, gated to its role at the control level). `transaction_id` returns one
-    deal's full approval history for the transaction hub (BOP-027) — pending AND
-    decided, so `status` is not applied in that mode — and is role-filtered: a
-    viewer receives kind/status but the draft payload is redacted, since that hub
-    surface only links out to /approvals/:id (where the existing role gate applies).
-    The transaction id lives in the open payload, so the filter reads it there.
+    Default: the pending inbox. `transaction_id` returns one deal's full approval
+    history for the transaction hub (BOP-027) — pending AND decided, so `status` is
+    not applied in that mode. Both are caller-role filtered: a viewer receives each
+    gate's kind/status but the draft payload (recipient/subject/body of an
+    outbound-message gate) is redacted to null, so a viewer-open inbox never delivers
+    draft content over the wire; an operator/admin sees it intact. The transaction id
+    lives in the open payload, so the transaction filter reads it before scrubbing.
     """
     if transaction_id is not None:
         approvals = await repo.list(None)
         scoped = [a for a in approvals if (a.payload or {}).get("transaction_id") == transaction_id]
-        filtered: list[ApprovalRequest] = scrub_payload(scoped, recipient_role=principal.role)
-        return filtered
-    return await repo.list(status)
+        return scrub(scoped)
+    return scrub(await repo.list(status))
 
 
 @router.get("/{approval_id}")
-async def get_approval(approval_id: str, repo: RepoDep) -> ApprovalRequest:
+async def get_approval(approval_id: str, repo: RepoDep, scrub: ScrubDep) -> ApprovalRequest:
     approval = await repo.get(approval_id)
     if approval is None:
         raise HTTPException(status_code=404, detail=f"approval {approval_id!r} not found")
-    return approval
+    return scrub(approval)
 
 
 @router.post("/{approval_id}/decide")

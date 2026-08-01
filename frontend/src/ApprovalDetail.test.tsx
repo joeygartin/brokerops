@@ -138,3 +138,26 @@ describe("ApprovalDetail permalink reuse (BOP-028 review-gate r6)", () => {
     expect(await post?.clone().json()).toEqual({ decision: "approved" });
   });
 });
+
+describe("Redacted viewer permalink (BOP-040)", () => {
+  it("renders the restricted-content state for a payload-null approval, not a crash", async () => {
+    roleState.role = "viewer";
+    // The permalink read returns the viewer's egress-redacted gate: payload nulled.
+    apiFetchMock.mockReset();
+    apiFetchMock.mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ ...TWO, payload: null }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+    renderDetail();
+
+    expect(await screen.findByText("Content restricted to operators")).toBeInTheDocument();
+    // No editable draft, no recipient/subject/body leak, and no decision controls.
+    expect(screen.queryByLabelText("Draft body")).not.toBeInTheDocument();
+    expect(screen.queryByText(/ap-2@example.test/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+  });
+});

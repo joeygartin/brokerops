@@ -77,10 +77,20 @@ function payloadOf(approval: ApprovalRequest): ApprovalPayload {
   return (approval.payload ?? {}) as ApprovalPayload;
 }
 
+// The backend caller-role egress filter (BOP-040) redacts an approval's draft
+// payload to null for a viewer, who may read that a gate EXISTS (kind/status) but
+// not its restricted content (recipient/subject/body). `payload == null` is that
+// signal on the wire — an operator/admin always receives the payload intact.
+export function isPayloadRestricted(approval: ApprovalRequest): boolean {
+  return approval.payload == null;
+}
+
 // The card heading for a gate — shared by the inbox card, the decided-history
 // row, and (via ApprovalCard) the permalink view, so a kind reads the same
-// everywhere.
+// everywhere. When the payload is redacted for a viewer, the heading falls back
+// to the kind label (the subject's detail lives in the restricted payload).
 export function approvalSubject(approval: ApprovalRequest): string {
+  if (isPayloadRestricted(approval)) return kindLabel(approval.kind);
   const payload = payloadOf(approval);
   switch (approval.kind) {
     case "approve_escalation":
@@ -185,6 +195,23 @@ function OutboundMessageForm({
           Unsaved edits — they apply only when you Approve.
         </p>
       )}
+    </div>
+  );
+}
+
+// The viewer-facing state for a gate whose draft payload the backend redacted
+// (BOP-040): a viewer sees the gate exists and its status, but its restricted
+// content (recipient/subject/body) is operator-only. Not a crash, not an empty
+// card — an explicit "content restricted to operators" panel.
+function RestrictedContentNotice() {
+  return (
+    <div className="my-2 text-left text-sm text-muted-foreground" role="note">
+      <p className="mb-1 font-medium text-foreground">Content restricted to operators</p>
+      <p className="m-0">
+        The details of this approval — its recipient, subject, and message body — are
+        visible to operators and admins only. You can see that the gate exists and its
+        status.
+      </p>
     </div>
   );
 }
@@ -305,7 +332,9 @@ export const ApprovalCard = forwardRef<
         </span>
       </CardHeader>
       <CardContent>
-        {isEscalation ? (
+        {isPayloadRestricted(approval) ? (
+          <RestrictedContentNotice />
+        ) : isEscalation ? (
           <EscalationPreview approval={approval} />
         ) : isHotLead ? (
           <HotLeadPreview approval={approval} />

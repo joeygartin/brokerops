@@ -7,19 +7,18 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from brokerops_api.deps import (
-    get_current_principal,
     get_document_store,
     get_listing_service,
     get_transaction_store,
     require_role,
 )
+from brokerops_api.routes._egress import ScrubDep
 from brokerops_core.models.document import Document
 from brokerops_core.models.milestone import Milestone, MilestoneStatus
 from brokerops_core.models.transaction import Transaction, TransactionParty
 from brokerops_core.ports.documents import DocumentStore
 from brokerops_core.ports.identity import Principal, Role
 from brokerops_core.ports.transactions import TransactionAlreadyExists, TransactionStore
-from brokerops_core.services.egress import scrub_payload
 from brokerops_core.services.listing_service import ListingService
 from brokerops_core.services.milestone_engine import (
     DeadlineItem,
@@ -38,10 +37,9 @@ DocumentsDep = Annotated[DocumentStore, Depends(get_document_store)]
 ListingsDep = Annotated[ListingService, Depends(get_listing_service)]
 # Opening a transaction is an action, not a read — operators and up, not viewers.
 OperatorDep = Annotated[Principal, Depends(require_role(Role.OPERATOR))]
-# The board and the hub read transactions viewer-open; the response is filtered to
-# the caller's role (BOP-027) so a viewer receives party names/roles but not their
-# contact email (TransactionParty.email is CONTACT_PII).
-ReaderDep = Annotated[Principal, Depends(get_current_principal)]
+# The board and the hub read transactions viewer-open; the response is caller-role
+# filtered via the shared egress seam (BOP-040/ScrubDep) so a viewer receives party
+# names/roles but not their contact email (TransactionParty.email is CONTACT_PII).
 
 
 class MilestoneView(Milestone):
@@ -161,12 +159,11 @@ async def open_transaction(
 
 @router.get("")
 async def list_transactions(
-    store: StoreDep, docs: DocumentsDep, principal: ReaderDep
+    store: StoreDep, docs: DocumentsDep, scrub: ScrubDep
 ) -> list[TransactionDetail]:
     active = await store.list_active_transactions()
     details = [await _detail(store, docs, transaction) for transaction in active]
-    scrubbed: list[TransactionDetail] = scrub_payload(details, recipient_role=principal.role)
-    return scrubbed
+    return scrub(details)
 
 
 class DeadlineRow(DeadlineItem):
@@ -177,7 +174,7 @@ class DeadlineRow(DeadlineItem):
 
 
 @router.get("/deadlines")
-async def deadline_queue(store: StoreDep, principal: ReaderDep) -> list[DeadlineRow]:
+async def deadline_queue(store: StoreDep, scrub: ScrubDep) -> list[DeadlineRow]:
     """The coordinator's cross-transaction deadline queue (BOP-030).
 
     Every active transaction's pending milestones, classified due-soon / overdue /
@@ -200,8 +197,7 @@ async def deadline_queue(store: StoreDep, principal: ReaderDep) -> list[Deadline
     ]
     # No PII on a deadline row, so this is a no-op today — kept for parity with the
     # other hub reads so a future field carrying PII is filtered by default.
-    scrubbed: list[DeadlineRow] = scrub_payload(rows, recipient_role=principal.role)
-    return scrubbed
+    return scrub(rows)
 
 
 class TransactionSearchRow(BaseModel):
@@ -242,7 +238,7 @@ async def search_transactions(
     q: str,
     store: StoreDep,
     listings: ListingsDep,
-    principal: ReaderDep,
+    scrub: ScrubDep,
 ) -> list[TransactionSearchRow]:
     """Find active transactions by listing key, party (contact) name, or property
     address (BOP-030 viewer home).
@@ -263,17 +259,15 @@ async def search_transactions(
         ).lower()
         if needle in haystack:
             rows.append(TransactionSearchRow(transaction=transaction, property_address=address))
-    scrubbed: list[TransactionSearchRow] = scrub_payload(rows, recipient_role=principal.role)
-    return scrubbed
+    return scrub(rows)
 
 
 @router.get("/{transaction_id}")
 async def get_transaction(
-    transaction_id: str, store: StoreDep, docs: DocumentsDep, principal: ReaderDep
+    transaction_id: str, store: StoreDep, docs: DocumentsDep, scrub: ScrubDep
 ) -> TransactionDetail:
     transaction = await store.get_transaction(transaction_id)
     if transaction is None:
         raise HTTPException(status_code=404, detail=f"transaction {transaction_id!r} not found")
     detail = await _detail(store, docs, transaction)
-    scrubbed: TransactionDetail = scrub_payload(detail, recipient_role=principal.role)
-    return scrubbed
+    return scrub(detail)

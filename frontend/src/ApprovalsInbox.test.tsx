@@ -262,6 +262,40 @@ function mockRoutes(opts: {
   });
 }
 
+// A viewer-redacted gate: the backend caller-role egress filter (BOP-040) nulls
+// the draft payload for a viewer, who may see a gate EXISTS (kind/status) but not
+// its restricted content. The generated ApprovalRequest.payload is `... | null`.
+const REDACTED_OUTBOUND_APPROVAL: ApprovalRequest = {
+  id: "ap-r1",
+  workflow: "vapi_followup",
+  graph_thread_id: "thread-redacted1",
+  kind: "approve_outbound_message",
+  payload: null,
+  status: "pending",
+  decided_by: null,
+  created_at: "2026-07-04T00:00:00Z",
+  decided_at: null,
+};
+
+describe("Viewer-redacted approval payload (BOP-040)", () => {
+  it("renders a 'content restricted to operators' state, not a crash or empty card", async () => {
+    roleState.role = "viewer";
+    mockInbox([REDACTED_OUTBOUND_APPROVAL]);
+    renderRouted(<ApprovalsInbox />);
+
+    // The restricted panel replaces the draft preview/form…
+    expect(await screen.findByText("Content restricted to operators")).toBeInTheDocument();
+    // …so no draft body/recipient leaks into the DOM, and the outbound form is absent.
+    expect(screen.queryByLabelText("Draft body")).not.toBeInTheDocument();
+    expect(screen.queryByText(/undefined/)).not.toBeInTheDocument();
+    // The heading degrades to the kind label (its detail lives in the redacted payload).
+    expect(screen.getByText("Outbound message")).toBeInTheDocument();
+    // A viewer sees no decision controls — the gate awaits an admin.
+    expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+    expect(screen.getByText("Awaiting an admin decision.")).toBeInTheDocument();
+  });
+});
+
 describe("Triage filters (BOP-028)", () => {
   it("filters the pending list by kind and shows per-kind count badges", async () => {
     mockRoutes({ pending: [MARKETING_APPROVAL, HOT_LEAD_APPROVAL, OUTBOUND_MESSAGE_APPROVAL] });

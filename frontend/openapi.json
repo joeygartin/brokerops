@@ -1598,7 +1598,7 @@
     },
     "/approvals": {
       "get": {
-        "description": "List approvals, newest first.\n\nDefault: the pending inbox (payload intact \u2014 the inbox renders each gate's\npreview, gated to its role at the control level). `transaction_id` returns one\ndeal's full approval history for the transaction hub (BOP-027) \u2014 pending AND\ndecided, so `status` is not applied in that mode \u2014 and is role-filtered: a\nviewer receives kind/status but the draft payload is redacted, since that hub\nsurface only links out to /approvals/:id (where the existing role gate applies).\nThe transaction id lives in the open payload, so the filter reads it there.",
+        "description": "List approvals, newest first \u2014 role-filtered on every path (BOP-040).\n\nDefault: the pending inbox. `transaction_id` returns one deal's full approval\nhistory for the transaction hub (BOP-027) \u2014 pending AND decided, so `status` is\nnot applied in that mode. Both are caller-role filtered: a viewer receives each\ngate's kind/status but the draft payload (recipient/subject/body of an\noutbound-message gate) is redacted to null, so a viewer-open inbox never delivers\ndraft content over the wire; an operator/admin sees it intact. The transaction id\nlives in the open payload, so the transaction filter reads it before scrubbing.",
         "operationId": "list_approvals_approvals_get",
         "parameters": [
           {
@@ -2805,7 +2805,7 @@
     },
     "/messages": {
       "get": {
-        "description": "The outbound comms history, newest first \u2014 read-open like the audit trail.\n\n`transaction_id` scopes the history to one deal for the transaction hub\n(BOP-027); both filters compose (AND) when supplied together. The response is\nrole-filtered: the freeform body (and contact PII) is redacted for viewers so a\nviewer-open hub never receives message content over the wire.",
+        "description": "The outbound comms history, newest first \u2014 read-open like the audit trail.\n\n`transaction_id` scopes the history to one deal for the transaction hub\n(BOP-027); both filters compose (AND) when supplied together. The response is\ncaller-role filtered (BOP-040): the freeform body/subject and the recipient\n(contact PII) are redacted for viewers so a viewer-open hub never receives\nmessage content over the wire.",
         "operationId": "list_messages_messages_get",
         "parameters": [
           {
