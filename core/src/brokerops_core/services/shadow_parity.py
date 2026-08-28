@@ -1,22 +1,22 @@
 """BOP-043 shadow-parity runner.
 
-Read-only: never accepts a CRM/email/SMS/write port and never mutates client
-systems. Diffs closed-deal actuals against an injected ``ShadowLedgerSource``.
-When no source is wired, the run is blocked — not a silent pass.
+Read-only: the runner compares Pydantic actuals to a Mapping of already-fetched
+ledger snapshots. It has no ports, no callables, and no client I/O. Missing
+snapshot rows block the run rather than silently passing.
 
 Pass bar (an office meets the gate iff all of these hold):
-  1. Every deal in the actuals set is compared.
+  1. Every deal in the actuals set is compared exactly once (unique deal_id).
   2. Each shadow result is locked (committed ledger, not intent).
   3. Allocation lines match actuals exactly (recipient, amount_minor, stage).
   4. Observed lines sum to the deal's gci_minor (reconciliation).
-  5. A second fetch for the same deal_id is identical (replay-safe).
+  5. An optional replay snapshot is identical (or omitted: data is frozen).
   6. The runner performed no client-system writes.
 Mismatch raises ShadowParityMismatch; PASS is never emitted on a partial run.
 """
 
 from __future__ import annotations
 
-from typing import Protocol
+from collections.abc import Mapping
 
 from brokerops_core.models.shadow_parity import (
     DealParityDiff,
@@ -49,31 +49,27 @@ class ShadowParityMismatch(Exception):
 
 
 class ShadowSourceNotConfigured(Exception):
-    """No injectable shadow ledger source — cannot claim a gate pass."""
+    """No ledger snapshot for a deal — cannot claim a gate pass."""
 
 
-class ShadowLedgerSource(Protocol):
-    """Injected snapshot provider. Implementations must not write client systems."""
-
-    async def ledger_for_deal(self, deal: ShadowDealActual) -> ShadowDealResult: ...
-
-
-class UnconfiguredShadowLedgerSource:
-    async def ledger_for_deal(self, deal: ShadowDealActual) -> ShadowDealResult:
-        raise ShadowSourceNotConfigured("no shadow ledger source is wired; refusing a silent pass")
-
-
-class FixtureShadowLedgerSource:
-    """Uses each deal's optional shadow_ledger field — local fixtures only."""
-
-    async def ledger_for_deal(self, deal: ShadowDealActual) -> ShadowDealResult:
+def snapshot_from_fixture(actuals: ShadowActualsFile) -> dict[str, ShadowDealResult]:
+    """Copy optional shadow_ledger rows from the fixture into a frozen mapping."""
+    out: dict[str, ShadowDealResult] = {}
+    missing: list[str] = []
+    for deal in actuals.deals:
         if deal.shadow_ledger is None:
-            raise ShadowSourceNotConfigured(f"deal {deal.deal_id} has no fixture shadow_ledger")
-        return ShadowDealResult(
+            missing.append(deal.deal_id)
+            continue
+        out[deal.deal_id] = ShadowDealResult(
             deal_id=deal.deal_id,
             locked=deal.shadow_locked,
             allocations=list(deal.shadow_ledger),
         )
+    if missing:
+        raise ShadowSourceNotConfigured(
+            f"no shadow ledger snapshot for deals {missing}; refusing a silent pass"
+        )
+    return out
 
 
 def _line_key(line: ShadowAllocationLine) -> tuple[str, str, int, str, str]:
@@ -141,38 +137,44 @@ def _diff_deal(actual: ShadowDealActual, observed: ShadowDealResult) -> DealPari
     )
 
 
-async def run_shadow_parity(
+def run_shadow_parity(
     actuals: ShadowActualsFile,
-    source: ShadowLedgerSource,
+    ledgers: Mapping[str, ShadowDealResult],
     *,
+    replay: Mapping[str, ShadowDealResult] | None = None,
     fail_closed: bool = True,
 ) -> ParityReport:
-    """Compare every fixture deal to the injected shadow source.
+    """Compare every actual to a frozen ledger mapping (no I/O).
 
     ``fail_closed=True`` (default) raises ``ShadowParityMismatch`` on FAIL.
-    BLOCKED (unconfigured source) always raises ``ShadowSourceNotConfigured``.
+    A missing mapping key raises ``ShadowSourceNotConfigured``.
     """
     rows: list[DealParityRow] = []
     notes: list[str] = [PARITY_PASS_BAR]
 
     for deal in actuals.deals:
-        first = await source.ledger_for_deal(deal)
-        second = await source.ledger_for_deal(deal)
-        row = _diff_deal(deal, first)
-        if first != second:
-            row = row.model_copy(
-                update={
-                    "matched": False,
-                    "replay_identical": False,
-                    "diffs": [
-                        *row.diffs,
-                        DealParityDiff(
-                            kind="replay",
-                            detail="second fetch differed; would imply a non-idempotent write",
-                        ),
-                    ],
-                }
+        if deal.deal_id not in ledgers:
+            raise ShadowSourceNotConfigured(
+                f"no shadow ledger snapshot for deal {deal.deal_id}; refusing a silent pass"
             )
+        first = ledgers[deal.deal_id]
+        row = _diff_deal(deal, first)
+        if replay is not None:
+            second = replay.get(deal.deal_id)
+            if second is None or second != first:
+                row = row.model_copy(
+                    update={
+                        "matched": False,
+                        "replay_identical": False,
+                        "diffs": [
+                            *row.diffs,
+                            DealParityDiff(
+                                kind="replay",
+                                detail="replay snapshot differed; refusing a silent pass",
+                            ),
+                        ],
+                    }
+                )
         rows.append(row)
 
     all_matched = bool(rows) and all(r.matched for r in rows)

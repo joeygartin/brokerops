@@ -6,17 +6,16 @@ uv run python scripts/shadow_parity.py core/tests/fixtures/shadow_parity_actuals
 from __future__ import annotations
 
 import argparse
-import asyncio
 import json
 import sys
 from pathlib import Path
 
 from brokerops_core.models.shadow_parity import ShadowActualsFile
 from brokerops_core.services.shadow_parity import (
-    FixtureShadowLedgerSource,
     ShadowParityMismatch,
     ShadowSourceNotConfigured,
     run_shadow_parity,
+    snapshot_from_fixture,
 )
 
 
@@ -26,10 +25,10 @@ def _load(path: Path) -> ShadowActualsFile:
     return ShadowActualsFile.model_validate(raw)
 
 
-async def _run(path: Path) -> int:
+def _run(path: Path) -> int:
     actuals = _load(path)
     try:
-        report = await run_shadow_parity(actuals, FixtureShadowLedgerSource())
+        report = run_shadow_parity(actuals, snapshot_from_fixture(actuals))
     except ShadowSourceNotConfigured as exc:
         print(json.dumps({"verdict": "blocked", "error": str(exc)}, indent=2))
         return 2
@@ -44,7 +43,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="BOP-043 shadow-parity (local fixtures)")
     parser.add_argument("actuals", type=Path, help="JSON actuals file")
     args = parser.parse_args()
-    sys.exit(asyncio.run(_run(args.actuals)))
+    sys.exit(_run(args.actuals))
 
 
 if __name__ == "__main__":

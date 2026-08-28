@@ -1,13 +1,15 @@
 """Shadow-parity contracts (BOP-043).
 
-Fixture actuals, an injected shadow ledger snapshot, and the parity report.
-No commission math lives here. Amounts are integer minor units.
+Fixture actuals, a frozen shadow ledger snapshot, and the parity report.
+No commission math lives here. Amounts are strict integer minor units.
 """
+
+from __future__ import annotations
 
 from datetime import date
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
 
 
 class ShadowAllocationLine(BaseModel):
@@ -17,7 +19,7 @@ class ShadowAllocationLine(BaseModel):
 
     recipient_type: str
     recipient_id: str
-    amount_minor: int
+    amount_minor: StrictInt
     calc_stage: str
     entry_type: str = "original"
 
@@ -30,16 +32,15 @@ class ShadowDealActual(BaseModel):
     deal_id: str
     office_id: str
     close_date: date
-    gci_minor: int
+    gci_minor: StrictInt
     currency: str = "USD"
     expected_allocations: list[ShadowAllocationLine]
-    # Optional pre-baked shadow snapshot used only by FixtureShadowLedgerSource.
     shadow_ledger: list[ShadowAllocationLine] | None = None
     shadow_locked: bool = True
 
 
 class ShadowDealResult(BaseModel):
-    """Ledger snapshot returned by an injected shadow source for one deal."""
+    """Frozen ledger snapshot for one deal (data only — no I/O)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -86,9 +87,17 @@ class ParityReport(BaseModel):
 
 
 class ShadowActualsFile(BaseModel):
-    """On-disk fixture envelope."""
+    """On-disk fixture envelope. Duplicate deal_id values fail closed."""
 
     model_config = ConfigDict(extra="forbid")
 
     office_id: str
     deals: list[ShadowDealActual]
+
+    @model_validator(mode="after")
+    def _unique_deal_ids(self) -> ShadowActualsFile:
+        ids = [d.deal_id for d in self.deals]
+        dupes = sorted({i for i in ids if ids.count(i) > 1})
+        if dupes:
+            raise ValueError(f"duplicate deal_id values: {dupes}")
+        return self
