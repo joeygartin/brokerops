@@ -1,0 +1,100 @@
+{
+  "_comment": "BOP-043 synthetic integer-minor-unit deals for the shadow-parity harness. No live office extract; no client identifiers.",
+  "office_id": "fixture-office",
+  "deals": [
+    {
+      "deal_id": "deal-match-80-20",
+      "office_id": "fixture-office",
+      "close_date": "2026-06-15",
+      "gci_minor": 1000000,
+      "currency": "USD",
+      "expected_allocations": [
+        {
+          "recipient_type": "brokerage",
+          "recipient_id": "brokerage",
+          "amount_minor": 200000,
+          "calc_stage": "broker_split",
+          "entry_type": "original"
+        },
+        {
+          "recipient_type": "agent",
+          "recipient_id": "agent-a",
+          "amount_minor": 800000,
+          "calc_stage": "agent_net",
+          "entry_type": "original"
+        }
+      ],
+      "shadow_ledger": [
+        {
+          "recipient_type": "brokerage",
+          "recipient_id": "brokerage",
+          "amount_minor": 200000,
+          "calc_stage": "broker_split",
+          "entry_type": "original"
+        },
+        {
+          "recipient_type": "agent",
+          "recipient_id": "agent-a",
+          "amount_minor": 800000,
+          "calc_stage": "agent_net",
+          "entry_type": "original"
+        }
+      ],
+      "shadow_locked": true
+    },
+    {
+      "deal_id": "deal-match-fees",
+      "office_id": "fixture-office",
+      "close_date": "2026-07-01",
+      "gci_minor": 500000,
+      "currency": "USD",
+      "expected_allocations": [
+        {
+          "recipient_type": "vendor",
+          "recipient_id": "franchise",
+          "amount_minor": 25000,
+          "calc_stage": "off_the_top",
+          "entry_type": "original"
+        },
+        {
+          "recipient_type": "brokerage",
+          "recipient_id": "brokerage",
+          "amount_minor": 142500,
+          "calc_stage": "broker_split",
+          "entry_type": "original"
+        },
+        {
+          "recipient_type": "agent",
+          "recipient_id": "agent-b",
+          "amount_minor": 332500,
+          "calc_stage": "agent_net",
+          "entry_type": "original"
+        }
+      ],
+      "shadow_ledger": [
+        {
+          "recipient_type": "vendor",
+          "recipient_id": "franchise",
+          "amount_minor": 25000,
+          "calc_stage": "off_the_top",
+          "entry_type": "original"
+        },
+        {
+          "recipient_type": "brokerage",
+          "recipient_id": "brokerage",
+          "amount_minor": 142500,
+          "calc_stage": "broker_split",
+          "entry_type": "original"
+        },
+        {
+          "recipient_type": "agent",
+          "recipient_id": "agent-b",
+          "amount_minor": 332500,
+          "calc_stage": "agent_net",
+          "entry_type": "original"
+        }
+      ],
+      "shadow_locked": true
+    }
+  ]
+}
