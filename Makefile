@@ -1,4 +1,4 @@
-.PHONY: dev test frontend-test lint generate demo migrate fleet-status fleet-upgrade offboard gcp-bootstrap gcp-images deploy deploy-dev secrets
+.PHONY: dev test frontend-test lint generate demo migrate fleet-status fleet-upgrade offboard gcp-bootstrap gcp-images deploy deploy-dev secrets shadow-parity
 
 TF := terraform -chdir=infra
 
@@ -7,6 +7,12 @@ dev:
 
 test:
 	uv run pytest
+
+# BOP-043 shadow-parity report against committed fixtures. No client writes.
+shadow-parity:
+	uv run python scripts/shadow_parity.py \
+		core/tests/fixtures/shadow_parity_actuals.json \
+		core/tests/fixtures/shadow_parity_snapshot.json
 
 frontend-test:
 	cd frontend && npm ci && npm run test

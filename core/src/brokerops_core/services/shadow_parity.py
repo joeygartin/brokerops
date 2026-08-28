@@ -1,16 +1,17 @@
 """BOP-043 shadow-parity runner.
 
-Read-only: compares actuals to a frozen ``dict`` of already-copied
-``ShadowDealResult`` rows. Custom Mapping types are rejected before any
-item access. Missing snapshot rows block the run rather than silently passing.
+Read-only: compares a ``ShadowActualsFile`` to a frozen ``ShadowSnapshotFile``.
+Non-snapshot inputs are rejected before any item access. Missing snapshot rows
+block the run rather than silently passing.
 
 Pass bar (an office meets the gate iff all of these hold):
-  1. Every deal in the actuals set is compared exactly once (unique deal_id).
-  2. Each shadow result is locked (committed ledger, not intent).
-  3. Allocation lines match actuals exactly (recipient, amount_minor, stage).
-  4. Observed lines sum to the deal's gci_minor (reconciliation).
-  5. An optional replay dict is identical (or omitted: data is frozen).
-  6. The runner performed no client-system writes.
+  1. Envelope and per-deal office_id values match the snapshot office.
+  2. Every deal is compared exactly once (unique deal_id).
+  3. Each shadow result is locked (committed ledger, not intent).
+  4. Allocation lines match actuals exactly (recipient, amount_minor, stage).
+  5. Observed lines sum to the deal's gci_minor (reconciliation).
+  6. An optional replay snapshot is identical (or omitted: data is frozen).
+  7. The runner performed no client-system writes.
 Mismatch raises ShadowParityMismatch; PASS is never emitted on a partial run.
 """
 
