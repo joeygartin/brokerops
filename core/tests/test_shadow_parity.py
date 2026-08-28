@@ -22,7 +22,6 @@ from brokerops_core.services.shadow_parity import (
     ShadowSnapshotNotFrozen,
     ShadowSourceNotConfigured,
     run_shadow_parity,
-    snapshot_dict,
 )
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
@@ -38,15 +37,12 @@ def load_actuals() -> ShadowActualsFile:
     return ShadowActualsFile.model_validate(_load_json("shadow_parity_actuals.json"))
 
 
-def load_snapshot() -> dict[str, ShadowDealResult]:
-    return snapshot_dict(
-        ShadowSnapshotFile.model_validate(_load_json("shadow_parity_snapshot.json"))
-    )
+def load_snapshot() -> ShadowSnapshotFile:
+    return ShadowSnapshotFile.model_validate(_load_json("shadow_parity_snapshot.json"))
 
 
 def test_fixture_office_matches_and_gate_met() -> None:
-    actuals = load_actuals()
-    report = run_shadow_parity(actuals, load_snapshot())
+    report = run_shadow_parity(load_actuals(), load_snapshot())
     assert report.verdict is ParityVerdict.PASS
     assert report.gate_met is True
     assert PARITY_PASS_BAR in report.notes
@@ -79,6 +75,16 @@ def test_independent_actuals_change_mismatches_unchanged_snapshot() -> None:
     assert any(r.deal_id == deal.deal_id and not r.matched for r in exc.value.report.deals)
 
 
+def test_cross_office_snapshot_cannot_pass() -> None:
+    actuals = load_actuals()
+    foreign = load_snapshot().model_copy(update={"office_id": "other-office"})
+    with pytest.raises(ShadowParityMismatch) as exc:
+        run_shadow_parity(actuals, foreign)
+    assert exc.value.report.gate_met is False
+    assert exc.value.report.deals == []
+    assert any("office_id" in n for n in exc.value.report.notes)
+
+
 def test_mismatch_fails_loud() -> None:
     actuals = load_actuals()
     deal = actuals.deals[0]
@@ -100,9 +106,10 @@ def test_mismatch_fails_loud() -> None:
             ),
         ],
     )
-    ledgers = {d.deal_id: wrong for d in actuals.deals}
+    snap = ShadowSnapshotFile(office_id=actuals.office_id, deals=[wrong])
+    one = ShadowActualsFile(office_id=actuals.office_id, deals=[deal])
     with pytest.raises(ShadowParityMismatch) as exc:
-        run_shadow_parity(actuals, ledgers)
+        run_shadow_parity(one, snap)
     assert exc.value.report.verdict is ParityVerdict.FAIL
     assert exc.value.report.gate_met is False
 
@@ -116,8 +123,9 @@ def test_unlocked_snapshot_is_not_a_truthful_pass() -> None:
         allocations=list(deal.expected_allocations),
     )
     file = ShadowActualsFile(office_id=actuals.office_id, deals=[deal])
+    snap = ShadowSnapshotFile(office_id=actuals.office_id, deals=[unlocked])
     with pytest.raises(ShadowParityMismatch) as exc:
-        run_shadow_parity(file, {deal.deal_id: unlocked})
+        run_shadow_parity(file, snap)
     kinds = {d.kind for d in exc.value.report.deals[0].diffs}
     assert "unlocked" in kinds
     assert exc.value.report.gate_met is False
@@ -125,14 +133,16 @@ def test_unlocked_snapshot_is_not_a_truthful_pass() -> None:
 
 def test_unconfigured_source_is_blocked_not_pass() -> None:
     actuals = load_actuals()
+    empty = ShadowSnapshotFile(office_id=actuals.office_id, deals=[])
     with pytest.raises(ShadowSourceNotConfigured, match="refusing a silent pass"):
-        run_shadow_parity(actuals, {})
+        run_shadow_parity(actuals, empty)
 
 
 def test_empty_actuals_fail_closed() -> None:
     empty = ShadowActualsFile(office_id="fixture-office", deals=[])
+    snap = ShadowSnapshotFile(office_id="fixture-office", deals=[])
     with pytest.raises(ShadowParityMismatch) as exc:
-        run_shadow_parity(empty, {})
+        run_shadow_parity(empty, snap)
     assert exc.value.report.gate_met is False
 
 
@@ -158,7 +168,11 @@ def test_replay_divergence_fails() -> None:
     )
     file = ShadowActualsFile(office_id="fixture-office", deals=[deal0])
     with pytest.raises(ShadowParityMismatch) as exc:
-        run_shadow_parity(file, {deal0.deal_id: match}, replay={deal0.deal_id: other})
+        run_shadow_parity(
+            file,
+            ShadowSnapshotFile(office_id="fixture-office", deals=[match]),
+            replay=ShadowSnapshotFile(office_id="fixture-office", deals=[other]),
+        )
     assert any(d.kind == "replay" for d in exc.value.report.deals[0].diffs)
 
 

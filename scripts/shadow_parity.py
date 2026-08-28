@@ -18,7 +18,6 @@ from brokerops_core.services.shadow_parity import (
     ShadowParityMismatch,
     ShadowSourceNotConfigured,
     run_shadow_parity,
-    snapshot_dict,
 )
 
 
@@ -32,7 +31,7 @@ def _run(actuals_path: Path, snapshot_path: Path) -> int:
     actuals = ShadowActualsFile.model_validate(_load_json(actuals_path))
     snapshot = ShadowSnapshotFile.model_validate(_load_json(snapshot_path))
     try:
-        report = run_shadow_parity(actuals, snapshot_dict(snapshot))
+        report = run_shadow_parity(actuals, snapshot)
     except ShadowSourceNotConfigured as exc:
         print(json.dumps({"verdict": "blocked", "error": str(exc)}, indent=2))
         return 2

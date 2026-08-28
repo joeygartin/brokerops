@@ -55,25 +55,16 @@ class ShadowSnapshotNotFrozen(Exception):
     """Ledger input is not an inert dict of validated results."""
 
 
-def snapshot_dict(file: ShadowSnapshotFile) -> dict[str, ShadowDealResult]:
-    """Copy snapshot rows into a plain dict of validated models."""
-    return {row.deal_id: ShadowDealResult.model_validate(row.model_dump()) for row in file.deals}
-
-
-def _freeze_ledgers(ledgers: object) -> dict[str, ShadowDealResult]:
-    if type(ledgers) is not dict:
+def _freeze_snapshot(snapshot: object) -> tuple[str, dict[str, ShadowDealResult]]:
+    if type(snapshot) is not ShadowSnapshotFile:
         raise ShadowSnapshotNotFrozen(
-            "ledger snapshot must be a plain dict of ShadowDealResult; "
+            "ledger snapshot must be a ShadowSnapshotFile; "
             "custom mappings are rejected before access"
         )
     frozen: dict[str, ShadowDealResult] = {}
-    for key, value in list(ledgers.items()):
-        if type(key) is not str:
-            raise ShadowSnapshotNotFrozen("ledger snapshot keys must be str")
-        if not isinstance(value, ShadowDealResult):
-            raise ShadowSnapshotNotFrozen("ledger snapshot values must be ShadowDealResult")
-        frozen[key] = ShadowDealResult.model_validate(value.model_dump())
-    return frozen
+    for row in snapshot.deals:
+        frozen[row.deal_id] = ShadowDealResult.model_validate(row.model_dump())
+    return snapshot.office_id, frozen
 
 
 def _line_key(line: ShadowAllocationLine) -> tuple[str, str, int, str, str]:
@@ -143,18 +134,41 @@ def _diff_deal(actual: ShadowDealActual, observed: ShadowDealResult) -> DealPari
 
 def run_shadow_parity(
     actuals: ShadowActualsFile,
-    ledgers: dict[str, ShadowDealResult],
+    snapshot: ShadowSnapshotFile,
     *,
-    replay: dict[str, ShadowDealResult] | None = None,
+    replay: ShadowSnapshotFile | None = None,
     fail_closed: bool = True,
 ) -> ParityReport:
-    """Compare every actual to a frozen plain-dict snapshot (no I/O).
+    """Compare every actual to a frozen snapshot file (no I/O).
 
     ``fail_closed=True`` (default) raises ``ShadowParityMismatch`` on FAIL.
-    A missing mapping key raises ``ShadowSourceNotConfigured``.
+    A missing deal raises ``ShadowSourceNotConfigured``.
     """
-    frozen = _freeze_ledgers(ledgers)
-    frozen_replay = None if replay is None else _freeze_ledgers(replay)
+    office_id, frozen = _freeze_snapshot(snapshot)
+    frozen_replay: dict[str, ShadowDealResult] | None = None
+    if replay is not None:
+        replay_office, frozen_replay = _freeze_snapshot(replay)
+        if replay_office != actuals.office_id:
+            raise ShadowParityMismatch(
+                ParityReport(
+                    office_id=actuals.office_id,
+                    verdict=ParityVerdict.FAIL,
+                    gate_met=False,
+                    deals=[],
+                    notes=[PARITY_PASS_BAR, "replay snapshot office_id does not match actuals"],
+                )
+            )
+
+    if office_id != actuals.office_id:
+        raise ShadowParityMismatch(
+            ParityReport(
+                office_id=actuals.office_id,
+                verdict=ParityVerdict.FAIL,
+                gate_met=False,
+                deals=[],
+                notes=[PARITY_PASS_BAR, "snapshot office_id does not match actuals"],
+            )
+        )
 
     rows: list[DealParityRow] = []
     notes: list[str] = [PARITY_PASS_BAR]
