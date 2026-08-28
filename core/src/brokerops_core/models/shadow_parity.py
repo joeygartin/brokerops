@@ -35,8 +35,6 @@ class ShadowDealActual(BaseModel):
     gci_minor: StrictInt
     currency: str = "USD"
     expected_allocations: list[ShadowAllocationLine]
-    shadow_ledger: list[ShadowAllocationLine] | None = None
-    shadow_locked: bool = True
 
 
 class ShadowDealResult(BaseModel):
@@ -87,7 +85,7 @@ class ParityReport(BaseModel):
 
 
 class ShadowActualsFile(BaseModel):
-    """On-disk fixture envelope. Duplicate deal_id values fail closed."""
+    """On-disk actuals envelope. Duplicate deal_id values fail closed."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -96,6 +94,23 @@ class ShadowActualsFile(BaseModel):
 
     @model_validator(mode="after")
     def _unique_deal_ids(self) -> ShadowActualsFile:
+        ids = [d.deal_id for d in self.deals]
+        dupes = sorted({i for i in ids if ids.count(i) > 1})
+        if dupes:
+            raise ValueError(f"duplicate deal_id values: {dupes}")
+        return self
+
+
+class ShadowSnapshotFile(BaseModel):
+    """On-disk independent ledger snapshot. Duplicate deal_id values fail closed."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    office_id: str
+    deals: list[ShadowDealResult]
+
+    @model_validator(mode="after")
+    def _unique_deal_ids(self) -> ShadowSnapshotFile:
         ids = [d.deal_id for d in self.deals]
         dupes = sorted({i for i in ids if ids.count(i) > 1})
         if dupes:

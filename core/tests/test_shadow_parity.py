@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import inspect
 import json
+from collections.abc import Iterator, Mapping
 from pathlib import Path
-from typing import Any, get_type_hints
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -14,27 +14,39 @@ from brokerops_core.models.shadow_parity import (
     ShadowAllocationLine,
     ShadowDealActual,
     ShadowDealResult,
+    ShadowSnapshotFile,
 )
 from brokerops_core.services.shadow_parity import (
     PARITY_PASS_BAR,
     ShadowParityMismatch,
+    ShadowSnapshotNotFrozen,
     ShadowSourceNotConfigured,
     run_shadow_parity,
-    snapshot_from_fixture,
+    snapshot_dict,
 )
 
-FIXTURE_PATH = Path(__file__).parent / "fixtures" / "shadow_parity_actuals.json"
+FIXTURE_DIR = Path(__file__).parent / "fixtures"
+
+
+def _load_json(name: str) -> dict[str, Any]:
+    raw: dict[str, Any] = json.loads((FIXTURE_DIR / name).read_text())
+    raw.pop("_comment", None)
+    return raw
 
 
 def load_actuals() -> ShadowActualsFile:
-    raw: dict[str, Any] = json.loads(FIXTURE_PATH.read_text())
-    raw.pop("_comment", None)
-    return ShadowActualsFile.model_validate(raw)
+    return ShadowActualsFile.model_validate(_load_json("shadow_parity_actuals.json"))
+
+
+def load_snapshot() -> dict[str, ShadowDealResult]:
+    return snapshot_dict(
+        ShadowSnapshotFile.model_validate(_load_json("shadow_parity_snapshot.json"))
+    )
 
 
 def test_fixture_office_matches_and_gate_met() -> None:
     actuals = load_actuals()
-    report = run_shadow_parity(actuals, snapshot_from_fixture(actuals))
+    report = run_shadow_parity(actuals, load_snapshot())
     assert report.verdict is ParityVerdict.PASS
     assert report.gate_met is True
     assert PARITY_PASS_BAR in report.notes
@@ -43,6 +55,28 @@ def test_fixture_office_matches_and_gate_met() -> None:
         "deal-match-fees",
     }
     assert all(r.matched and r.locked and r.replay_identical for r in report.deals)
+
+
+def test_independent_actuals_change_mismatches_unchanged_snapshot() -> None:
+    actuals = load_actuals()
+    deal = actuals.deals[0]
+    flipped = deal.model_copy(
+        update={
+            "expected_allocations": [
+                ShadowAllocationLine(
+                    recipient_type="brokerage",
+                    recipient_id="brokerage",
+                    amount_minor=deal.gci_minor,
+                    calc_stage="broker_split",
+                )
+            ]
+        }
+    )
+    file = ShadowActualsFile(office_id=actuals.office_id, deals=[flipped, *actuals.deals[1:]])
+    with pytest.raises(ShadowParityMismatch) as exc:
+        run_shadow_parity(file, load_snapshot())
+    assert exc.value.report.gate_met is False
+    assert any(r.deal_id == deal.deal_id and not r.matched for r in exc.value.report.deals)
 
 
 def test_mismatch_fails_loud() -> None:
@@ -75,10 +109,15 @@ def test_mismatch_fails_loud() -> None:
 
 def test_unlocked_snapshot_is_not_a_truthful_pass() -> None:
     actuals = load_actuals()
-    deal = actuals.deals[0].model_copy(update={"shadow_locked": False})
+    deal = actuals.deals[0]
+    unlocked = ShadowDealResult(
+        deal_id=deal.deal_id,
+        locked=False,
+        allocations=list(deal.expected_allocations),
+    )
     file = ShadowActualsFile(office_id=actuals.office_id, deals=[deal])
     with pytest.raises(ShadowParityMismatch) as exc:
-        run_shadow_parity(file, snapshot_from_fixture(file))
+        run_shadow_parity(file, {deal.deal_id: unlocked})
     kinds = {d.kind for d in exc.value.report.deals[0].diffs}
     assert "unlocked" in kinds
     assert exc.value.report.gate_met is False
@@ -162,10 +201,23 @@ def test_strict_integer_minor_units() -> None:
         )
 
 
-def test_runner_accepts_only_frozen_mappings() -> None:
-    hints = get_type_hints(run_shadow_parity)
-    assert hints["ledgers"].__name__ == "Mapping"
-    src = inspect.getsource(run_shadow_parity)
-    assert "CRMPort" not in src
-    assert "ledger_for_deal" not in src
-    assert "create_contact" not in src
+def test_side_effect_mapping_rejected_before_access() -> None:
+    actuals = load_actuals()
+    accessed: list[str] = []
+
+    class Evil(Mapping[str, ShadowDealResult]):
+        def __getitem__(self, key: str) -> ShadowDealResult:
+            accessed.append(key)
+            raise AssertionError("must not be read")
+
+        def __iter__(self) -> Iterator[str]:
+            accessed.append("iter")
+            return iter(())
+
+        def __len__(self) -> int:
+            accessed.append("len")
+            return 0
+
+    with pytest.raises(ShadowSnapshotNotFrozen):
+        run_shadow_parity(actuals, Evil())  # type: ignore[arg-type]
+    assert accessed == []

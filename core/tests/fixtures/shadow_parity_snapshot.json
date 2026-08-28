@@ -1,14 +1,11 @@
 {
-  "_comment": "BOP-043 synthetic closed-deal actuals (expected allocations). Independent of the snapshot fixture.",
+  "_comment": "BOP-043 independent frozen ledger snapshot for the same synthetic deals.",
   "office_id": "fixture-office",
   "deals": [
     {
       "deal_id": "deal-match-80-20",
-      "office_id": "fixture-office",
-      "close_date": "2026-06-15",
-      "gci_minor": 1000000,
-      "currency": "USD",
-      "expected_allocations": [
+      "locked": true,
+      "allocations": [
         {
           "recipient_type": "brokerage",
           "recipient_id": "brokerage",
@@ -27,11 +24,8 @@
     },
     {
       "deal_id": "deal-match-fees",
-      "office_id": "fixture-office",
-      "close_date": "2026-07-01",
-      "gci_minor": 500000,
-      "currency": "USD",
-      "expected_allocations": [
+      "locked": true,
+      "allocations": [
         {
           "recipient_type": "vendor",
           "recipient_id": "franchise",
