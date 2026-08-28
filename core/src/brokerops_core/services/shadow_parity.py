@@ -174,6 +174,16 @@ def run_shadow_parity(
     notes: list[str] = [PARITY_PASS_BAR]
 
     for deal in actuals.deals:
+        if deal.office_id != actuals.office_id:
+            raise ShadowParityMismatch(
+                ParityReport(
+                    office_id=actuals.office_id,
+                    verdict=ParityVerdict.FAIL,
+                    gate_met=False,
+                    deals=[],
+                    notes=[PARITY_PASS_BAR, "actual deal office_id does not match envelope"],
+                )
+            )
         if deal.deal_id not in frozen:
             raise ShadowSourceNotConfigured(
                 f"no shadow ledger snapshot for deal {deal.deal_id}; refusing a silent pass"

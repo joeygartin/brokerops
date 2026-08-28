@@ -75,6 +75,28 @@ def test_independent_actuals_change_mismatches_unchanged_snapshot() -> None:
     assert any(r.deal_id == deal.deal_id and not r.matched for r in exc.value.report.deals)
 
 
+def test_cross_office_deal_in_matching_envelope_cannot_pass() -> None:
+    actuals = load_actuals()
+    foreign_deal = actuals.deals[0].model_copy(update={"office_id": "other-office"})
+    file = ShadowActualsFile(office_id=actuals.office_id, deals=[foreign_deal])
+    snap = ShadowSnapshotFile(
+        office_id=actuals.office_id,
+        deals=tuple(d for d in load_snapshot().deals if d.deal_id == foreign_deal.deal_id),
+    )
+    with pytest.raises(ShadowParityMismatch) as exc:
+        run_shadow_parity(file, snap)
+    assert exc.value.report.gate_met is False
+    assert any("actual deal office_id" in n for n in exc.value.report.notes)
+
+
+def test_snapshot_models_are_immutable() -> None:
+    snap = load_snapshot()
+    with pytest.raises(ValidationError):
+        snap.office_id = "mutated"
+    with pytest.raises(ValidationError):
+        snap.deals[0].locked = False
+
+
 def test_cross_office_snapshot_cannot_pass() -> None:
     actuals = load_actuals()
     foreign = load_snapshot().model_copy(update={"office_id": "other-office"})
@@ -106,7 +128,7 @@ def test_mismatch_fails_loud() -> None:
             ),
         ],
     )
-    snap = ShadowSnapshotFile(office_id=actuals.office_id, deals=[wrong])
+    snap = ShadowSnapshotFile(office_id=actuals.office_id, deals=(wrong,))
     one = ShadowActualsFile(office_id=actuals.office_id, deals=[deal])
     with pytest.raises(ShadowParityMismatch) as exc:
         run_shadow_parity(one, snap)
@@ -123,7 +145,7 @@ def test_unlocked_snapshot_is_not_a_truthful_pass() -> None:
         allocations=list(deal.expected_allocations),
     )
     file = ShadowActualsFile(office_id=actuals.office_id, deals=[deal])
-    snap = ShadowSnapshotFile(office_id=actuals.office_id, deals=[unlocked])
+    snap = ShadowSnapshotFile(office_id=actuals.office_id, deals=(unlocked,))
     with pytest.raises(ShadowParityMismatch) as exc:
         run_shadow_parity(file, snap)
     kinds = {d.kind for d in exc.value.report.deals[0].diffs}
@@ -133,14 +155,14 @@ def test_unlocked_snapshot_is_not_a_truthful_pass() -> None:
 
 def test_unconfigured_source_is_blocked_not_pass() -> None:
     actuals = load_actuals()
-    empty = ShadowSnapshotFile(office_id=actuals.office_id, deals=[])
+    empty = ShadowSnapshotFile(office_id=actuals.office_id, deals=())
     with pytest.raises(ShadowSourceNotConfigured, match="refusing a silent pass"):
         run_shadow_parity(actuals, empty)
 
 
 def test_empty_actuals_fail_closed() -> None:
     empty = ShadowActualsFile(office_id="fixture-office", deals=[])
-    snap = ShadowSnapshotFile(office_id="fixture-office", deals=[])
+    snap = ShadowSnapshotFile(office_id="fixture-office", deals=())
     with pytest.raises(ShadowParityMismatch) as exc:
         run_shadow_parity(empty, snap)
     assert exc.value.report.gate_met is False
@@ -170,8 +192,8 @@ def test_replay_divergence_fails() -> None:
     with pytest.raises(ShadowParityMismatch) as exc:
         run_shadow_parity(
             file,
-            ShadowSnapshotFile(office_id="fixture-office", deals=[match]),
-            replay=ShadowSnapshotFile(office_id="fixture-office", deals=[other]),
+            ShadowSnapshotFile(office_id="fixture-office", deals=(match,)),
+            replay=ShadowSnapshotFile(office_id="fixture-office", deals=(other,)),
         )
     assert any(d.kind == "replay" for d in exc.value.report.deals[0].diffs)
 

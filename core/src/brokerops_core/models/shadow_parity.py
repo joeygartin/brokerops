@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
 class ShadowAllocationLine(BaseModel):
     """One ledger line as the harness sees it — labels + integer minor units."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     recipient_type: str
     recipient_id: str
@@ -40,7 +40,7 @@ class ShadowDealActual(BaseModel):
 class ShadowDealResult(BaseModel):
     """Frozen ledger snapshot for one deal (data only — no I/O)."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     deal_id: str
     locked: bool
@@ -104,10 +104,10 @@ class ShadowActualsFile(BaseModel):
 class ShadowSnapshotFile(BaseModel):
     """On-disk independent ledger snapshot. Duplicate deal_id values fail closed."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     office_id: str
-    deals: list[ShadowDealResult]
+    deals: tuple[ShadowDealResult, ...]
 
     @model_validator(mode="after")
     def _unique_deal_ids(self) -> ShadowSnapshotFile:
