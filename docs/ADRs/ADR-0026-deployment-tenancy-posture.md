@@ -2,7 +2,7 @@
 
 **Status:** Accepted · **Date:** 2026-07-31 · **Relates to:** [ADR-0012](ADR-0012-tenant-scoping.md) (tenant scoping / single-tenant-per-deploy), [ADR-0021](ADR-0021-least-privilege-runtime-db-role.md) (per-project isolation + runtime RLS role), [ADR-0025](ADR-0025-versioned-releases.md) (fleet release foundation)
 
-**Originating decision record:** Solomon strategy `brokerops-deployment-model-v1` (§2 accepted 2026-07-05; this ADR is the public, repo-local half of that ratification).
+**Originating decision record:** the originating internal design record for the deployment model (§2 accepted 2026-07-05; this ADR is the public, repo-local half of that ratification).
 
 ## Context
 
@@ -11,10 +11,10 @@ multi-tenant SaaS in our cloud vs. per-client deploys on client infrastructure v
 something in between. The repo already ships a per-client Terraform module, Secret
 Manager shells, per-client tfvars, and ADR-0012's single-tenant-**per-deploy**
 line — but the *posture* (what we sell by default, what is enterprise, what is
-deliberately deferred) lived only in the Solomon design doc. Case-study readers of
+deliberately deferred) lived only in the originating internal design record. Case-study readers of
 this public repo need the same decision on the ADR shelf.
 
-Three postures were considered (names from `brokerops-deployment-model-v1`):
+Three postures were considered (names from the deployment-model design):
 
 | | **A1** — dedicated instance, our cloud | **A2** — shared multi-tenant, our cloud | **B** — client infrastructure |
 |---|---|---|---|
